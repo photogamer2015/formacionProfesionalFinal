@@ -1,0 +1,1450 @@
+{% extends 'base.html' %}
+
+{% block title %}Registro Administrativo — {{ mes_nombre }} {{ anio }}{% endblock %}
+
+{% block extra_head %}
+<style>
+@media print {
+    /* Ocultar todo lo que no es contenido */
+    header.top, .crumb, .no-print, .btn, form, button, .dashboard-modal-overlay {
+        display: none !important;
+    }
+    body { background: white !important; }
+    .container { max-width: 100% !important; padding: 0 !important; }
+    .card-box {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+        page-break-inside: avoid;
+        margin-bottom: 12px !important;
+    }
+    .page-title { color: #1a237e !important; font-size: 18pt !important; }
+    .page-subtitle { font-size: 11pt !important; }
+    /* Que el banner azul histórico se imprima con su color */
+    [style*="linear-gradient"] {
+        background: #1a237e !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    /* Forzar colores en KPIs */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    /* El gráfico canvas se imprime */
+    canvas { max-width: 100% !important; }
+    /* Tablas legibles */
+    table { font-size: 10pt !important; }
+}
+
+/* Modales de detalle del dashboard */
+.dashboard-modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+    z-index: 9999; display: none; align-items: center; justify-content: center;
+    padding: 20px;
+}
+.dashboard-modal-box {
+    background: white; border-radius: 12px;
+    width: 100%; max-width: 800px; max-height: 85vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    animation: modalPopIn 0.2s ease-out forwards;
+}
+.dashboard-modal-header {
+    padding: 16px 20px; border-bottom: 1px solid #eee;
+    display: flex; justify-content: space-between; align-items: center;
+    background: #f8f9fa; border-radius: 12px 12px 0 0;
+}
+.dashboard-modal-title { margin: 0; font-size: 16px; color: #1a237e; font-weight: 700; }
+.dashboard-modal-close {
+    background: none; border: none; font-size: 24px; color: #888;
+    cursor: pointer; padding: 0; line-height: 1; transition: color 0.15s;
+}
+.dashboard-modal-close:hover { color: #c62828; }
+.dashboard-modal-body {
+    padding: 20px; overflow-y: auto; flex: 1;
+}
+.dashboard-modal-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.dashboard-modal-table th {
+    text-align: left; padding: 10px; background: #f0f2f5;
+    color: #555; font-weight: 600; border-bottom: 2px solid #ddd;
+    position: sticky; top: -20px; z-index: 10;
+}
+.dashboard-modal-table td {
+    padding: 10px; border-bottom: 1px solid #eee;
+}
+.dashboard-modal-table tr:hover td { background: #f9f9f9; }
+
+@keyframes modalPopIn {
+    0% { transform: scale(0.95) translateY(10px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+body.dark-mode .dashboard-modal-box { background: #1e1e1e; }
+body.dark-mode .dashboard-modal-header { background: #2a2a2a; border-bottom-color: #333; }
+body.dark-mode .dashboard-modal-title { color: #90caf9; }
+body.dark-mode .dashboard-modal-table th { background: #2a2a2a; color: #ccc; border-bottom-color: #444; }
+body.dark-mode .dashboard-modal-table td { border-bottom-color: #333; }
+body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
+
+.clickable-card {
+    cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+}
+.clickable-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+}
+.clickable-card::after {
+    content: "👆 Clic para ver detalles";
+    position: absolute; bottom: 8px; right: 12px;
+    font-size: 10px; color: #888; opacity: 0; transition: opacity 0.2s;
+}
+.clickable-card:hover::after { opacity: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Registro Administrativo
+</div>
+
+<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; margin-bottom:20px;">
+    <div>
+        <h2 class="page-title">📊 Registro Administrativo</h2>
+        <p class="page-subtitle">
+            Balance financiero: <strong>{{ desde|date:"d/m/Y" }} – {{ hasta|date:"d/m/Y" }}</strong>
+        </p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <form method="get" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; background:#f5f6fa; padding:6px 10px; border-radius:8px;">
+            <span style="font-size:11px; font-weight:700; color:#5c6bc0;">📅 RANGO</span>
+            <input type="date" name="desde" class="form-input" style="padding:6px 8px;"
+                   value="{{ desde_iso }}" title="Desde">
+            <span style="color:#888;">→</span>
+            <input type="date" name="hasta" class="form-input" style="padding:6px 8px;"
+                   value="{{ hasta_iso }}" title="Hasta">
+            <button type="submit" class="btn btn-primary btn-sm">Ver rango</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="7">Últ. 7 días</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="15">Últ. 15 días</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="30">Últ. 30 días</button>
+        </form>
+        <a href="{% url 'academia:admin_egresos_lista' %}" class="btn btn-secondary">📒 Ver todos los egresos</a>
+        <a href="{% url 'academia:sedes_lista' %}" class="btn btn-secondary no-print" title="Administrar sedes / campus">🏢 Sedes</a>
+        <a href="{% url 'academia:admin_egreso_crear' %}" class="btn btn-success">+ Nuevo egreso</a>
+        <a href="{% url 'academia:admin_export_reporte' %}?anio={{ anio }}&mes={{ mes }}"
+           class="btn btn-secondary no-print" title="Descargar reporte en CSV (abre con Excel)">📥 Exportar</a>
+        <button type="button" onclick="window.print()" class="btn btn-secondary no-print">🖨️ Imprimir</button>
+    </div>
+</div>
+
+<script>
+    // Presets rápidos del selector de rango (Últimos N días → hoy)
+    (function () {
+        document.querySelectorAll('[data-rango-preset]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var dias = parseInt(btn.getAttribute('data-rango-preset'), 10) || 7;
+                var form = btn.closest('form');
+                if (!form) return;
+                var hoy = new Date();
+                var inicio = new Date();
+                inicio.setDate(hoy.getDate() - (dias - 1));
+                function iso(d) {
+                    return d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+                }
+                form.querySelector('[name="desde"]').value = iso(inicio);
+                form.querySelector('[name="hasta"]').value = iso(hoy);
+                form.submit();
+            });
+        });
+    })();
+</script>
+
+{# ─── KPIs del mes ─────────────────────────────────────── #}
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:20px;">
+    {# Ingresos #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-ingresos')" style="border-top:4px solid #2e7d32; padding:18px;">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">📈 Ingresos del mes</div>
+        <div style="font-size:28px; font-weight:700; color:#2e7d32; margin:8px 0 4px;">${{ ingresos.total|floatformat:2 }}</div>
+        <div style="font-size:11px; color:#666;">
+            Abonos: <strong>${{ ingresos.abonos|floatformat:2 }}</strong> ·
+            Ventas: <strong>${{ ingresos.ventas|floatformat:2 }}</strong>
+            {% if ingresos.adicionales_vivos > 0 %}
+            ·<br>+ Adicionales: <strong style="color:#1a237e;">${{ ingresos.adicionales_vivos|floatformat:2 }}</strong>
+            {% endif %}
+            {% if ingresos.abonos_archivados > 0 or ingresos.adicionales_archivados > 0 %}
+            ·<br><span style="color:#e65100;">+ Archivados: <strong>${{ ingresos.abonos_archivados|add:ingresos.adicionales_archivados|floatformat:2 }}</strong></span>
+            {% endif %}
+        </div>
+        {% if var_ingresos is not None %}
+            <div style="margin-top:8px; font-size:11px; color:{% if var_ingresos >= 0 %}#2e7d32{% else %}#c62828{% endif %};">
+                {% if var_ingresos >= 0 %}▲{% else %}▼{% endif %} {{ var_ingresos|floatformat:1 }}% vs mes anterior
+            </div>
+        {% endif %}
+    </div>
+
+    {# Egresos #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-egresos')" style="border-top:4px solid #c62828; padding:18px;">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">📉 Egresos del mes</div>
+        <div style="font-size:28px; font-weight:700; color:#c62828; margin:8px 0 4px;">${{ egresos_total|floatformat:2 }}</div>
+        <div style="font-size:11px; color:#666;">
+            {{ egresos_recientes|length }} movimiento{{ egresos_recientes|length|pluralize }} registrado{{ egresos_recientes|length|pluralize }}
+        </div>
+        {% if var_egresos is not None %}
+            <div style="margin-top:8px; font-size:11px; color:{% if var_egresos > 0 %}#c62828{% else %}#2e7d32{% endif %};">
+                {% if var_egresos > 0 %}▲{% else %}▼{% endif %} {{ var_egresos|floatformat:1 }}% vs mes anterior
+            </div>
+        {% endif %}
+    </div>
+
+    {# Balance #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-balance')" style="border-top:4px solid {% if balance >= 0 %}#1a237e{% else %}#c62828{% endif %}; padding:18px;">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">⚖️ Balance del mes</div>
+        <div style="font-size:28px; font-weight:700; color:{% if balance >= 0 %}#1a237e{% else %}#c62828{% endif %}; margin:8px 0 4px;">
+            {% if balance >= 0 %}+{% endif %}${{ balance|floatformat:2 }}
+        </div>
+        <div style="font-size:11px; color:#666;">
+            {% if balance > 0 %}
+                Ganancia neta del mes
+            {% elif balance < 0 %}
+                Pérdida del mes
+            {% else %}
+                Sin movimiento neto
+            {% endif %}
+        </div>
+        {% if var_balance is not None %}
+            <div style="margin-top:8px; font-size:11px; color:{% if var_balance >= 0 %}#2e7d32{% else %}#c62828{% endif %};">
+                {% if var_balance >= 0 %}▲{% else %}▼{% endif %} {{ var_balance|floatformat:1 }}% vs mes anterior
+            </div>
+        {% endif %}
+    </div>
+
+    {# Por cobrar #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-por-cobrar')" style="border-top:4px solid #f0ad4e; padding:18px;">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">⏳ Por cobrar (acumulado)</div>
+        <div style="font-size:28px; font-weight:700; color:#f0ad4e; margin:8px 0 4px;">${{ por_cobrar|floatformat:2 }}</div>
+        <div style="font-size:11px; color:#666;">
+            Saldos pendientes en comprobantes
+        </div>
+    </div>
+
+    {# Retiros Voluntarios #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-retiros')" style="border-top:4px solid #757575; padding:18px;">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">🚫 Retiros Voluntarios</div>
+        <div style="font-size:28px; font-weight:700; color:#757575; margin:8px 0 4px;">${{ total_retiros|floatformat:2 }}</div>
+        <div style="font-size:11px; color:#666;">
+            Saldo de alumnos retirados
+        </div>
+    </div>
+
+    {# ★ NUEVO: Clases de Recuperación del mes ★ #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-recuperaciones')" style="border-top:4px solid #c62828; padding:18px;">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">✱ Clases de Recuperación</div>
+        <div style="font-size:28px; font-weight:700; color:#c62828; margin:8px 0 4px;">${{ recuperaciones_mes.total|floatformat:2 }}</div>
+        <div style="font-size:11px; color:#666;">
+            {{ recuperaciones_mes.count }} cobro{{ recuperaciones_mes.count|pluralize }} ·
+            Suma al saldo: <strong>${{ recuperaciones_mes.cuentan_para_saldo|floatformat:2 }}</strong>
+            {% if recuperaciones_mes.aparte > 0 %}
+                · Aparte: <strong>${{ recuperaciones_mes.aparte|floatformat:2 }}</strong>
+            {% endif %}
+        </div>
+        {% if var_recuperaciones is not None %}
+            <div style="margin-top:8px; font-size:11px; color:{% if var_recuperaciones >= 0 %}#2e7d32{% else %}#c62828{% endif %};">
+                {% if var_recuperaciones >= 0 %}▲{% else %}▼{% endif %} {{ var_recuperaciones|floatformat:1 }}% vs mes anterior
+            </div>
+        {% endif %}
+    </div>
+
+    {# ★★ NUEVO: Adicionales del mes (KPI con + verde brillante) ★★ #}
+    <div class="card-box" style="border-top:4px solid #00838f; padding:18px; background:linear-gradient(135deg, #ffffff 0%, #e0f7fa 100%);">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">➕ Adicionales del mes</div>
+        <div style="font-size:28px; font-weight:700; color:#00838f; margin:8px 0 4px;">
+            +${{ adicionales_mes.total|floatformat:2 }}
+        </div>
+        <div style="font-size:11px; color:#666;">
+            {{ adicionales_mes.count }} adicional{{ adicionales_mes.count|pluralize:"es" }} ·
+            Internos: <strong>${{ adicionales_mes.interno|floatformat:2 }}</strong>
+            {% if adicionales_mes.externo > 0 %}
+                · Externos: <strong>${{ adicionales_mes.externo|floatformat:2 }}</strong>
+            {% endif %}
+        </div>
+        {% if var_adicionales is not None %}
+            <div style="margin-top:8px; font-size:11px; color:{% if var_adicionales >= 0 %}#00838f{% else %}#c62828{% endif %};">
+                {% if var_adicionales >= 0 %}▲{% else %}▼{% endif %} {{ var_adicionales|floatformat:1 }}% vs mes anterior
+            </div>
+        {% endif %}
+        <div style="margin-top:8px;">
+            <a href="{% url 'academia:adicional_lista' %}" style="font-size:11px; color:#00838f; font-weight:600; text-decoration:none;">
+                Ver detalle →
+            </a>
+        </div>
+    </div>
+
+    {# Ingresos archivados del mes #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-archivados')" style="border-top:4px solid #ff9800; padding:18px; background:linear-gradient(135deg, #ffffff 0%, #fff8e1 100%);">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">🗄️ Ingresos archivados</div>
+        <div style="font-size:28px; font-weight:700; color:#e65100; margin:8px 0 4px;">
+            ${{ ingresos.abonos_archivados|add:adicionales_archivados_mes.total|floatformat:2 }}
+        </div>
+        <div style="font-size:11px; color:#666;">
+            Abonos archivados: <strong>${{ ingresos.abonos_archivados|floatformat:2 }}</strong><br>
+            Adicionales archivados: <strong>${{ adicionales_archivados_mes.total|floatformat:2 }}</strong>
+        </div>
+    </div>
+</div>
+
+{# ─── ★ NUEVO: Desglose de Adicionales del mes por tipo ★ ─── #}
+{% if adicionales_mes.total > 0 %}
+<div class="card-box" style="margin-bottom:20px; padding:20px; border-left:4px solid #00838f;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <div>
+            <h3 style="color:#1a237e; font-size:15px; margin-bottom:2px;">➕ Adicionales del mes — Desglose por tipo</h3>
+            <p style="font-size:11px; color:#666; margin:0;">
+                Certificados, examen supletorio y camisas extra (internos + externos).
+            </p>
+        </div>
+        <div style="font-size:13px; color:#00838f; font-weight:700;">
+            Total: +${{ adicionales_mes.total|floatformat:2 }}
+        </div>
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+        {% for t in adicionales_mes.por_tipo %}
+        <div style="padding:10px 12px; background:#fafafa; border-radius:8px; border-left:3px solid #00838f;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span style="font-size:12px; color:#1a237e; font-weight:600;">{{ t.label }}</span>
+                <strong style="font-size:13px; color:#00838f;">+${{ t.total|floatformat:2 }}</strong>
+            </div>
+            <div style="font-size:11px; color:#888;">{{ t.count }} registro{{ t.count|pluralize }}</div>
+            <div style="background:#f0f0f0; border-radius:6px; height:6px; overflow:hidden; margin-top:6px;">
+                {% widthratio t.total adicionales_mes.total 100 as pct %}
+                <div style="background:#00838f; height:100%; width:{{ pct }}%;"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# ─── Usuarios: última conexión / quién está en línea ─────── #}
+<div class="card-box" style="margin-bottom:20px; padding:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <h3 style="color:#1a237e; font-size:16px;">👥 Usuarios — última conexión</h3>
+        <span style="font-size:12px; font-weight:700; color:#2e7d32; background:#e8f5e9; padding:3px 10px; border-radius:12px;">
+            🟢 {{ usuarios_en_linea }} en línea
+        </span>
+    </div>
+    <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+                <tr style="text-align:left; color:#5c6bc0; border-bottom:2px solid #e8eaf6;">
+                    <th style="padding:8px 10px;">Usuario</th>
+                    <th style="padding:8px 10px;">Rol</th>
+                    <th style="padding:8px 10px;">Estado</th>
+                    <th style="padding:8px 10px;">Última conexión</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in usuarios_actividad %}
+                <tr style="border-bottom:1px solid #f0f0f0;">
+                    <td style="padding:8px 10px; font-weight:600; color:#1a237e;">{{ u.nombre }}
+                        <span style="color:#aaa; font-weight:400;">@{{ u.username }}</span>
+                    </td>
+                    <td style="padding:8px 10px;">
+                        {% if u.es_admin %}
+                            <span style="font-size:11px; background:#fff3e0; color:#e65100; font-weight:700; padding:2px 8px; border-radius:8px;">Administrador</span>
+                        {% else %}
+                            <span style="font-size:11px; background:#eceff1; color:#546e7a; font-weight:600; padding:2px 8px; border-radius:8px;">Asesor</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:8px 10px;">
+                        {% if u.en_linea %}
+                            <span style="color:#2e7d32; font-weight:700;">🟢 En línea</span>
+                        {% else %}
+                            <span style="color:#9e9e9e; font-weight:600;">⚪ Desconectado</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:8px 10px; color:#555;">
+                        {% if u.ultima_conexion %}
+                            {{ u.ultima_conexion|date:"d/m/Y H:i" }}
+                        {% else %}
+                            <span style="color:#bbb;">Nunca</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" style="padding:12px; color:#999; text-align:center;">No hay usuarios registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p style="font-size:11px; color:#999; margin-top:10px;">
+        "En línea" = con actividad en los últimos 5 minutos. La última conexión combina el inicio de sesión y la última actividad registrada.
+    </p>
+</div>
+
+{# ─── Gráfico de barras: últimos 6 meses ──────────────── #}
+<div class="card-box" style="margin-bottom:20px; padding:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:8px;">
+        <h3 style="color:#1a237e; font-size:16px;">📊 Ingresos vs Egresos — últimos 6 meses</h3>
+        <div style="display:flex; gap:14px; font-size:11px; flex-wrap:wrap;">
+            <span><span style="display:inline-block; width:12px; height:12px; background:#2e7d32; border-radius:2px; vertical-align:middle;"></span> Ingresos</span>
+            <span><span style="display:inline-block; width:12px; height:12px; background:#c62828; border-radius:2px; vertical-align:middle;"></span> Egresos</span>
+            <span><span style="display:inline-block; width:12px; height:12px; background:#757575; border-radius:2px; vertical-align:middle;"></span> Retiros</span>
+            <span><span style="display:inline-block; width:12px; height:12px; background:#f0ad4e; border-radius:2px; vertical-align:middle;"></span> Recuperación</span>
+        </div>
+    </div>
+    <div style="overflow-x:auto;">
+        <canvas id="grafico-meses" style="width:100%; height:280px; max-height:280px;"></canvas>
+    </div>
+</div>
+
+{# ─── ★ NUEVO: Tipos de Pago — Pie chart por mes + desglose ★ ──── #}
+<div class="card-box" style="margin-bottom:20px; padding:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:8px;">
+        <div>
+            <h3 style="color:#1a237e; font-size:16px; margin-bottom:2px;">🎯 Tipos de Pago — {{ mes_nombre }} {{ anio }}</h3>
+            <p style="font-size:11px; color:#666; margin:0;">
+                Cómo se está registrando el dinero: Abono, Pago Completo, Por Módulo y Clase de Recuperación.
+            </p>
+        </div>
+        <div style="font-size:13px; color:#1a237e; font-weight:700;">
+            Total registrado: ${{ total_tipos_pago_mes|floatformat:2 }}
+        </div>
+    </div>
+
+    {% if total_tipos_pago_mes > 0 %}
+    <div style="display:grid; grid-template-columns: minmax(220px, 320px) 1fr; gap:24px; align-items:center;">
+        {# Gráfico circular del mes seleccionado #}
+        <div style="display:flex; flex-direction:column; align-items:center;">
+            <canvas id="pie-tipos-pago" width="260" height="260" style="max-width:100%; height:auto;"></canvas>
+        </div>
+        {# Tabla / desglose con barras #}
+        <div>
+            {% for tp in tipos_pago_mes %}
+            <div style="margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <span style="font-size:13px;">
+                        <span style="display:inline-block; width:10px; height:10px; background:{{ tp.color }}; border-radius:2px; vertical-align:middle; margin-right:6px;"></span>
+                        {{ tp.label }}
+                        <small style="color:#888;">· {{ tp.count }} pago{{ tp.count|pluralize }}</small>
+                    </span>
+                    <strong style="font-size:13px; color:{{ tp.color }};">${{ tp.total|floatformat:2 }}</strong>
+                </div>
+                <div style="background:#f0f0f0; border-radius:6px; height:8px; overflow:hidden;">
+                    {% widthratio tp.total total_tipos_pago_mes 100 as pct %}
+                    <div style="background:{{ tp.color }}; height:100%; width:{{ pct }}%;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div style="text-align:center; color:#888; padding:30px 10px; font-size:13px;">
+        No se han registrado pagos en {{ mes_nombre }} {{ anio }}.
+    </div>
+    {% endif %}
+</div>
+
+{# ─── ★ NUEVO: Tipos de pago por mes — pies pequeños últimos 6 meses ★ ──── #}
+<div class="card-box" style="margin-bottom:20px; padding:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <h3 style="color:#1a237e; font-size:16px;">📊 Distribución de tipos de pago — últimos 6 meses</h3>
+        <div style="display:flex; gap:14px; font-size:11px; flex-wrap:wrap;">
+            <span><span style="display:inline-block; width:10px; height:10px; background:#1a237e; border-radius:2px; vertical-align:middle;"></span> Abono</span>
+            <span><span style="display:inline-block; width:10px; height:10px; background:#2e7d32; border-radius:2px; vertical-align:middle;"></span> Pago Completo</span>
+            <span><span style="display:inline-block; width:10px; height:10px; background:#f0ad4e; border-radius:2px; vertical-align:middle;"></span> Por Módulo</span>
+            <span><span style="display:inline-block; width:10px; height:10px; background:#c62828; border-radius:2px; vertical-align:middle;"></span> Clase de Recuperación</span>
+        </div>
+    </div>
+    <div id="pies-mensuales" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px;"></div>
+</div>
+
+{# ─── Top egresos por categoría + Movimientos recientes ─ #}
+<div style="display:grid; grid-template-columns: 1fr 1.4fr; gap:16px; margin-bottom:20px;">
+
+    <div class="card-box" style="padding:20px;">
+        <h3 style="color:#1a237e; font-size:15px; margin-bottom:14px;">🏷️ Egresos por categoría — {{ mes_nombre }}</h3>
+        {% if top_categorias %}
+            {% for cat in top_categorias %}
+            <div style="margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <span style="font-size:13px;">
+                        {{ cat.icono|default:"•" }} {{ cat.nombre }}
+                    </span>
+                    <strong style="font-size:13px; color:{{ cat.color }};">${{ cat.total|floatformat:2 }}</strong>
+                </div>
+                <div style="background:#f0f0f0; border-radius:6px; height:8px; overflow:hidden;">
+                    {% widthratio cat.total egresos_total 100 as pct %}
+                    <div style="background:{{ cat.color }}; height:100%; width:{{ pct }}%;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div style="text-align:center; color:#888; padding:30px 10px; font-size:13px;">
+                No hay egresos en este mes.<br>
+                <a href="{% url 'academia:admin_egreso_crear' %}" class="btn btn-success btn-sm" style="margin-top:10px;">+ Registrar primer egreso</a>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="card-box" style="padding:20px;">
+        <h3 style="color:#1a237e; font-size:15px; margin-bottom:14px;">📋 Egresos recientes — {{ mes_nombre }}</h3>
+        {% if egresos_recientes %}
+            <div style="max-height:340px; overflow-y:auto;">
+                <table style="width:100%; font-size:12px;">
+                    <tbody>
+                        {% for e in egresos_recientes %}
+                        <tr>
+                            <td style="padding:8px 6px; border-bottom:1px solid #f0f0f0; white-space:nowrap; color:#888; font-size:11px;">{{ e.fecha|date:"d/m" }}</td>
+                            <td style="padding:8px 6px; border-bottom:1px solid #f0f0f0;">
+                                <span style="background:{{ e.categoria.color }}; color:white; padding:1px 6px; border-radius:8px; font-size:10px;">
+                                    {{ e.categoria.icono|default:"•" }} {{ e.categoria.nombre }}
+                                </span>
+                            </td>
+                            <td style="padding:8px 6px; border-bottom:1px solid #f0f0f0;">{{ e.concepto|truncatechars:35 }}</td>
+                            <td style="padding:8px 6px; border-bottom:1px solid #f0f0f0; text-align:right; white-space:nowrap;">
+                                <strong style="color:#c62828;">${{ e.monto|floatformat:2 }}</strong>
+                            </td>
+                            <td style="padding:8px 6px; border-bottom:1px solid #f0f0f0; text-align:right;">
+                                <a href="{% url 'academia:admin_egreso_editar' e.pk %}" class="btn btn-warning btn-sm" style="padding:2px 8px; font-size:10px;">✎</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top:12px; text-align:center;">
+                <a href="{% url 'academia:admin_egresos_lista' %}" style="color:#1a237e; font-size:12px;">Ver historial completo →</a>
+            </div>
+        {% else %}
+            <div style="text-align:center; color:#888; padding:40px 10px; font-size:13px;">
+                Sin movimientos en {{ mes_nombre }} {{ anio }}.
+            </div>
+        {% endif %}
+    </div>
+
+</div>
+
+{# ─── NUEVO: Recaudación por Curso (Desglose) ────────────── #}
+<div class="card-box" style="padding:24px; margin-bottom:24px;">
+    <h3 style="font-size:16px; color:#1a237e; margin:0 0 4px 0;">📊 Recaudación por Curso</h3>
+    <p style="font-size:12px; color:#666; margin-bottom:16px;">
+        Desglose financiero por curso. <strong>Recaudado este mes</strong> suma los pagos realizados en el periodo filtrado ({{ mes_nombre }} {{ anio }}).
+    </p>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+        <button type="button" id="btn-tab-activos" class="btn btn-primary" onclick="mostrarTabCursos('activos')" style="font-size: 13px; padding: 6px 16px;">Cursos Activos</button>
+        <button type="button" id="btn-tab-cerrados" class="btn btn-secondary" onclick="mostrarTabCursos('cerrados')" style="font-size: 13px; padding: 6px 16px; background:#fff3e0; color:#e65100; border:1px solid #ffe0b2;">Cursos Cerrados</button>
+    </div>
+
+    <!-- TABLA DE CURSOS ACTIVOS -->
+    <div id="tab-cursos-activos">
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px; text-align: left;">
+                <thead>
+                    <tr style="background:#f5f7ff; color:#1a237e; font-weight:600; border-bottom:2px solid #c5cae9;">
+                        <th style="padding:10px;">Curso (Activo)</th>
+                        <th style="padding:10px; text-align:center;">Alumnos</th>
+                        <th style="padding:10px; text-align:right;">Recaudado este mes</th>
+                        <th style="padding:10px; text-align:right;">Total recaudado</th>
+                        <th style="padding:10px; text-align:right;">Saldo pendiente</th>
+                        <th style="padding:10px; text-align:right;">A recaudar (Meta)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in recaudacion_cursos_activos %}
+                    <tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:10px;">
+                            <strong style="color:#333;">{{ item.curso.nombre }}</strong>
+                            {% if item.curso.categoria %}
+                            <div style="font-size:11px; color:{{ item.curso.categoria.color }};">{{ item.curso.categoria.nombre }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="padding:10px; text-align:center;">
+                            <span style="background:#e8eaf6; color:#1a237e; padding:3px 8px; border-radius:12px; font-weight:600; font-size:11px;">
+                                {{ item.num_matriculados }}
+                            </span>
+                        </td>
+                        <td style="padding:10px; text-align:right; color:#2e7d32; font-weight:700;">
+                            ${{ item.recaudado_mes|floatformat:2 }}
+                        </td>
+                        <td style="padding:10px; text-align:right;">
+                            ${{ item.recaudado_total|floatformat:2 }}
+                        </td>
+                        <td style="padding:10px; text-align:right; color:#c62828; font-weight:500;">
+                            ${{ item.saldo_pendiente|floatformat:2 }}
+                        </td>
+                        <td style="padding:10px; text-align:right; color:#666; font-weight:600;">
+                            ${{ item.recaudacion_esperada|floatformat:2 }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" style="padding:20px; text-align:center; color:#888;">
+                            No hay matrículas activas registradas.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TABLA DE CURSOS CERRADOS -->
+    <div id="tab-cursos-cerrados" style="display:none;">
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px; text-align: left;">
+                <thead>
+                    <tr style="background:#fff3e0; color:#e65100; font-weight:600; border-bottom:2px solid #ffcc80;">
+                        <th style="padding:10px;">Curso Archivado</th>
+                        <th style="padding:10px; text-align:center;">Alumnos</th>
+                        <th style="padding:10px; text-align:center;">Fecha Cierre</th>
+                        <th style="padding:10px; text-align:right;">Recaudado este mes</th>
+                        <th style="padding:10px; text-align:right;">Total recaudado</th>
+                        <th style="padding:10px; text-align:right;">Saldo incobrable</th>
+                        <th style="padding:10px; text-align:right;">Total facturado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in recaudacion_cursos_cerrados %}
+                    <tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:10px;">
+                            <strong style="color:#333;">{{ item.curso.nombre }}</strong>
+                        </td>
+                        <td style="padding:10px; text-align:center;">
+                            <span style="background:#fff3e0; color:#e65100; padding:3px 8px; border-radius:12px; font-weight:600; font-size:11px;">
+                                {{ item.num_matriculados }}
+                            </span>
+                        </td>
+                        <td style="padding:10px; text-align:center; color:#666; font-size:12px;">
+                            {{ item.fecha_cierre|date:"d/m/Y" }}
+                        </td>
+                        <td style="padding:10px; text-align:right; color:#2e7d32; font-weight:700;">
+                            ${{ item.recaudado_mes|floatformat:2 }}
+                        </td>
+                        <td style="padding:10px; text-align:right;">
+                            ${{ item.recaudado_total|floatformat:2 }}
+                        </td>
+                        <td style="padding:10px; text-align:right; color:#c62828; font-weight:500;">
+                            ${{ item.saldo_pendiente|floatformat:2 }}
+                        </td>
+                        <td style="padding:10px; text-align:right; color:#666; font-weight:600;">
+                            ${{ item.recaudacion_esperada|floatformat:2 }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" style="padding:20px; text-align:center; color:#888;">
+                            No hay cursos cerrados o archivados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function mostrarTabCursos(tabId) {
+    document.getElementById('tab-cursos-activos').style.display = 'none';
+    document.getElementById('tab-cursos-cerrados').style.display = 'none';
+    
+    document.getElementById('btn-tab-activos').className = 'btn btn-secondary';
+    document.getElementById('btn-tab-cerrados').className = 'btn btn-secondary';
+    document.getElementById('btn-tab-cerrados').style.background = '';
+    document.getElementById('btn-tab-cerrados').style.color = '';
+    document.getElementById('btn-tab-cerrados').style.border = '';
+    
+    if (tabId === 'activos') {
+        document.getElementById('tab-cursos-activos').style.display = 'block';
+        document.getElementById('btn-tab-activos').className = 'btn btn-primary';
+        document.getElementById('btn-tab-cerrados').className = 'btn btn-secondary';
+        document.getElementById('btn-tab-cerrados').style.background = '#fff3e0';
+        document.getElementById('btn-tab-cerrados').style.color = '#e65100';
+        document.getElementById('btn-tab-cerrados').style.border = '1px solid #ffe0b2';
+    } else {
+        document.getElementById('tab-cursos-cerrados').style.display = 'block';
+        document.getElementById('btn-tab-cerrados').className = 'btn btn-primary';
+        document.getElementById('btn-tab-cerrados').style.background = '#e65100';
+        document.getElementById('btn-tab-cerrados').style.color = '#fff';
+        document.getElementById('btn-tab-cerrados').style.border = '1px solid #e65100';
+    }
+}
+</script>
+
+{# ─── Acumulado histórico (todo el sistema) ────────────── #}
+<div class="card-box" style="padding:24px; background:linear-gradient(135deg, #1a237e 0%, #283593 100%); color:white;">
+    <h3 style="font-size:16px; margin-bottom:6px;">🏛️ Acumulado histórico de toda la academia</h3>
+    <p style="font-size:12px; opacity:0.85; margin-bottom:18px;">Suma de todos los registros desde el inicio del sistema</p>
+
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:18px;">
+        <div>
+            <div style="font-size:11px; opacity:0.8; text-transform:uppercase;">Total ingresos</div>
+            <div style="font-size:24px; font-weight:700;">${{ total_ingresos_hist|floatformat:2 }}</div>
+            <div style="font-size:10px; opacity:0.7; margin-top:2px;">
+                Abonos ${{ total_abonos_hist|floatformat:2 }} +
+                Ventas ${{ total_ventas_hist|floatformat:2 }}
+                {% if total_adicionales_hist > 0 %}
+                + Adicionales ${{ total_adicionales_hist|floatformat:2 }}
+                {% endif %}
+            </div>
+        </div>
+        <div>
+            <div style="font-size:11px; opacity:0.8; text-transform:uppercase;">Total egresos</div>
+            <div style="font-size:24px; font-weight:700; color:#ffcdd2;">${{ total_egresos_hist|floatformat:2 }}</div>
+        </div>
+        <div>
+            <div style="font-size:11px; opacity:0.8; text-transform:uppercase;">Balance neto</div>
+            <div style="font-size:28px; font-weight:700; color:{% if balance_hist >= 0 %}#a5d6a7{% else %}#ef9a9a{% endif %};">
+                {% if balance_hist >= 0 %}+{% endif %}${{ balance_hist|floatformat:2 }}
+            </div>
+            <div style="font-size:10px; opacity:0.7; margin-top:2px;">
+                {% if balance_hist > 0 %}✓ Operación rentable{% elif balance_hist < 0 %}⚠ Operación en pérdida{% else %}— Sin diferencia neta{% endif %}
+            </div>
+        </div>
+        <div>
+            <div style="font-size:11px; opacity:0.8; text-transform:uppercase;">Por cobrar</div>
+            <div style="font-size:24px; font-weight:700; color:#ffe082;">${{ por_cobrar|floatformat:2 }}</div>
+            <div style="font-size:10px; opacity:0.7; margin-top:2px;">Pendiente en comprobantes</div>
+        </div>
+    </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{#  CIERRES DEL PERIODO + CIERRE ADMINISTRATIVO                #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div style="margin-top:24px; display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+
+    {# ── Cierres de CURSO del mes ── #}
+    <div class="card-box" style="padding:22px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="font-size:16px; color:#1a237e; margin:0;">🗄️ Cierres de curso · {{ mes_nombre }} {{ anio }}</h3>
+            <a href="{% url 'academia:cierre_historial' %}" style="color:#1a237e; font-size:12px;">Ver todos →</a>
+        </div>
+
+        {% if cierres_curso_mes.count %}
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:14px;">
+                <div style="background:#e8eaf6; border-radius:8px; padding:10px;">
+                    <div style="font-size:10px; color:#666; text-transform:uppercase;">Cierres</div>
+                    <div style="font-size:20px; font-weight:700; color:#1a237e;">{{ cierres_curso_mes.count }}</div>
+                </div>
+                <div style="background:#e8f5e9; border-radius:8px; padding:10px;">
+                    <div style="font-size:10px; color:#666; text-transform:uppercase;">Cobrado</div>
+                    <div style="font-size:18px; font-weight:700; color:#2e7d32;">${{ cierres_curso_mes.total_cobrado|floatformat:2 }}</div>
+                </div>
+                <div style="background:#fff8e1; border-radius:8px; padding:10px;">
+                    <div style="font-size:10px; color:#666; text-transform:uppercase;">Matrículas</div>
+                    <div style="font-size:20px; font-weight:700; color:#856404;">{{ cierres_curso_mes.total_matriculas }}</div>
+                </div>
+            </div>
+
+            <div style="max-height:260px; overflow-y:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead>
+                        <tr style="background:#f5f5f7; color:#666;">
+                            <th style="padding:7px 10px; text-align:left;">Curso / Jornada</th>
+                            <th style="padding:7px 10px; text-align:right;">Cobrado</th>
+                            <th style="padding:7px 10px; text-align:center;">Mat.</th>
+                            <th style="padding:7px 10px; text-align:center;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in cierres_curso_mes.cierres %}
+                        <tr style="border-bottom:1px solid #f0f0f0;">
+                            <td style="padding:7px 10px;">
+                                {% if c.alcance == 'global' %}
+                                    <span style="color:#c62828; font-weight:600;">🌐 {{ c.curso_nombre }}</span>
+                                {% else %}
+                                    {{ c.curso_nombre }}
+                                {% endif %}
+                                {% if c.jornada_descripcion %}<br><small style="color:#888;">{{ c.jornada_descripcion }}</small>{% endif %}
+                            </td>
+                            <td style="padding:7px 10px; text-align:right;"><strong style="color:#2e7d32;">${{ c.total_cobrado|floatformat:2 }}</strong></td>
+                            <td style="padding:7px 10px; text-align:center;">{{ c.total_matriculas }}</td>
+                            <td style="padding:7px 10px; text-align:center;">
+                                <a href="{% url 'academia:cierre_detalle' c.pk %}" style="color:#1a237e; font-size:11px;">Ver</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p style="font-size:11px; color:#888; margin-top:10px; margin-bottom:0;">
+                💡 El dinero cobrado en estos cierres ya está sumado en los ingresos del mes (arriba), aunque las matrículas se hayan archivado.
+            </p>
+        {% else %}
+            <div style="text-align:center; color:#888; padding:30px 10px; font-size:13px;">
+                No se cerraron cursos en {{ mes_nombre }} {{ anio }}.
+            </div>
+        {% endif %}
+    </div>
+
+    {# ── Cierre administrativo (corte de caja) ── #}
+    <div class="card-box" style="padding:22px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="font-size:16px; color:#1a237e; margin:0;">🧾 Cierre administrativo</h3>
+            <a href="{% url 'academia:cierre_admin_historial' %}" style="color:#1a237e; font-size:12px;">Historial →</a>
+        </div>
+
+        <p style="font-size:13px; color:#555; margin-bottom:16px;">
+            {% if cierre_admin_existente %}
+            El corte de caja oficial de {{ mes_nombre }} {{ anio }} ya está <strong>archivado</strong>.
+            Puedes verlo o generar otro corte manual del mismo mes sin reemplazar el anterior.
+            {% else %}
+            Genera el <strong>corte de caja oficial</strong> de {{ mes_nombre }} {{ anio }}:
+            congela ingresos (incluido el dinero de cursos cerrados), egresos y balance neto.
+            {% endif %}
+        </p>
+
+        {# Resumen del corte actual #}
+        <div style="background:#f9fafc; border-radius:10px; padding:16px; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #e0e0e0;">
+                <span style="font-size:13px; color:#2e7d32;">▲ Ingresos del mes</span>
+                <strong style="color:#2e7d32;">
+                    {% if cierre_admin_existente %}${{ cierre_admin_existente.ingreso_total|floatformat:2 }}{% else %}${{ ingresos.total|floatformat:2 }}{% endif %}
+                </strong>
+            </div>
+            {% if cierre_admin_existente and cierre_admin_existente.ingreso_abonos_archivados > 0 %}
+            <div style="display:flex; justify-content:space-between; padding:4px 0; padding-left:14px;">
+                <span style="font-size:11px; color:#888;">↳ incluye de cursos cerrados</span>
+                <span style="font-size:11px; color:#888;">${{ cierre_admin_existente.ingreso_abonos_archivados|floatformat:2 }}</span>
+            </div>
+            {% elif ingresos.abonos_archivados > 0 %}
+            <div style="display:flex; justify-content:space-between; padding:4px 0; padding-left:14px;">
+                <span style="font-size:11px; color:#888;">↳ incluye de cursos cerrados</span>
+                <span style="font-size:11px; color:#888;">${{ ingresos.abonos_archivados|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #e0e0e0;">
+                <span style="font-size:13px; color:#c62828;">▼ Egresos del mes</span>
+                <strong style="color:#c62828;">
+                    −{% if cierre_admin_existente %}${{ cierre_admin_existente.egreso_total|floatformat:2 }}{% else %}${{ egresos_total|floatformat:2 }}{% endif %}
+                </strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0 0;">
+                <span style="font-size:14px; font-weight:700; color:#1a237e;">= Balance neto</span>
+                {% if cierre_admin_existente %}
+                <strong style="font-size:18px; color:{% if cierre_admin_existente.balance_neto >= 0 %}#2e7d32{% else %}#c62828{% endif %};">
+                    {% if cierre_admin_existente.balance_neto >= 0 %}+{% endif %}${{ cierre_admin_existente.balance_neto|floatformat:2 }}
+                </strong>
+                {% else %}
+                <strong style="font-size:18px; color:{% if balance >= 0 %}#2e7d32{% else %}#c62828{% endif %};">
+                    {% if balance >= 0 %}+{% endif %}${{ balance|floatformat:2 }}
+                </strong>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if cierre_admin_existente %}
+        <div style="background:#e8f5e9; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:12px; color:#2e7d32;">
+            ✓ Corte archivado para este mes (guardado {{ cierre_admin_existente.fecha_cierre|date:"d/m/Y H:i" }}).
+            <a href="{% url 'academia:cierre_admin_detalle' cierre_admin_existente.pk %}" style="color:#1a237e; font-weight:600;">Ver corte →</a>
+        </div>
+        <a href="{% url 'academia:cierre_admin_detalle' cierre_admin_existente.pk %}"
+           class="btn" style="background:#1a237e; color:white; width:100%; text-align:center; font-weight:700;">
+            🗄️ Ver corte archivado de {{ mes_nombre }}
+        </a>
+        {% if tiene_valores_corte %}
+        <a href="{% url 'academia:cierre_admin_preview' %}?anio={{ anio }}&mes={{ mes }}"
+           class="btn" style="background:#2e7d32; color:white; width:100%; text-align:center; font-weight:700; margin-top:8px;">
+            🧾 Nuevo corte manual de {{ mes_nombre }}
+        </a>
+        {% endif %}
+        {% else %}
+        <a href="{% url 'academia:cierre_admin_preview' %}?anio={{ anio }}&mes={{ mes }}"
+           class="btn" style="background:#1a237e; color:white; width:100%; text-align:center; font-weight:700;">
+            🧾 Generar corte de caja de {{ mes_nombre }}
+        </a>
+        {% endif %}
+    </div>
+
+</div>
+
+{# ─── LIBRO MAYOR: Detalle de Movimientos del Rango ───────── #}
+<div class="card-box" id="libro-mayor-card" style="margin-top:24px; padding:24px; position:relative;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <div style="flex:1;">
+            <h3 style="color:#1a237e; font-size:16px; margin:0;">📖 Libro Mayor: Detalle de Movimientos</h3>
+            <p style="font-size:12px; color:#666; margin:0;">Todos los ingresos y egresos registrados entre el <strong>{{ desde|date:"d/m/Y" }}</strong> y <strong>{{ hasta|date:"d/m/Y" }}</strong></p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <a href="{% url 'academia:admin_export_libro_mayor' %}?desde={{ desde_iso }}&hasta={{ hasta_iso }}" class="btn btn-secondary btn-sm" title="Exportar a Excel (CSV)">📥 Excel</a>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('libro-mayor-card').style.display='none'" title="Ocultar tabla">✕</button>
+        </div>
+    </div>
+    
+    <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
+            <thead>
+                <tr style="color:#5c6bc0; border-bottom:2px solid #e8eaf6; white-space:nowrap;">
+                    <th style="padding:10px;">Fecha</th>
+                    <th style="padding:10px;">Tipo</th>
+                    <th style="padding:10px;">Categoría</th>
+                    <th style="padding:10px;">Concepto</th>
+                    <th style="padding:10px;">Involucrado</th>
+                    <th style="padding:10px; text-align:right;">Monto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in movimientos_rango %}
+                <tr style="border-bottom:1px solid #f0f0f0;">
+                    <td style="padding:10px; color:#555; white-space:nowrap;">{{ m.fecha|date:"d/m/Y" }}</td>
+                    <td style="padding:10px;">
+                        {% if m.tipo == 'ingreso' %}
+                            <span style="background:#e8f5e9; color:#2e7d32; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">Ingreso</span>
+                        {% else %}
+                            <span style="background:#ffebee; color:#c62828; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:700;">Egreso</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:10px; font-weight:600; color:#444;">{{ m.categoria }}</td>
+                    <td style="padding:10px; color:#555;">{{ m.concepto }}</td>
+                    <td style="padding:10px; color:#555;">{{ m.involucrado }}</td>
+                    <td style="padding:10px; text-align:right; font-weight:700; color:{% if m.tipo == 'ingreso' %}#2e7d32{% else %}#c62828{% endif %};">
+                        {% if m.tipo == 'ingreso' %}+{% else %}−{% endif %}${{ m.monto|floatformat:2 }}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="padding:20px; text-align:center; color:#888;">
+                        No se encontraron movimientos en este rango de fechas.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+(function() {
+    // ── Datos del gráfico (renderizados desde Django) ──
+    const data = {{ serie_meses_json|safe }};
+    const pieData = {{ pie_tipos_pago_json|safe }};
+
+    // ════════════════════════════════════════════════════
+    // 1) Gráfico de BARRAS: últimos 6 meses
+    //    Ahora con 4 barras: Ingresos, Egresos, Retiros, Recuperación
+    // ════════════════════════════════════════════════════
+    const canvas = document.getElementById('grafico-meses');
+    if (!canvas) return;
+
+    function dibujarBarras() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, w, h);
+
+        const padTop = 20, padBottom = 50, padLeft = 60, padRight = 20;
+        const chartW = w - padLeft - padRight;
+        const chartH = h - padTop - padBottom;
+
+        // Máximo (incluye recuperaciones)
+        let maxVal = 0;
+        data.forEach(d => {
+            maxVal = Math.max(
+                maxVal,
+                d.ingresos, d.egresos, d.retiros || 0, d.recuperaciones || 0
+            );
+        });
+        if (maxVal === 0) maxVal = 100;
+        const step = Math.pow(10, Math.floor(Math.log10(maxVal)));
+        maxVal = Math.ceil(maxVal / step) * step;
+
+        // Grid horizontal y labels Y
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.fillStyle = '#888';
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 1;
+        const ySteps = 4;
+        for (let i = 0; i <= ySteps; i++) {
+            const y = padTop + chartH - (chartH * i / ySteps);
+            ctx.beginPath();
+            ctx.moveTo(padLeft, y);
+            ctx.lineTo(padLeft + chartW, y);
+            ctx.stroke();
+            const val = (maxVal * i / ySteps).toFixed(0);
+            ctx.textAlign = 'right';
+            ctx.fillText('$' + val, padLeft - 6, y + 3);
+        }
+
+        // 4 barras por grupo: Ingresos, Egresos, Retiros, Recuperación
+        const groupW = chartW / data.length;
+        const barW = Math.min(16, (groupW - 16) / 4);
+        const gap = 2;
+        data.forEach((d, idx) => {
+            const cx = padLeft + groupW * idx + groupW / 2;
+            // Centramos las 4 barras: -1.5w, -0.5w, +0.5w, +1.5w (con gaps)
+            const totalAncho = barW * 4 + gap * 3;
+            const x0 = cx - totalAncho / 2;
+            const xs = [
+                x0,
+                x0 + barW + gap,
+                x0 + (barW + gap) * 2,
+                x0 + (barW + gap) * 3,
+            ];
+            const valores = [
+                { v: d.ingresos,        color: '#2e7d32' },
+                { v: d.egresos,         color: '#c62828' },
+                { v: d.retiros || 0,    color: '#757575' },
+                { v: d.recuperaciones || 0, color: '#f0ad4e' },
+            ];
+            valores.forEach((b, i) => {
+                const hBar = (b.v / maxVal) * chartH;
+                ctx.fillStyle = b.color;
+                ctx.fillRect(xs[i], padTop + chartH - hBar, barW, hBar);
+            });
+
+            // Label X (mes)
+            ctx.fillStyle = '#444';
+            ctx.font = '11px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(d.label, cx, padTop + chartH + 16);
+
+            // Balance debajo
+            ctx.font = '10px -apple-system, sans-serif';
+            ctx.fillStyle = d.balance >= 0 ? '#2e7d32' : '#c62828';
+            const sign = d.balance >= 0 ? '+' : '';
+            ctx.fillText(sign + '$' + Math.round(d.balance), cx, padTop + chartH + 32);
+        });
+    }
+
+    dibujarBarras();
+    window.addEventListener('resize', dibujarBarras);
+
+    // ════════════════════════════════════════════════════
+    // 2) Gráfico CIRCULAR (pie) — Tipos de pago del mes seleccionado
+    // ════════════════════════════════════════════════════
+    function dibujarPie(canvasEl, datos, opciones) {
+        opciones = opciones || {};
+        const dpr = window.devicePixelRatio || 1;
+        // Si el canvas no tiene clientWidth todavía, usa attr width/height
+        const cw = canvasEl.clientWidth || canvasEl.width || 240;
+        const ch = canvasEl.clientHeight || canvasEl.height || 240;
+        canvasEl.width = cw * dpr;
+        canvasEl.height = ch * dpr;
+        const ctx = canvasEl.getContext('2d');
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, cw, ch);
+
+        const total = datos.reduce((acc, d) => acc + (d.total || 0), 0);
+        const cx = cw / 2;
+        const cy = ch / 2;
+        const radio = Math.min(cw, ch) / 2 - 8;
+
+        if (total <= 0) {
+            // Estado vacío: círculo gris claro
+            ctx.fillStyle = '#eee';
+            ctx.beginPath();
+            ctx.arc(cx, cy, radio, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#999';
+            ctx.font = '12px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Sin pagos', cx, cy);
+            return;
+        }
+
+        let inicio = -Math.PI / 2;
+        datos.forEach(d => {
+            const valor = d.total || 0;
+            if (valor <= 0) return;
+            const angulo = (valor / total) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, radio, inicio, inicio + angulo);
+            ctx.closePath();
+            ctx.fillStyle = d.color;
+            ctx.fill();
+            // Borde blanco entre slices
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+
+            // Etiqueta con porcentaje (solo si la rebanada es lo bastante grande)
+            if (opciones.mostrarPct !== false) {
+                const pct = (valor / total) * 100;
+                if (pct >= 6) {
+                    const angMedio = inicio + angulo / 2;
+                    const lx = cx + Math.cos(angMedio) * radio * 0.62;
+                    const ly = cy + Math.sin(angMedio) * radio * 0.62;
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 11px -apple-system, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(pct.toFixed(0) + '%', lx, ly);
+                }
+            }
+            inicio += angulo;
+        });
+    }
+
+    const piePrincipal = document.getElementById('pie-tipos-pago');
+    if (piePrincipal && pieData && pieData.length) {
+        function redibujarPiePrincipal() { dibujarPie(piePrincipal, pieData); }
+        redibujarPiePrincipal();
+        window.addEventListener('resize', redibujarPiePrincipal);
+    }
+
+    // ════════════════════════════════════════════════════
+    // 3) Pies pequeños — uno por cada uno de los últimos 6 meses
+    // ════════════════════════════════════════════════════
+    const cont = document.getElementById('pies-mensuales');
+    if (cont) {
+        cont.innerHTML = '';
+        data.forEach((mes, idx) => {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'text-align:center; padding:8px; border:1px solid #eee; border-radius:8px; background:#fafafa;';
+
+            const titulo = document.createElement('div');
+            titulo.style.cssText = 'font-size:11px; color:#1a237e; font-weight:700; margin-bottom:4px;';
+            titulo.textContent = mes.mes_nombre || mes.label;
+            wrap.appendChild(titulo);
+
+            const c = document.createElement('canvas');
+            c.width = 130; c.height = 130;
+            c.style.cssText = 'width:130px; height:130px; max-width:100%;';
+            wrap.appendChild(c);
+
+            const totalLbl = document.createElement('div');
+            totalLbl.style.cssText = 'font-size:11px; color:#444; margin-top:4px;';
+            const totalMes = (mes.total_tipos_pago || 0);
+            totalLbl.innerHTML = '<strong>$' + totalMes.toFixed(2) + '</strong>';
+            wrap.appendChild(totalLbl);
+
+            cont.appendChild(wrap);
+            // Dibujar después de insertar (para que el canvas tenga tamaño)
+            setTimeout(function() {
+                dibujarPie(c, mes.tipos_pago || [], { mostrarPct: true });
+            }, 0);
+        });
+    }
+})();
+
+// Lógica de Modales
+function openDashboardModal(id) {
+    const el = document.getElementById(id);
+    if(el) {
+        el.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+function closeDashboardModal(id) {
+    const el = document.getElementById(id);
+    if(el) {
+        el.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+window.addEventListener('click', function(e) {
+    if(e.target.classList.contains('dashboard-modal-overlay')) {
+        e.target.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+});
+</script>
+
+{# ==================== MODALES ==================== #}
+
+{# Modal Ingresos #}
+<div id="modal-ingresos" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box">
+        <div class="dashboard-modal-header">
+            <h3 class="dashboard-modal-title">Detalle de Ingresos</h3>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-ingresos')">&times;</button>
+        </div>
+        <div class="dashboard-modal-body">
+            {% if ingresos.qs_abonos or ingresos.qs_abonos_archivados or ingresos.qs_ventas %}
+                <table class="dashboard-modal-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Origen</th>
+                            <th>Concepto / Estudiante</th>
+                            <th style="text-align:right;">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ab in ingresos.qs_abonos %}
+                        <tr>
+                            <td>{{ ab.fecha|date:"d/m/Y" }}</td>
+                            <td><span style="background:#e3f2fd; color:#1565c0; padding:2px 6px; border-radius:4px; font-size:11px;">Abono Matrícula</span></td>
+                            <td>{{ ab.matricula.estudiante }} - {{ ab.matricula.curso.nombre }}</td>
+                            <td style="text-align:right; font-weight:600; color:#2e7d32;">+${{ ab.monto|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+
+                        {% for v in ingresos.qs_ventas %}
+                        <tr>
+                            <td>{{ v.fecha_inscripcion|date:"d/m/Y" }}</td>
+                            <td><span style="background:#f3e5f5; color:#6a1b9a; padding:2px 6px; border-radius:4px; font-size:11px;">Venta (Comprobante)</span></td>
+                            <td>{{ v.nombres_completos }}</td>
+                            <td style="text-align:right; font-weight:600; color:#2e7d32;">+${{ v.pago_abono|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% for ad in ingresos.qs_adicionales_vivos %}
+                        <tr>
+                            <td>{{ ad.fecha|date:"d/m/Y" }}</td>
+                            <td><span style="background:#e0f2f1; color:#00695c; padding:2px 6px; border-radius:4px; font-size:11px;">Adicional</span></td>
+                            <td>{{ ad.estudiante|default:ad.persona_externa }} - {{ ad.get_tipo_adicional_display }}</td>
+                            <td style="text-align:right; font-weight:600; color:#2e7d32;">+${{ ad.valor|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p style="text-align:center; color:#888; padding:30px;">No hay ingresos en este periodo.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# Modal Ingresos Archivados #}
+<div id="modal-archivados" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box">
+        <div class="dashboard-modal-header">
+            <h3 class="dashboard-modal-title">🗄️ Detalle de Ingresos Archivados</h3>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-archivados')">&times;</button>
+        </div>
+        <div class="dashboard-modal-body">
+            {% if ingresos.qs_abonos_archivados or ingresos.qs_adicionales_archivados %}
+                <table class="dashboard-modal-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Origen</th>
+                            <th>Concepto / Estudiante</th>
+                            <th style="text-align:right;">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ab in ingresos.qs_abonos_archivados %}
+                        <tr>
+                            <td>{{ ab.fecha|date:"d/m/Y" }}</td>
+                            <td><span style="background:#fff3e0; color:#e65100; padding:2px 6px; border-radius:4px; font-size:11px;">Abono Archivado</span></td>
+                            <td>{{ ab.matricula_archivada.nombre_completo }} - {{ ab.matricula_archivada.curso_nombre }}</td>
+                            <td style="text-align:right; font-weight:600; color:#2e7d32;">+${{ ab.monto|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% for ad in ingresos.qs_adicionales_archivados %}
+                        <tr>
+                            <td>{{ ad.fecha|date:"d/m/Y" }}</td>
+                            <td><span style="background:#fff3e0; color:#e65100; padding:2px 6px; border-radius:4px; font-size:11px;">Adicional Archivado</span></td>
+                            <td>{{ ad.persona_nombre }} - {{ ad.tipo_adicional_label }}</td>
+                            <td style="text-align:right; font-weight:600; color:#2e7d32;">+${{ ad.valor|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p style="text-align:center; color:#888; padding:30px;">No hay ingresos archivados en este periodo.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# Modal Egresos #}
+<div id="modal-egresos" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box">
+        <div class="dashboard-modal-header">
+            <h3 class="dashboard-modal-title">Detalle de Egresos</h3>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-egresos')">&times;</button>
+        </div>
+        <div class="dashboard-modal-body">
+            {% if qs_egresos_mes %}
+                <table class="dashboard-modal-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Categoría</th>
+                            <th>Concepto</th>
+                            <th style="text-align:right;">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in qs_egresos_mes %}
+                        <tr>
+                            <td>{{ e.fecha|date:"d/m/Y" }}</td>
+                            <td>
+                                <span style="background:{{ e.categoria.color }}20; color:{{ e.categoria.color }}; padding:2px 6px; border-radius:4px; font-size:11px;">
+                                    {{ e.categoria.icono }} {{ e.categoria.nombre }}
+                                </span>
+                            </td>
+                            <td>{{ e.concepto }}</td>
+                            <td style="text-align:right; font-weight:600; color:#c62828;">-${{ e.monto|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p style="text-align:center; color:#888; padding:30px;">No hay egresos en este periodo.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# Modal Balance #}
+<div id="modal-balance" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box" style="max-width:500px;">
+        <div class="dashboard-modal-header">
+            <h3 class="dashboard-modal-title">Balance del Mes</h3>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-balance')">&times;</button>
+        </div>
+        <div class="dashboard-modal-body" style="text-align:center;">
+            <p style="color:#555; margin-bottom:20px;">Resumen de la operación del mes</p>
+            <div style="font-size:18px; display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #eee;">
+                <span>Ingresos Totales:</span>
+                <strong style="color:#2e7d32;">+${{ ingresos.total|floatformat:2 }}</strong>
+            </div>
+            <div style="font-size:18px; display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #eee;">
+                <span>Egresos Totales:</span>
+                <strong style="color:#c62828;">-${{ egresos_total|floatformat:2 }}</strong>
+            </div>
+            <div style="font-size:22px; display:flex; justify-content:space-between; padding:15px 10px; background:#f8f9fa; border-radius:8px; margin-top:15px;">
+                <strong>Balance Neto:</strong>
+                <strong style="color:{% if balance >= 0 %}#1a237e{% else %}#c62828{% endif %};">
+                    {% if balance > 0 %}+{% endif %}${{ balance|floatformat:2 }}
+                </strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Modal Por Cobrar #}
+<div id="modal-por-cobrar" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box">
+        <div class="dashboard-modal-header">
+            <h3 class="dashboard-modal-title">Cuentas por Cobrar (Acumulado)</h3>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-por-cobrar')">&times;</button>
+        </div>
+        <div class="dashboard-modal-body">
+            {% if por_cobrar_matriculas_detalle or por_cobrar_comprobantes_detalle %}
+                <table class="dashboard-modal-table">
+                    <thead>
+                        <tr>
+                            <th>Origen</th>
+                            <th>Estudiante / Cliente</th>
+                            <th>Descripción</th>
+                            <th style="text-align:right;">Saldo Pendiente</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in por_cobrar_matriculas_detalle %}
+                        <tr>
+                            <td><span style="background:#e8eaf6; color:#3f51b5; padding:2px 6px; border-radius:4px; font-size:11px;">Matrícula Activa</span></td>
+                            <td>{{ m.estudiante }}</td>
+                            <td>{{ m.curso.nombre }}</td>
+                            <td style="text-align:right; font-weight:600; color:#f0ad4e;">${{ m.saldo|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% for c in por_cobrar_comprobantes_detalle %}
+                        <tr>
+                            <td><span style="background:#fff3e0; color:#e65100; padding:2px 6px; border-radius:4px; font-size:11px;">Comprobante Manual</span></td>
+                            <td>{{ c.nombres_completos }}</td>
+                            <td>{{ c.concepto_pago|default:"Venta" }}</td>
+                            <td style="text-align:right; font-weight:600; color:#f0ad4e;">${{ c.diferencia|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p style="text-align:center; color:#888; padding:30px;">No hay saldos pendientes de cobro.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# Modal Retiros #}
+<div id="modal-retiros" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box">
+        <div class="dashboard-modal-header">
+            <h3 class="dashboard-modal-title">Retiros Voluntarios</h3>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-retiros')">&times;</button>
+        </div>
+        <div class="dashboard-modal-body">
+            {% if retiros_detalle %}
+                <table class="dashboard-modal-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha Matrícula</th>
+                            <th>Estudiante</th>
+                            <th>Curso</th>
+                            <th style="text-align:right;">Saldo Perdonado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in retiros_detalle %}
+                        <tr>
+                            <td>{{ r.matricula.fecha_matricula|date:"d/m/Y" }}</td>
+                            <td>{{ r.matricula.estudiante }}</td>
+                            <td>{{ r.matricula.curso.nombre }}</td>
+                            <td style="text-align:right; font-weight:600; color:#757575;">${{ r.saldo_perdonado|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p style="text-align:center; color:#888; padding:30px;">No hubo retiros voluntarios en este periodo.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# Modal Recuperaciones #}
+<div id="modal-recuperaciones" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box">
+        <div class="dashboard-modal-header">
+            <h3 class="dashboard-modal-title">Clases de Recuperación</h3>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-recuperaciones')">&times;</button>
+        </div>
+        <div class="dashboard-modal-body">
+            {% if qs_recuperaciones_mes %}
+                <table class="dashboard-modal-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Estudiante</th>
+                            <th>Curso</th>
+                            <th>Suma a Saldo</th>
+                            <th style="text-align:right;">Monto Cobrado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rec in qs_recuperaciones_mes %}
+                        <tr>
+                            <td>{{ rec.fecha|date:"d/m/Y" }}</td>
+                            <td>{{ rec.matricula.estudiante }}</td>
+                            <td>{{ rec.matricula.curso.nombre }}</td>
+                            <td>
+                                {% if rec.cuenta_para_saldo %}
+                                    <span style="color:#2e7d32; font-size:12px;">✅ Sí</span>
+                                {% else %}
+                                    <span style="color:#888; font-size:12px;">❌ No (Pago extra)</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align:right; font-weight:600; color:#c62828;">+${{ rec.monto|floatformat:2 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p style="text-align:center; color:#888; padding:30px;">No se cobraron clases de recuperación en este periodo.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

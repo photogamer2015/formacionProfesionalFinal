@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+db.sqlite3
+.env
+venv/
+env/
+.DS_Store
+*.log
+/media/
+/staticfiles/
+# academia/api_key.py

@@ -1,0 +1,670 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:adicional_menu' %}">Adicional</a> &nbsp;›&nbsp;
+    {% if modo == 'editar' %}Editar{% else %}Estudiante Interno{% endif %}
+</div>
+
+<h2 class="page-title">{{ titulo }}</h2>
+<p class="page-subtitle">
+    Servicios extra para estudiantes ya matriculados: certificados, examen supletorio o camisa adicional.
+    <br><small style="color:#888;">El valor lo defines libremente.</small>
+</p>
+
+<form method="post" class="card-box" novalidate id="form-adicional-interno">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div style="background:#ffebee; border-left:4px solid #c62828; padding:12px 16px; margin-bottom:18px; border-radius:6px;">
+        <strong style="color:#c62828;">Corrige los siguientes errores:</strong>
+        <ul style="margin-top:6px; margin-bottom:0; padding-left:20px; color:#c62828; font-size:14px;">
+            {% for error in form.non_field_errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {# ── Selección del estudiante ── #}
+    <h3 class="form-section-title">Estudiante</h3>
+    <div class="form-grid">
+        <div>
+            <label class="form-label" for="id_cedula_estudiante">
+                {{ form.cedula_estudiante.label }}
+                <span id="cedula-status-int" style="margin-left:8px; font-weight:400; font-size:11px;"></span>
+            </label>
+            {{ form.cedula_estudiante }}
+            {{ form.cedula_estudiante.errors }}
+            {% if form.cedula_estudiante.help_text %}
+            <small style="color:#666; font-size:11px;">{{ form.cedula_estudiante.help_text }}</small>
+            {% endif %}
+        </div>
+        <div style="grid-column: span 2;">
+            <label class="form-label">Datos del estudiante</label>
+            <div id="estudiante-info" style="padding:10px 14px; background:#f5f5f7; border-radius:8px; font-size:13px; color:#666; min-height:42px;">
+                Ingresa la cédula para ver los datos.
+            </div>
+        </div>
+    </div>
+
+    {# ── Tipo de Adicional ── #}
+    <h3 class="form-section-title">Tipo de Adicional</h3>
+    <div class="form-grid">
+        <div>
+            <label class="form-label">{{ form.tipo_adicional.label }}</label>
+            {{ form.tipo_adicional }}
+            {{ form.tipo_adicional.errors }}
+        </div>
+    </div>
+
+    {# ── Datos del curso (visible para certificados y supletorio) ── #}
+    <div id="bloque-curso" style="display:none;">
+        <h3 class="form-section-title">Curso al que se refiere</h3>
+        <div class="form-grid">
+            <div>
+                <label class="form-label">{{ form.curso.label }}</label>
+                {{ form.curso }}
+                {{ form.curso.errors }}
+            </div>
+            <div>
+                <label class="form-label">{{ form.modalidad.label }}</label>
+                {{ form.modalidad }}
+                {{ form.modalidad.errors }}
+            </div>
+            <div id="campo-modulo" style="display:none;">
+                <label class="form-label">{{ form.numero_modulo.label }}</label>
+                {{ form.numero_modulo }}
+                {{ form.numero_modulo.errors }}
+                <small style="color:#888; font-size:11px;">Solo para examen supletorio.</small>
+            </div>
+        </div>
+    </div>
+
+    {# ── Talla camiseta (solo para camisa) ── #}
+    <div id="bloque-talla" style="display:none;">
+        <h3 class="form-section-title">👕 Camisa</h3>
+        <div class="form-grid">
+            <div>
+                <label class="form-label">{{ form.talla_camiseta.label }} *</label>
+                {{ form.talla_camiseta }}
+                {{ form.talla_camiseta.errors }}
+            </div>
+        </div>
+    </div>
+
+    {# ── Cobro ── #}
+    <h3 class="form-section-title">💰 Cobro</h3>
+    <div class="form-grid">
+        <div>
+            <label class="form-label">{{ form.fecha.label }}</label>
+            {{ form.fecha }}
+            {{ form.fecha.errors }}
+        </div>
+        <div>
+            <label class="form-label">{{ form.valor.label }}</label>
+            {{ form.valor }}
+            {{ form.valor.errors }}
+            <small style="color:#888; font-size:11px;">Tú decides el valor.</small>
+        </div>
+        <div style="grid-column: span 3; margin-top: 10px;">
+            <label class="form-label" for="id_tipo_cobro_adicional">Distribución de pago *</label>
+            {{ form.tipo_cobro }}
+            {{ form.tipo_cobro.errors }}
+            <small style="color:#666; font-size:11px; display:block; margin-top:4px;">Selecciona si el pago es de un solo método o combinado.</small>
+        </div>
+
+        <div id="un-solo-metodo-adicional-container" style="display: contents;">
+            <div>
+                <label class="form-label">{{ form.metodo_pago.label }}</label>
+                {{ form.metodo_pago }}
+                {{ form.metodo_pago.errors }}
+            </div>
+            <div id="bloque-banco" style="display:none; grid-column: span 1; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
+                <label class="form-label" style="color:#1a237e;">🏦 Banco *</label>
+                {{ form.banco }}
+                {{ form.banco.errors }}
+                <small style="color:#666; font-size:11px;">Selecciona el banco usado para la transferencia.</small>
+            </div>
+        </div>
+
+        <div id="mixto-adicional-container" style="display: none; grid-column: span 3; margin-bottom:14px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+            <p style="margin: 0 0 4px 0; font-weight: 600; color: #1a237e; font-size: 14px;">Pago Mixto (Dividir el monto en dos)</p>
+            <p style="margin: 0 0 12px 0; font-size: 11.5px; color: #666;">
+                💡 <strong>Nota:</strong> Ingresa el pago total en el campo <strong style="color:#333;">"Valor (USD)"</strong> de arriba y luego divide ese valor entre el <strong>Monto 1</strong> y el <strong>Monto 2</strong> aquí abajo.
+            </p>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label class="form-label">Monto 1 *</label>
+                    {{ form.monto_pago_1 }}{{ form.monto_pago_1.errors }}
+                </div>
+                <div>
+                    <label class="form-label">Método 1 *</label>
+                    {{ form.metodo_pago_1 }}{{ form.metodo_pago_1.errors }}
+                </div>
+                <div id="bloque-banco-1" style="display:none;">
+                    <label class="form-label">🏦 Banco 1 *</label>
+                    {{ form.banco_1 }}{{ form.banco_1.errors }}
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
+                <div>
+                    <label class="form-label">Monto 2 *</label>
+                    {{ form.monto_pago_2 }}{{ form.monto_pago_2.errors }}
+                </div>
+                <div>
+                    <label class="form-label">Método 2 *</label>
+                    {{ form.metodo_pago_2 }}{{ form.metodo_pago_2.errors }}
+                </div>
+                <div id="bloque-banco-2" style="display:none;">
+                    <label class="form-label">🏦 Banco 2 *</label>
+                    {{ form.banco_2 }}{{ form.banco_2.errors }}
+                </div>
+            </div>
+            <small id="mixto-adicional-error-msg" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600; font-size:12px;">
+                ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Valor (USD)" principal.
+            </small>
+        </div>
+        <div>
+            <label class="form-label">
+                {{ form.numero_recibo.label }}
+                <span style="color:#888; font-weight:400; font-size:11px;">(auto: <strong>ADC-XXXX</strong>)</span>
+            </label>
+            {{ form.numero_recibo }}
+            {{ form.numero_recibo.errors }}
+        </div>
+    </div>
+
+    <div style="margin-top:14px;">
+        <label class="form-label">{{ form.observaciones.label }}</label>
+        {{ form.observaciones }}
+    </div>
+
+    <h3 class="form-section-title" style="margin-top:32px;">🧾 Factura</h3>
+    <div class="form-grid">
+        <div>
+            <label class="form-label" for="{{ form.factura_realizada.id_for_label }}">{{ form.factura_realizada.label }}</label>
+            {{ form.factura_realizada }}
+            {{ form.factura_realizada.errors }}
+        </div>
+    </div>
+
+    <div id="datos-factura-wrap" style="margin-top:14px;">
+        <div style="font-size:13px; font-weight:600; color:#1A237E; margin-bottom:8px;">Datos para factura</div>
+        <div class="form-grid">
+            <div>
+                <label class="form-label" for="{{ form.fact_nombres.id_for_label }}">{{ form.fact_nombres.label }}</label>
+                {{ form.fact_nombres }}
+                {{ form.fact_nombres.errors }}
+            </div>
+            <div>
+                
+            </div>
+            <div>
+                <label class="form-label" for="{{ form.fact_cedula.id_for_label }}">{{ form.fact_cedula.label }}</label>
+                {{ form.fact_cedula }}
+                {{ form.fact_cedula.errors }}
+            </div>
+            <div>
+                <label class="form-label" for="{{ form.fact_correo.id_for_label }}">{{ form.fact_correo.label }}</label>
+                {{ form.fact_correo }}
+                {{ form.fact_correo.errors }}
+            </div>
+        </div>
+        <small style="color:#888; font-size:11px; display:block; margin-top:6px;">
+            Estos datos solo son obligatorios cuando "Factura realizada" = Sí.
+        </small>
+    </div>
+
+    {# Botones #}
+    <div style="display:flex; gap:10px; margin-top:24px; justify-content:flex-end;">
+        {% if modo == 'editar' and adicional %}
+        <a href="{% url 'academia:adicional_archivar' adicional.pk %}"
+           class="btn btn-sm"
+           title="Archivar este adicional"
+           style="background:linear-gradient(135deg,#e65100,#ef6c00); color:#fff;">
+            🗄️ Archivar
+        </a>
+        {% endif %}
+        <a href="{% url 'academia:adicional_lista' %}" class="btn btn-secondary">Cancelar</a>
+        <button type="submit" id="submit-btn" class="btn btn-primary">
+            {% if modo == 'editar' %}💾 Guardar cambios{% else %}＋ Registrar adicional{% endif %}
+        </button>
+    </div>
+</form>
+
+<style>
+    .field-required { box-shadow: 0 0 0 2px rgba(198,40,40,0.06); border-color: #c62828 !important; }
+    .req-star { color: #c62828; margin-left:6px; font-weight:700; }
+</style>
+
+{% block extra_js %}
+<script>
+(function () {
+    const form        = document.getElementById('form-adicional-interno');
+    const inputCedula = document.getElementById('id_cedula_estudiante');
+    const status      = document.getElementById('cedula-status-int');
+    const infoBox     = document.getElementById('estudiante-info');
+    const tipoSel     = document.getElementById('id_tipo_adicional');
+    const submitBtn   = document.getElementById('submit-btn');
+
+    const bloqueCurso  = document.getElementById('bloque-curso');
+    const bloqueTalla  = document.getElementById('bloque-talla');
+    const campoModulo  = document.getElementById('campo-modulo');
+    const metodoSel = document.getElementById('id_metodo_pago');
+    const bloqueBanco = document.getElementById('bloque-banco');
+    const facturaSelect = document.getElementById('id_factura_realizada');
+    const datosFacturaWrap = document.getElementById('datos-factura-wrap');
+    const facturaCampos = [
+        { name: 'fact_nombres', label: 'Nombres (factura)' },
+        
+        { name: 'fact_cedula', label: 'Cédula / RUC (factura)' },
+        { name: 'fact_correo', label: 'Correo (factura)' },
+    ];
+    const camposBase = [
+        { name: 'cedula_estudiante', label: 'Cédula del estudiante' },
+        { name: 'tipo_adicional', label: 'Tipo de adicional' },
+        { name: 'fecha', label: 'Fecha' },
+        { name: 'valor', label: 'Valor' },
+        { name: 'metodo_pago', label: 'Método de pago' },
+        { name: 'factura_realizada', label: '¿Factura realizada?' },
+    ];
+
+    function campoPorNombre(nombre) {
+        return document.querySelector(`[name="${nombre}"]`);
+    }
+
+    function campoVacio(nombre) {
+        const el = campoPorNombre(nombre);
+        if (!el) return true;
+        const valor = (el.value || '').trim();
+        return valor === '' || valor === 'None';
+    }
+
+    function limpiarErrorCampo(nombre) {
+        const el = campoPorNombre(nombre);
+        if (!el) return;
+        el.style.borderColor = '';
+        el.style.borderWidth = '';
+        el.classList.remove('field-required');
+    }
+
+    function marcarErrorCampo(nombre) {
+        const el = campoPorNombre(nombre);
+        if (!el) return null;
+        el.style.borderColor = '#c62828';
+        el.style.borderWidth = '2px';
+        return el;
+    }
+
+    function esTipoCurso() {
+        const t = tipoSel ? tipoSel.value : '';
+        return ['cert_matricula', 'cert_asistencia', 'cert_antiguo', 'examen_supletorio'].includes(t);
+    }
+
+    function esCamisa() {
+        return tipoSel && tipoSel.value === 'camisa';
+    }
+
+    function facturaEsSi() {
+        return facturaSelect && facturaSelect.value === 'si';
+    }
+
+    function camposRequeridosActuales() {
+        const campos = [...camposBase];
+        
+        const tipoCobroSelect = document.getElementById('id_tipo_cobro_adicional');
+        if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
+            const idx = campos.findIndex(c => c.name === 'metodo_pago');
+            if (idx !== -1) campos.splice(idx, 1);
+            
+            campos.push({ name: 'monto_pago_1', label: 'Monto 1' });
+            campos.push({ name: 'metodo_pago_1', label: 'Método 1' });
+            const met1 = document.getElementById('id_metodo_pago_1_adicional');
+            if (met1 && ['transferencia', 'tarjeta'].includes(met1.value)) {
+                campos.push({ name: 'banco_1', label: 'Banco 1' });
+            }
+            
+            campos.push({ name: 'monto_pago_2', label: 'Monto 2' });
+            campos.push({ name: 'metodo_pago_2', label: 'Método 2' });
+            const met2 = document.getElementById('id_metodo_pago_2_adicional');
+            if (met2 && ['transferencia', 'tarjeta'].includes(met2.value)) {
+                campos.push({ name: 'banco_2', label: 'Banco 2' });
+            }
+        } else {
+            if (metodoSel && ['transferencia', 'tarjeta'].includes(metodoSel.value)) {
+                campos.push({ name: 'banco', label: metodoSel.value === 'tarjeta' ? 'Tarjeta / App' : 'Banco' });
+            }
+        }
+
+        if (esTipoCurso()) {
+            campos.push({ name: 'curso', label: 'Curso' });
+            campos.push({ name: 'modalidad', label: 'Modalidad' });
+        }
+        if (esCamisa()) {
+            campos.push({ name: 'talla_camiseta', label: 'Talla de camiseta' });
+        }
+        if (facturaEsSi()) {
+            campos.push(...facturaCampos);
+        }
+        return campos;
+    }
+
+    function validarCamposPrincipales() {
+        if (!submitBtn) return;
+        const completos = camposRequeridosActuales().every(({ name }) => !campoVacio(name));
+        submitBtn.disabled = !completos;
+        submitBtn.style.opacity = completos ? '1' : '0.45';
+        submitBtn.style.cursor = completos ? 'pointer' : 'not-allowed';
+        submitBtn.style.pointerEvents = completos ? 'auto' : 'none';
+    }
+
+    function completarFacturaSiVacia(d) {
+        const valores = {
+            fact_nombres: d.nombres || '',
+            fact_cedula: inputCedula ? inputCedula.value.trim() : '',
+            fact_correo: d.correo || '',
+        };
+        facturaCampos.forEach(({ name: nombre }) => {
+            const el = campoPorNombre(nombre);
+            if (el && !el.value) el.value = valores[nombre] || '';
+        });
+        validarCamposPrincipales();
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const cedulaQS = urlParams.get('cedula');
+    if (cedulaQS && inputCedula && !inputCedula.value) {
+        inputCedula.value = cedulaQS;
+    }
+
+    let timer = null;
+    function consultarCedula(ced) {
+        if (!ced) {
+            status.textContent = '';
+            infoBox.innerHTML = 'Ingresa la cédula para ver los datos.';
+            return;
+        }
+        status.textContent = '⏳';
+        status.style.color = '#888';
+        fetch(`/api/adicional/estudiante/${encodeURIComponent(ced)}/`)
+            .then(r => r.json())
+            .then(d => {
+                if (d.existe) {
+                    status.textContent = d.desde_archivo ? '✓ recuperado del archivo' : '✓ encontrado';
+                    status.style.color = d.desde_archivo ? '#e65100' : '#2e7d32';
+                    infoBox.innerHTML = `
+                        <strong>${d.nombres}</strong><br>
+                        <span style="color:#888; font-size:12px;">
+                            ${d.celular ? '📱 ' + d.celular : ''}
+                            ${d.correo ? ' · 📧 ' + d.correo : ''}
+                            ${d.ciudad ? ' · 🏙 ' + d.ciudad : ''}
+                        </span>
+                        ${d.desde_archivo ? '<div style="margin-top:6px; color:#e65100; font-size:12px;">🗄️ Está archivado; se recuperará como estudiante interno al guardar.</div>' : ''}
+                    `;
+                    completarFacturaSiVacia(d);
+                    validarCamposPrincipales();
+                } else if (d.es_externa) {
+                    status.textContent = '⚠️ es persona externa';
+                    status.style.color = '#e65100';
+                    infoBox.innerHTML = `
+                        <div style="background:#fff3e0; padding:10px; border-radius:6px; border-left:3px solid #ff9800;">
+                            <strong style="color:#e65100;">${d.nombre_externo}</strong> es una <strong style="color:#e65100;">PERSONA EXTERNA</strong>.<br>
+                            Debes registrar este adicional en la sección correcta.
+                        </div>
+                        <a href="{% url 'academia:adicional_crear_externo' %}?cedula=${encodeURIComponent(ced)}" class="btn btn-warning btn-sm" style="margin-top:8px;">Ir a Persona Externa</a>
+                    `;
+                    validarCamposPrincipales();
+                } else {
+                    status.textContent = '✗ no existe';
+                    status.style.color = '#c62828';
+                    infoBox.innerHTML = '<span style="color:#c62828;">No hay un estudiante con esa cédula. Si no está matriculado, regístralo como persona externa.</span>';
+                    validarCamposPrincipales();
+                }
+            })
+            .catch(() => {
+                status.textContent = '';
+            });
+    }
+
+    if (inputCedula) {
+        inputCedula.addEventListener('input', function () {
+            clearTimeout(timer);
+            const v = this.value.trim();
+            timer = setTimeout(() => consultarCedula(v), 350);
+            validarCamposPrincipales();
+        });
+        // Si viene precargada (modo editar)
+        if (inputCedula.value) consultarCedula(inputCedula.value.trim());
+    }
+
+    function actualizarBloques() {
+        const t = tipoSel.value;
+        const esCert = ['cert_matricula', 'cert_asistencia', 'cert_antiguo'].includes(t);
+        const esSupletorio = t === 'examen_supletorio';
+        const esCamisa = t === 'camisa';
+
+        bloqueCurso.style.display = (esCert || esSupletorio) ? 'block' : 'none';
+        campoModulo.style.display = esSupletorio ? 'block' : 'none';
+        bloqueTalla.style.display = esCamisa ? 'block' : 'none';
+        validarCamposPrincipales();
+    }
+    if (tipoSel) {
+        tipoSel.addEventListener('change', actualizarBloques);
+        actualizarBloques();
+    }
+
+    function actualizarFactura() {
+        if (!datosFacturaWrap) return;
+        const requerida = facturaEsSi();
+        datosFacturaWrap.style.opacity = requerida ? '1' : '0.65';
+        facturaCampos.forEach(({ name: nombre }) => {
+            const el = campoPorNombre(nombre);
+            if (!el) return;
+            const label = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
+            if (requerida) {
+                el.setAttribute('required', 'required');
+                el.classList.add('field-required');
+                if (label && !label.querySelector('.req-star')) {
+                    const star = document.createElement('span');
+                    star.className = 'req-star';
+                    star.textContent = ' *';
+                    label.appendChild(star);
+                }
+            } else {
+                el.removeAttribute('required');
+                el.classList.remove('field-required');
+                el.style.borderColor = '';
+                el.style.borderWidth = '';
+                if (label) {
+                    const star = label.querySelector('.req-star');
+                    if (star) star.remove();
+                }
+            }
+        });
+        validarCamposPrincipales();
+    }
+    if (facturaSelect) {
+        facturaSelect.addEventListener('change', actualizarFactura);
+        actualizarFactura();
+    }
+
+    // ── Mostrar/ocultar bloque de banco según el método de pago (Único) ──
+    (function () {
+        if (!metodoSel || !bloqueBanco) return;
+
+        function actualizar() {
+            const bancoSel = document.getElementById('id_banco');
+            const labelBanco = bloqueBanco.querySelector('label');
+
+            if (metodoSel.value === 'transferencia') {
+                bloqueBanco.style.display = 'block';
+                if (labelBanco) labelBanco.innerText = '🏦 Banco *';
+                if (bancoSel) {
+                    Array.from(bancoSel.options).forEach(opt => {
+                        if (opt.value === 'payphone') {
+                            opt.style.display = 'none';
+                        } else {
+                            opt.style.display = '';
+                        }
+                    });
+                    if (bancoSel.value === 'payphone') { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
+                }
+            } else if (metodoSel.value === 'tarjeta') {
+                bloqueBanco.style.display = 'block';
+                if (labelBanco) labelBanco.innerText = '💳 Tarjeta / App *';
+                if (bancoSel) {
+                    Array.from(bancoSel.options).forEach(opt => {
+                        if (opt.value === 'payphone' || opt.value === '') {
+                            opt.style.display = '';
+                        } else {
+                            opt.style.display = 'none';
+                        }
+                    });
+                    if (bancoSel.value !== 'payphone') { bancoSel.value = 'payphone'; bancoSel.dispatchEvent(new Event('change')); }
+                }
+            } else {
+                bloqueBanco.style.display = 'none';
+                if (bancoSel) { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
+            }
+            validarCamposPrincipales();
+        }
+        metodoSel.addEventListener('change', actualizar);
+        actualizar();
+    })();
+
+    // ── Lógica de Pago Mixto ──
+    (function(){
+        const tipoCobroSelect = document.getElementById('id_tipo_cobro_adicional');
+        const containerUnSolo = document.getElementById('un-solo-metodo-adicional-container');
+        const containerMixto = document.getElementById('mixto-adicional-container');
+        const errorMsg = document.getElementById('mixto-adicional-error-msg');
+        
+        const montoPrincipal = document.getElementById('id_valor');
+        const monto1 = document.getElementById('id_monto_pago_1_adicional');
+        const monto2 = document.getElementById('id_monto_pago_2_adicional');
+        
+        const metodo1 = document.getElementById('id_metodo_pago_1_adicional');
+        const metodo2 = document.getElementById('id_metodo_pago_2_adicional');
+        const bloqueBanco1 = document.getElementById('bloque-banco-1');
+        const bloqueBanco2 = document.getElementById('bloque-banco-2');
+
+        function toggleMixto() {
+            if (!tipoCobroSelect) return;
+            if (tipoCobroSelect.value === 'mixto') {
+                if (containerUnSolo) containerUnSolo.style.display = 'none';
+                if (containerMixto) containerMixto.style.display = 'block';
+            } else {
+                if (containerUnSolo) containerUnSolo.style.display = 'contents';
+                if (containerMixto) containerMixto.style.display = 'none';
+            }
+            validarMontos();
+            validarCamposPrincipales();
+        }
+
+        function validarMontos() {
+            if (!tipoCobroSelect || tipoCobroSelect.value !== 'mixto') {
+                if (errorMsg) errorMsg.style.display = 'none';
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+            const mMain = parseFloat(montoPrincipal.value) || 0;
+            const m1 = parseFloat(monto1.value) || 0;
+            const m2 = parseFloat(monto2.value) || 0;
+            
+            // Usar una pequeña tolerancia para evitar problemas de redondeo
+            if (Math.abs(mMain - (m1 + m2)) > 0.001) {
+                if (errorMsg) errorMsg.style.display = 'block';
+                if (submitBtn) submitBtn.disabled = true;
+            } else {
+                if (errorMsg) errorMsg.style.display = 'none';
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        }
+
+        function setupBanco(metodoEl, bloqueEl) {
+            if (!metodoEl || !bloqueEl) return;
+            metodoEl.addEventListener('change', function() {
+                const val = this.value;
+                const bancoSel = bloqueEl.querySelector('select');
+                const label = bloqueEl.querySelector('label');
+                if (val === 'transferencia') {
+                    bloqueEl.style.display = 'block';
+                    if (label) label.innerText = '🏦 Banco *';
+                    if (bancoSel) {
+                        Array.from(bancoSel.options).forEach(opt => {
+                            opt.style.display = (opt.value === 'payphone') ? 'none' : '';
+                        });
+                        if (bancoSel.value === 'payphone') bancoSel.value = '';
+                    }
+                } else if (val === 'tarjeta') {
+                    bloqueEl.style.display = 'block';
+                    if (label) label.innerText = '💳 Tarjeta / App *';
+                    if (bancoSel) {
+                        Array.from(bancoSel.options).forEach(opt => {
+                            opt.style.display = (opt.value === 'payphone' || opt.value === '') ? '' : 'none';
+                        });
+                        if (bancoSel.value !== 'payphone') bancoSel.value = 'payphone';
+                    }
+                } else {
+                    bloqueEl.style.display = 'none';
+                    if (bancoSel) bancoSel.value = '';
+                }
+                validarCamposPrincipales();
+            });
+            // trigger on load
+            metodoEl.dispatchEvent(new Event('change'));
+        }
+
+        if (tipoCobroSelect) {
+            tipoCobroSelect.addEventListener('change', toggleMixto);
+            toggleMixto();
+        }
+        if (montoPrincipal) montoPrincipal.addEventListener('input', validarMontos);
+        if (monto1) monto1.addEventListener('input', validarMontos);
+        if (monto2) monto2.addEventListener('input', validarMontos);
+
+        setupBanco(metodo1, bloqueBanco1);
+        setupBanco(metodo2, bloqueBanco2);
+    })();
+
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            let primerError = null;
+            camposRequeridosActuales().forEach(({ name }) => limpiarErrorCampo(name));
+
+            for (const { name, label } of camposRequeridosActuales()) {
+                if (campoVacio(name)) {
+                    const el = marcarErrorCampo(name);
+                    if (!primerError && el) primerError = { el, label };
+                }
+            }
+
+            if (primerError) {
+                e.preventDefault();
+                e.stopPropagation();
+                primerError.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                try { primerError.el.focus(); } catch (_) {}
+                return false;
+            }
+        });
+    }
+
+    document.addEventListener('input', function (e) {
+        if (e.target && e.target.name) limpiarErrorCampo(e.target.name);
+        validarCamposPrincipales();
+    });
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.name) limpiarErrorCampo(e.target.name);
+        validarCamposPrincipales();
+    });
+
+    validarCamposPrincipales();
+})();
+</script>
+{% endblock %}
+
+{% endblock %}

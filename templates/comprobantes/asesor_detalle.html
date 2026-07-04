@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+
+{% block title %}Perfil Asesor — {{ asesor.first_name|default:asesor.username }} {{ asesor.last_name }}{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:comprobante_menu' %}">Comprobantes</a> &nbsp;›&nbsp;
+    {% if es_admin %}
+    <a href="{% url 'academia:comprobante_totales' %}">Ranking</a> &nbsp;›&nbsp;
+    {% endif %}
+    Perfil Asesor
+</div>
+
+<h2 class="page-title">👤 {{ asesor.first_name|default:asesor.username }} {{ asesor.last_name }}</h2>
+<p class="page-subtitle">
+    Detalle de ventas y estudiantes matriculados por este asesor.
+</p>
+
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:24px;">
+    <div class="card-box" style="border-top:4px solid #1a237e; padding:16px;">
+        <div style="font-size:11px; color:#888; font-weight:600; letter-spacing:0.5px;">TOTAL VENTAS</div>
+        <div style="font-size:26px; font-weight:700; color:#1a237e; margin-top:4px;">{{ total_ventas }}</div>
+        <div style="font-size:12px; color:#666; margin-top:4px; display:flex; gap:10px;">
+            <span><span style="color:#2e7d32; font-weight:bold;">+</span> {{ total_activas }}</span>
+            <span><span style="color:#c62828; font-weight:bold;">-</span> {{ total_retiros }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="card-box" style="padding:0;">
+    <div style="padding:16px 20px; border-bottom:1px solid #f0f0f0;">
+        <h3 style="font-size:16px; color:#1a237e; margin:0;">📋 Estudiantes Matriculados</h3>
+    </div>
+    
+    {% if comprobantes %}
+    <div class="table-wrap" style="margin:0; border:none; border-radius:0;">
+        <table style="margin:0;">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Estudiante</th>
+                    <th>Celular</th>
+                    <th>Curso</th>
+                    <th>Modalidad</th>
+                    <th>Pago Inicial</th>
+                    <th>Descuento</th>
+                    <th>Saldo Pend.</th>
+                    <th>Estado</th>
+                    <th style="text-align:center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in comprobantes %}
+                <tr>
+                    <td>{{ c.fecha_inscripcion|date:"d/m/Y" }}</td>
+                    <td><strong>{{ c.nombre_persona }}</strong></td>
+                    <td>{{ c.celular|default:"—" }}</td>
+                    <td>{{ c.curso.nombre }}</td>
+                    <td><span class="badge" style="background:#e8eaf6; color:#1a237e;">{{ c.get_modalidad_display }}</span></td>
+                    <td style="color:#2e7d32; font-weight:600;">${{ c.pago_abono|floatformat:2 }}</td>
+                    <td>
+                        {% if c.matricula and c.matricula.tiene_descuento %}
+                            <span class="badge" style="background:#fff3e0; color:#E45103;" title="{{ c.matricula.descuento_etiqueta }}">
+                                Descuento ${{ c.matricula.descuento|floatformat:2 }}
+                            </span>
+                        {% else %}
+                            <span style="color:#999;">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="color:#c62828; font-weight:600;">${{ c.diferencia|floatformat:2 }}</td>
+                    <td>
+                        {% if c.matricula %}
+                            {% if c.matricula.estado == 'retiro_voluntario' %}
+                                <span class="badge" style="background:#ffebee; color:#c62828;">Retiro</span>
+                            {% else %}
+                                <span class="badge" style="background:#e8f5e9; color:#2e7d32;">Activa</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge" style="background:#f5f5f5; color:#666;">Sin Matrícula</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if c.matricula and c.matricula.estudiante_id %}
+                            <a href="{% url 'academia:estudiante_detalle' c.matricula.estudiante_id %}" class="btn btn-secondary btn-sm" style="font-size:11px; padding:4px 8px;">
+                                👁️ Ver estudiante
+                            </a>
+                        {% else %}
+                            <span style="font-size:11px; color:#888;">N/D</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Este asesor no tiene ventas registradas.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card-box" style="padding:0; margin-top:24px;">
+    <div style="padding:16px 20px; border-bottom:1px solid #f0f0f0;">
+        <h3 style="font-size:16px; color:#1a237e; margin:0;">📝 Registros de Sistema</h3>
+        <p style="font-size:13px; color:#666; margin:4px 0 0 0;">
+            Matrículas donde este usuario fue el responsable de ingresar los datos al sistema.
+        </p>
+    </div>
+    
+    {% if registros %}
+    <div class="table-wrap" style="margin:0; border:none; border-radius:0;">
+        <table style="margin:0;">
+            <thead>
+                <tr>
+                    <th>Fecha de Registro</th>
+                    <th>Estudiante</th>
+                    <th>Curso</th>
+                    <th>Vendedora (Dueña)</th>
+                    <th>Estado</th>
+                    <th style="text-align:center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td>
+                        <strong>{{ r.creado|date:"d/m/Y" }}</strong>
+                        <div style="font-size:11px; color:#666;">{{ r.creado|time:"H:i" }}</div>
+                    </td>
+                    <td>
+                        <strong>{{ r.estudiante.nombres }}</strong>
+                        <div style="font-size:11px; color:#666;">{{ r.estudiante.cedula }}</div>
+                    </td>
+                    <td>{{ r.curso.nombre }}</td>
+                    <td>
+                        {% if r.vendedora %}
+                            {{ r.vendedora.get_full_name|default:r.vendedora.username }}
+                        {% else %}
+                            <span style="color:#999;">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if r.estado == 'retiro_voluntario' %}
+                            <span class="badge" style="background:#ffebee; color:#c62828;">Retiro</span>
+                        {% else %}
+                            <span class="badge" style="background:#e8f5e9; color:#2e7d32;">Activa</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        <a href="{% url 'academia:estudiante_detalle' r.estudiante_id %}" class="btn btn-secondary btn-sm" style="font-size:11px; padding:4px 8px;">
+                            👁️ Ver estudiante
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Este usuario no ha registrado matrículas en el sistema.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

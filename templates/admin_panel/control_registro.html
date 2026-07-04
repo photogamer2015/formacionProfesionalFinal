@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <div>
+        <p class="breadcrumbs">
+            <a href="{% url 'academia:bienvenida' %}">Inicio</a> › Control de Registro
+        </p>
+        <h2 style="display:flex; align-items:center; gap:8px;">
+            📋 Control de Registro (Auditoría)
+        </h2>
+        <p style="color:#666; font-size:14px; margin-top:5px;">
+            Últimos registros de matrículas y pagos realizados en el sistema.
+        </p>
+    </div>
+</div>
+
+<!-- Tabs Navigation -->
+<div class="tabs-container" style="margin-bottom:20px; border-bottom:1px solid #ddd;">
+    <button class="tab-btn active" onclick="switchTab('matriculas')" id="btn-matriculas" style="padding:10px 20px; border:none; background:none; font-weight:bold; color:#1a237e; border-bottom:3px solid #1a237e; cursor:pointer;">
+        🎓 Matrículas Registradas
+    </button>
+    <button class="tab-btn" onclick="switchTab('pagos')" id="btn-pagos" style="padding:10px 20px; border:none; background:none; font-weight:bold; color:#666; cursor:pointer;">
+        💰 Pagos Registrados
+    </button>
+</div>
+
+<!-- MATRICULAS TAB -->
+<div id="tab-matriculas" class="tab-content" style="display:block;">
+    <div class="card" style="padding:0; overflow:hidden;">
+        <div class="table-wrap">
+            {% if matriculas %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha y Hora</th>
+                        <th>Curso</th>
+                        <th>Estudiante</th>
+                        <th>Vendedora</th>
+                        <th>Registrado por</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in matriculas %}
+                    <tr>
+                        <td>
+                            <div style="font-weight:bold;">{{ m.creado|date:"d/m/Y" }}</div>
+                            <div style="font-size:11px; color:#666;">{{ m.creado|time:"H:i" }}</div>
+                        </td>
+                        <td>
+                            <strong>{{ m.curso.nombre }}</strong>
+                            {% if m.jornada %}<div style="font-size:11px; color:#666;">{{ m.jornada.descripcion_legible }}</div>{% endif %}
+                        </td>
+                        <td>
+                            {{ m.estudiante.nombres }}
+                            <div style="font-size:11px; color:#666;">{{ m.estudiante.cedula }}</div>
+                        </td>
+                        <td>
+                            {% if m.vendedora %}
+                                {{ m.vendedora.get_full_name|default:m.vendedora.username }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if m.registrado_por %}
+                                {{ m.registrado_por.get_full_name|default:m.registrado_por.username }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{% url 'academia:matricula_editar' m.modalidad m.pk %}" class="btn btn-secondary btn-sm" target="_blank">Ver</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+                <div style="padding:30px; text-align:center; color:#666;">
+                    No hay matrículas recientes registradas.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- PAGOS TAB -->
+<div id="tab-pagos" class="tab-content" style="display:none;">
+    <div class="card" style="padding:0; overflow:hidden;">
+        <div class="table-wrap">
+            {% if pagos %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha y Hora</th>
+                        <th>Estudiante / Curso</th>
+                        <th>Monto</th>
+                        <th>Método</th>
+                        <th>Registrado por</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pagos %}
+                    <tr>
+                        <td>
+                            <div style="font-weight:bold;">{{ p.creado|date:"d/m/Y" }}</div>
+                            <div style="font-size:11px; color:#666;">{{ p.creado|time:"H:i" }}</div>
+                        </td>
+                        <td>
+                            <strong>{{ p.matricula.estudiante.nombres }}</strong>
+                            <div style="font-size:11px; color:#666;">{{ p.matricula.curso.nombre }}</div>
+                        </td>
+                        <td>
+                            <strong style="color:#2e7d32;">${{ p.monto }}</strong>
+                        </td>
+                        <td>
+                            <span class="badge" style="background:#f5f5f5; color:#333; font-weight:normal;">
+                                {{ p.get_metodo_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if p.registrado_por %}
+                                {{ p.registrado_por.get_full_name|default:p.registrado_por.username }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+                <div style="padding:30px; text-align:center; color:#666;">
+                    No hay pagos recientes registrados.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(el => {
+        el.style.borderBottom = 'none';
+        el.style.color = '#666';
+        el.classList.remove('active');
+    });
+    
+    document.getElementById('tab-' + tabId).style.display = 'block';
+    const btn = document.getElementById('btn-' + tabId);
+    btn.style.borderBottom = '3px solid #1a237e';
+    btn.style.color = '#1a237e';
+    btn.classList.add('active');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block title %}Recordatorios — Borradores{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Recordatorios
+</div>
+
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+        <h2 class="page-title">🗒️ Recordatorio - Borrador</h2>
+        <p class="page-subtitle">
+            Notas rápidas para ti o para avisar a otro compañero del equipo.
+            {% if no_leidos %}Tienes <strong>{{ no_leidos }}</strong> recordatorio{{ no_leidos|pluralize }} sin leer.{% endif %}
+        </p>
+    </div>
+    <a href="{% url 'academia:recordatorio_crear' %}" class="btn btn-primary">＋ Nuevo recordatorio</a>
+</div>
+
+{# ─────────── Recibidos ─────────── #}
+<h3 style="font-size:17px; color:#1B2A4E; margin:22px 0 12px;">📥 Recibidos {% if recibidos %}<span class="badge" style="background:#e8eaf6; color:#1B2A4E;">{{ recibidos|length }}</span>{% endif %}</h3>
+
+{% if recibidos %}
+<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
+    {% for r in recibidos %}
+    {% include 'recordatorios/_tarjeta.html' with r=r contexto='recibido' %}
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="padding:18px;"><p style="font-size:13px;">No tienes recordatorios recibidos.</p></div>
+{% endif %}
+
+{# ─────────── Enviados ─────────── #}
+<h3 style="font-size:17px; color:#1B2A4E; margin:26px 0 12px;">📤 Enviados a otros {% if enviados %}<span class="badge" style="background:#e8eaf6; color:#1B2A4E;">{{ enviados|length }}</span>{% endif %}</h3>
+
+{% if enviados %}
+<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
+    {% for r in enviados %}
+    {% include 'recordatorios/_tarjeta.html' with r=r contexto='enviado' %}
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="padding:18px;"><p style="font-size:13px;">No has enviado recordatorios a otras personas.</p></div>
+{% endif %}
+
+{# ─────────── Todos (solo admin) ─────────── #}
+{% if es_admin and todos %}
+<h3 style="font-size:17px; color:#1B2A4E; margin:26px 0 12px;">🗂️ Otros del equipo (vista admin) <span class="badge" style="background:#fff3e0; color:#E45103;">{{ todos|length }}</span></h3>
+<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
+    {% for r in todos %}
+    {% include 'recordatorios/_tarjeta.html' with r=r contexto='admin' %}
+    {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,97 @@
+"""
+Context processor que expone los roles del usuario en TODOS los templates.
+
+Uso en plantillas:
+    {% if es_admin %}...{% endif %}
+    {% if es_asesor %}...{% endif %}
+    {% if puede_editar_cursos %}...{% endif %}
+"""
+from .permisos import (
+    es_admin as _es_admin,
+    es_asesor as _es_asesor,
+    puede_agregar_categorias as _puede_agregar_categorias,
+    puede_agregar_cursos as _puede_agregar_cursos,
+    puede_cambiar_cursos as _puede_cambiar_cursos,
+    puede_editar_cursos as _puede_editar_cursos,
+    puede_eliminar_categorias as _puede_eliminar_categorias,
+    puede_eliminar_cursos as _puede_eliminar_cursos,
+    puede_gestionar_matriculas as _puede_gestionar_matriculas,
+    puede_gestionar_jornadas as _puede_gestionar_jornadas,
+)
+
+
+def roles(request):
+    user = getattr(request, 'user', None)
+    if user is None or not user.is_authenticated:
+        return {
+            'es_admin': False,
+            'es_asesor': False,
+            'puede_editar_cursos': False,
+            'puede_agregar_cursos': False,
+            'puede_cambiar_cursos': False,
+            'puede_eliminar_cursos': False,
+            'puede_agregar_categorias': False,
+            'puede_eliminar_categorias': False,
+            'puede_gestionar_matriculas': False,
+            'puede_gestionar_jornadas': False,
+            'rol_actual': '',
+        }
+
+    es_a = _es_admin(user)
+    es_s = _es_asesor(user)
+    if es_a:
+        rol_actual = 'Administrador'
+    elif es_s:
+        rol_actual = 'Asesor'
+    else:
+        rol_actual = 'Usuario'
+
+    return {
+        'es_admin': es_a,
+        'es_asesor': es_s,
+        'puede_editar_cursos': _puede_editar_cursos(user),
+        'puede_agregar_cursos': _puede_agregar_cursos(user),
+        'puede_cambiar_cursos': _puede_cambiar_cursos(user),
+        'puede_eliminar_cursos': _puede_eliminar_cursos(user),
+        'puede_agregar_categorias': _puede_agregar_categorias(user),
+        'puede_eliminar_categorias': _puede_eliminar_categorias(user),
+        'puede_gestionar_matriculas': _puede_gestionar_matriculas(user),
+        'puede_gestionar_jornadas': _puede_gestionar_jornadas(user),
+        'rol_actual': rol_actual,
+    }
+
+
+def feature_flags(request):
+    """Expone flags de funcionalidad a todos los templates."""
+    from .views import MATRICULA_ONLINE_HABILITADA
+    return {
+        'matricula_online_habilitada': MATRICULA_ONLINE_HABILITADA,
+    }
+
+
+def recordatorios(request):
+    """
+    Expone a TODOS los templates los recordatorios no leídos dirigidos al
+    usuario actual, para alimentar la campana de notificación del encabezado.
+
+    Variables:
+        recordatorios_no_leidos      → queryset de recordatorios pendientes
+        recordatorios_no_leidos_n    → cantidad (para el badge de la campana)
+    """
+    user = getattr(request, 'user', None)
+    if user is None or not user.is_authenticated:
+        return {
+            'recordatorios_no_leidos': [],
+            'recordatorios_no_leidos_n': 0,
+        }
+    try:
+        from .models import Recordatorio
+        pendientes = list(Recordatorio.no_leidos_de(user)[:20])
+    except Exception:
+        # Si el modelo aún no está migrado, no rompemos el render.
+        pendientes = []
+    return {
+        'recordatorios_no_leidos': pendientes,
+        'recordatorios_no_leidos_n': len(pendientes),
+    }
+    

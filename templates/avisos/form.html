@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .aviso-form-wrap { max-width: 760px; }
+    .editor-toolbar {
+        display: flex; flex-wrap: wrap; gap: 4px;
+        padding: 8px; border: 1px solid var(--line, #ddd);
+        border-bottom: none; border-radius: 10px 10px 0 0;
+        background: #f7f8fb;
+    }
+    body.dark-mode .editor-toolbar { background:#1b1f2a; border-color:#2a2f3d; }
+    .editor-toolbar button, .editor-toolbar .tb-group {
+        display: inline-flex; align-items: center;
+    }
+    .tb-btn {
+        border: 1px solid #d8dbe4; background:#fff; color:#222;
+        border-radius: 7px; padding: 6px 10px; cursor: pointer;
+        font-size: 13px; min-width: 34px; line-height: 1;
+        transition: all .15s ease;
+    }
+    .tb-btn:hover { background:#1B2A4E; color:#fff; border-color:#1B2A4E; }
+    body.dark-mode .tb-btn { background:#11141c; color:#e6e8ee; border-color:#2a2f3d; }
+    .tb-sep { width:1px; background:#d8dbe4; margin:2px 4px; align-self:stretch; }
+    .tb-color {
+        width:30px; height:30px; padding:0; border:1px solid #d8dbe4;
+        border-radius:7px; cursor:pointer; background:transparent;
+    }
+    .tb-swatch {
+        width:24px; height:24px; border-radius:6px; border:2px solid #fff;
+        box-shadow:0 0 0 1px #d8dbe4; cursor:pointer; padding:0;
+    }
+    .tb-swatch:hover { transform: scale(1.12); }
+    .editor-area {
+        min-height: 180px; max-height: 420px; overflow-y:auto;
+        border: 1px solid var(--line, #ddd); border-radius: 0 0 10px 10px;
+        padding: 14px 16px; background:#fff; font-size:15px; line-height:1.6;
+        outline: none;
+    }
+    body.dark-mode .editor-area { background:#0e1016; color:#e6e8ee; border-color:#2a2f3d; }
+    .editor-area:focus { border-color:#E45103; box-shadow:0 0 0 3px rgba(228,81,3,.12); }
+    .editor-area:empty:before {
+        content: attr(data-placeholder); color:#9aa1b0;
+    }
+    .editor-hint { font-size:11px; color:#888; margin-top:6px; }
+    .field-block { display:flex; flex-direction:column; gap:6px; margin-bottom:18px; }
+    .form-label { font-weight:600; font-size:13px; color: var(--text-main, #1f2937); }
+    .errorlist { color:#c62828; font-size:12px; list-style:none; padding:0; margin:4px 0 0; }
+    .aviso-preview-card { border-radius:12px; padding:16px 18px; margin-top:10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:avisos_lista' %}">Avisos</a> &nbsp;›&nbsp;
+    {% if modo == 'crear' %}Nuevo{% else %}Editar{% endif %}
+</div>
+
+<h2 class="page-title">{% if modo == 'crear' %}📢 Nuevo aviso{% else %}✏️ {{ titulo }}{% endif %}</h2>
+<p class="page-subtitle">
+    Escribe un aviso que verán todos los usuarios en el panel principal.
+    Puedes darle formato (negrita, color, listas) y definir desde y hasta cuándo se muestra.
+    Al pasar la fecha final, el aviso desaparece automáticamente.
+</p>
+
+<div class="card-box aviso-form-wrap" style="padding:22px;">
+    <form method="post" id="aviso-form">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="flash flash-error">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="field-block">
+            <label class="form-label">{{ form.titulo.label }} *</label>
+            {{ form.titulo }}
+            {{ form.titulo.errors }}
+        </div>
+
+        <div class="field-block">
+            <label class="form-label">{{ form.contenido.label }} *</label>
+
+            {# ── Barra de herramientas del editor ── #}
+            <div class="editor-toolbar" id="editor-toolbar">
+                <button type="button" class="tb-btn" data-cmd="bold" title="Negrita"><b>B</b></button>
+                <button type="button" class="tb-btn" data-cmd="italic" title="Cursiva"><i>I</i></button>
+                <button type="button" class="tb-btn" data-cmd="underline" title="Subrayado"><u>U</u></button>
+                <button type="button" class="tb-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
+                <span class="tb-sep"></span>
+                <button type="button" class="tb-btn" data-cmd="insertUnorderedList" title="Lista con viñetas">• Lista</button>
+                <button type="button" class="tb-btn" data-cmd="insertOrderedList" title="Lista numerada">1. Lista</button>
+                <span class="tb-sep"></span>
+                <button type="button" class="tb-btn" data-cmd="justifyLeft" title="Alinear izquierda">⯇</button>
+                <button type="button" class="tb-btn" data-cmd="justifyCenter" title="Centrar">≡</button>
+                <button type="button" class="tb-btn" data-cmd="justifyRight" title="Alinear derecha">⯈</button>
+                <span class="tb-sep"></span>
+                {# Colores de texto rápidos #}
+                <button type="button" class="tb-swatch" style="background:#1B2A4E" data-color="#1B2A4E" title="Azul marino"></button>
+                <button type="button" class="tb-swatch" style="background:#E45103" data-color="#E45103" title="Naranja"></button>
+                <button type="button" class="tb-swatch" style="background:#2e7d32" data-color="#2e7d32" title="Verde"></button>
+                <button type="button" class="tb-swatch" style="background:#c62828" data-color="#c62828" title="Rojo"></button>
+                <button type="button" class="tb-swatch" style="background:#6a1b9a" data-color="#6a1b9a" title="Morado"></button>
+                <button type="button" class="tb-swatch" style="background:#00838f" data-color="#00838f" title="Cian"></button>
+                <input type="color" class="tb-color" id="custom-color" title="Color personalizado de texto" value="#E45103">
+                <span class="tb-sep"></span>
+                <button type="button" class="tb-btn" id="btn-clear" title="Borrar todo el contenido">✖ Limpiar todo</button>
+            </div>
+
+            {# Área editable visible #}
+            <div class="editor-area" id="editor-area" contenteditable="true"
+                 data-placeholder="Escribe aquí el aviso… usa la barra de arriba para dar formato y color."></div>
+
+            {# Textarea real (oculto): aquí se guarda el HTML que se envía #}
+            <div style="display:none;">{{ form.contenido }}</div>
+            {{ form.contenido.errors }}
+            <p class="editor-hint">
+                Se permite: negrita, cursiva, subrayado, tachado, listas, alineación y colores.
+                Por seguridad, no se permiten scripts ni enlaces.
+            </p>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div class="field-block">
+                <label class="form-label">{{ form.fecha_inicio.label }} *</label>
+                {{ form.fecha_inicio }}
+                {{ form.fecha_inicio.errors }}
+            </div>
+            <div class="field-block">
+                <label class="form-label">{{ form.fecha_fin.label }} *</label>
+                {{ form.fecha_fin }}
+                {{ form.fecha_fin.errors }}
+            </div>
+        </div>
+
+        <div class="field-block">
+            <label class="form-label">{{ form.tema.label }}</label>
+            {{ form.tema }}
+            {{ form.tema.errors }}
+        </div>
+
+        <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:18px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                {{ form.fijado }} <span class="form-label" style="margin:0;">{{ form.fijado.label }}</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                {{ form.activo }} <span class="form-label" style="margin:0;">{{ form.activo.label }}</span>
+            </label>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <a href="{% url 'academia:avisos_lista' %}" class="btn btn-secondary">Cancelar</a>
+            <button type="submit" class="btn btn-primary" style="background:#E45103; border-color:#E45103;">
+                {% if modo == 'crear' %}📢 Publicar aviso{% else %}💾 Guardar cambios{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const area = document.getElementById('editor-area');
+    const textarea = document.getElementById('id_contenido');
+    const toolbar = document.getElementById('editor-toolbar');
+    const form = document.getElementById('aviso-form');
+
+    // Cargar contenido existente (modo editar) en el área editable.
+    if (textarea && textarea.value.trim()) {
+        area.innerHTML = textarea.value;
+    }
+
+    function ejecutar(cmd, valor = null) {
+        area.focus();
+        document.execCommand(cmd, false, valor);
+        sincronizar();
+    }
+    function sincronizar() {
+        textarea.value = area.innerHTML;
+    }
+
+    // Botones de comando simple (bold, italic, listas, alineación…)
+    toolbar.querySelectorAll('.tb-btn[data-cmd]').forEach(function (b) {
+        b.addEventListener('click', function () { ejecutar(this.dataset.cmd); });
+    });
+
+    // Colores predefinidos (swatches)
+    toolbar.querySelectorAll('.tb-swatch[data-color]').forEach(function (b) {
+        b.addEventListener('click', function () { ejecutar('foreColor', this.dataset.color); });
+    });
+
+    // Color personalizado
+    const custom = document.getElementById('custom-color');
+    if (custom) {
+        custom.addEventListener('input', function () { ejecutar('foreColor', this.value); });
+    }
+
+    // Limpiar TODO el contenido del editor
+    const btnClear = document.getElementById('btn-clear');
+    if (btnClear) {
+        btnClear.addEventListener('click', function () {
+            if (area.innerHTML.trim() === '' ||
+                confirm('¿Borrar todo el contenido del aviso?')) {
+                area.innerHTML = '';
+                sincronizar();
+                area.focus();
+            }
+        });
+    }
+
+    // Mantener sincronizado el textarea con cada cambio
+    ['input', 'keyup', 'blur', 'paste'].forEach(function (ev) {
+        area.addEventListener(ev, sincronizar);
+    });
+
+    // Al pegar, forzar texto plano para no traer HTML peligroso del portapapeles
+    area.addEventListener('paste', function (e) {
+        e.preventDefault();
+        const texto = (e.clipboardData || window.clipboardData).getData('text/plain');
+        document.execCommand('insertText', false, texto);
+        sincronizar();
+    });
+
+    // Sincronizar justo antes de enviar
+    if (form) {
+        form.addEventListener('submit', sincronizar);
+    }
+})();
+</script>
+{% endblock %}

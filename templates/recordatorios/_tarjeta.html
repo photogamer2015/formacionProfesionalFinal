@@ -1,0 +1,55 @@
+{# Tarjeta reutilizable de un recordatorio.
+   Espera: r (recordatorio), contexto ('recibido' | 'enviado' | 'admin') #}
+<div class="card-box" style="padding:14px 16px;
+    {% if r.prioridad == 'alta' %}border-left:4px solid #c62828;
+    {% elif r.prioridad == 'media' %}border-left:4px solid #E45103;
+    {% else %}border-left:4px solid #2e7d32;{% endif %}
+    {% if r.vencido %}opacity:0.72;{% endif %}">
+
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+        <strong style="font-size:15px; color:#1B2A4E;">{{ r.titulo }}</strong>
+        <div style="display:flex; gap:5px; flex-shrink:0;">
+            {% if r.vencido %}
+                <span class="badge" style="background:#f5f5f5; color:#888;">Vencido</span>
+            {% elif r.por_vencer %}
+                <span class="badge" style="background:#fff3e0; color:#E45103;">Por vencer</span>
+            {% else %}
+                <span class="badge" style="background:#e8f5e9; color:#2e7d32;">Vigente</span>
+            {% endif %}
+            {% if contexto == 'recibido' and not r.leido and not r.vencido %}
+                <span class="badge" style="background:#ffebee; color:#c62828;">Nuevo</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <p style="font-size:13px; color:#555; line-height:1.5; margin:8px 0;">{{ r.contenido|linebreaksbr }}</p>
+
+    <div style="font-size:11.5px; color:#888; line-height:1.7; border-top:1px dashed #eee; padding-top:8px;">
+        {% if r.creado_por == r.destinatario %}
+            <div><strong style="color:#1B2A4E;">📌 Recordatorio personal</strong></div>
+        {% elif contexto == 'recibido' %}
+            <div>De: <strong style="color:#1B2A4E;">{{ r.creado_por.first_name|default:r.creado_por.username }} {{ r.creado_por.last_name }}</strong></div>
+        {% else %}
+            <div>Para: <strong style="color:#1B2A4E;">{{ r.destinatario.first_name|default:r.destinatario.username }} {{ r.destinatario.last_name }}</strong></div>
+        {% endif %}
+        <div>📅 Fecha: {{ r.fecha|date:"d/m/Y" }} · ⏳ Vence: {{ r.fecha_vencimiento|date:"d/m/Y" }}</div>
+        <div>Prioridad: <strong>{{ r.get_prioridad_display }}</strong>{% if contexto == 'admin' %} · Creado por {{ r.creado_por.first_name|default:r.creado_por.username }}{% endif %}</div>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-top:11px; flex-wrap:wrap;">
+        {% if contexto == 'recibido' and not r.leido %}
+        <form method="post" action="{% url 'academia:recordatorio_marcar_leido' r.id %}" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm" style="background:#2e7d32; color:#fff; font-size:11px; padding:5px 10px;">✓ Enterado</button>
+        </form>
+        {% endif %}
+        {% if r.creado_por == request.user or contexto == 'admin' %}
+        <a href="{% url 'academia:recordatorio_editar' r.id %}" class="btn btn-secondary btn-sm" style="font-size:11px; padding:5px 10px;">✎ Editar</a>
+        {% endif %}
+        <form method="post" action="{% url 'academia:recordatorio_eliminar' r.id %}" style="margin:0;"
+              onsubmit="event.preventDefault(); confirmarAccion(this, '¿Eliminar el recordatorio «{{ r.titulo|escapejs }}»?');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm" style="background:#c62828; color:#fff; font-size:11px; padding:5px 10px;">🗑 Eliminar</button>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,904 @@
+{% extends 'base.html' %}
+
+{% block title %}Bienvenido — Formación Profesional EC{% endblock %}
+
+{% block content %}
+
+{% block global_back_button %}
+<!-- Sin botón de regresar en Inicio -->
+{% endblock %}
+
+<style>
+    /* ════════════════════════════════════════════════
+       Paleta basada en el logo de Formación Profesional
+       Azul petróleo (isotipo) + Naranja (figura) + Marfil
+       ════════════════════════════════════════════════ */
+    :root {
+        --navy:      #1B2A4E;   /* azul profundo del logo */
+        --navy-soft: #2E3F66;
+        --orange:    #E45103;   /* naranja del logo */
+        --orange-lt: #F47A33;
+        --secondary: #2e7d32;
+        --accent:    #E45103;
+        --danger:    #c62828;
+        --bg:        #f6f7fa;
+        --card-bg:   #ffffff;
+        --text-main: #1f2937;
+        --text-muted:#7a8290;
+        --line:      #ecedf2;
+        --primary:   var(--navy);
+    }
+
+    /* ── Dark mode ── */
+    body.dark-mode {
+        --navy:      #8fb3ff;
+        --primary:   #8fb3ff;
+        --card-bg:   #161922;
+        --bg:        #0e1016;
+        --text-main: #e6e8ee;
+        --text-muted:#9aa1b0;
+        --line:      #262b38;
+    }
+    body.dark-mode .card-box { background: var(--card-bg); }
+    body.dark-mode .alert-box { background:#2a2410; color:#e0c97a; }
+
+    body {
+        background-color: var(--bg);
+        font-family: 'Inter', 'Segoe UI', sans-serif;
+    }
+
+    /* ───── HEADER minimalista ───── */
+    .dashboard-header {
+        text-align: center;
+        margin: 8px 0 44px;
+        animation: fadeDown .6s ease both;
+    }
+    @keyframes fadeDown {
+        from { opacity:0; transform: translateY(-12px); }
+        to   { opacity:1; transform: translateY(0); }
+    }
+    .header-accent {
+        width: 54px; height: 4px; margin: 0 auto 22px;
+        background: linear-gradient(90deg, var(--orange), var(--orange-lt));
+        border-radius: 99px;
+    }
+    .page-title {
+        font-weight: 800;
+        color: var(--primary);
+        letter-spacing: -0.5px;
+    }
+    .page-subtitle {
+        color: var(--text-muted);
+        font-size: 14px;
+        margin-top: 4px;
+    }
+
+    /* ───── GRID ───── */
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
+        gap: 18px;
+    }
+
+    /* ───── TARJETAS minimalistas ───── */
+    .card-box {
+        position: relative;
+        background: var(--card-bg);
+        border-radius: 18px;
+        padding: 22px 20px 18px;
+        border: 1px solid var(--line);
+        box-shadow: 0 1px 2px rgba(27,42,78,.04);
+        transition: transform .25s cubic-bezier(.2,.8,.2,1),
+                    box-shadow .25s ease,
+                    border-color .25s ease;
+        text-decoration: none;
+        color: inherit;
+        overflow: hidden;
+        opacity: 0;
+        animation: cardIn .5s ease forwards;
+    }
+    @keyframes cardIn {
+        from { opacity:0; transform: translateY(14px); }
+        to   { opacity:1; transform: translateY(0); }
+    }
+    /* franja superior naranja que aparece al pasar el mouse */
+    .card-box::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--orange), var(--orange-lt));
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform .3s ease;
+    }
+    .card-box:hover {
+        transform: translateY(-6px);
+        border-color: transparent;
+        box-shadow: 0 18px 38px rgba(27,42,78,.14);
+    }
+    .card-box:hover::before { transform: scaleX(1); }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+    .card-icon-wrap {
+        width: 44px; height: 44px;
+        border-radius: 13px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 21px;
+        background: linear-gradient(135deg, rgba(228,81,3,.10), rgba(244,122,51,.06));
+        color: var(--orange);
+        flex-shrink: 0;
+        transition: transform .25s ease;
+    }
+    .card-box:hover .card-icon-wrap { transform: scale(1.08) rotate(-3deg); }
+
+    .card-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--primary);
+        letter-spacing: -0.3px;
+    }
+    .card-desc {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--text-muted);
+        line-height: 1.55;
+        min-height: 38px;
+    }
+    .card-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+    }
+    .status-ok {
+        background: rgba(46,125,50,.10);
+        color: var(--secondary);
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 99px;
+        font-weight: 700;
+    }
+    .status-admin {
+        background: rgba(228,81,3,.12);
+        color: var(--orange);
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 99px;
+        font-weight: 700;
+    }
+    .card-cta {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--primary);
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: gap .2s ease;
+    }
+    .card-box:hover .card-cta { gap: 9px; color: var(--orange); }
+
+    /* ALERTA sin rol */
+    .alert-box {
+        margin-top: 32px;
+        text-align: center;
+        padding: 24px;
+        background: #fff8e1;
+        border-radius: 14px;
+        color: #856404;
+    }
+</style>
+<div class="dashboard-header">
+    <div class="header-accent"></div>
+    <h2 class="page-title" style="font-size: 30px;">
+        <span id="saludo-dinamico">Hola</span>, {{ usuario.first_name|default:usuario.username }}
+    </h2>
+
+    <p class="page-subtitle">
+        Sistema de Gestión Académica
+        {% if es_admin %}
+        — <strong style="color:var(--primary);">Administrador</strong>
+        {% elif es_asesor %}
+        — <strong style="color:var(--secondary);">Asesor</strong>
+        {% endif %}
+</div>
+
+{# ─── Avisos vigentes del panel (visibles para todos) ──────── #}
+{% if avisos_vigentes %}
+<style>
+    .avisos-wrap { max-width: 1080px; margin: 0 auto 28px; display:flex; flex-direction:column; gap:14px; }
+    .aviso-card {
+        border-radius: 16px; padding: 18px 22px; position: relative;
+        border: 1px solid var(--line); background: var(--card-bg);
+        box-shadow: 0 2px 10px rgba(27,42,78,.05);
+        animation: cardIn .5s ease both;
+        border-left-width: 6px; border-left-style: solid;
+    }
+    .aviso-card.t-info    { border-left-color:#1565c0; }
+    .aviso-card.t-success { border-left-color:#2e7d32; }
+    .aviso-card.t-warning { border-left-color:#E45103; }
+    .aviso-card.t-danger  { border-left-color:#c62828; }
+    .aviso-card.t-navy    { border-left-color:#1B2A4E; }
+    .aviso-card .aviso-h {
+        display:flex; align-items:center; gap:10px; margin-bottom:8px;
+    }
+    .aviso-card .aviso-chip {
+        font-size:11px; font-weight:800; letter-spacing:.4px; text-transform:uppercase;
+        padding:3px 10px; border-radius:99px; color:#fff;
+    }
+    .t-info    .aviso-chip { background:#1565c0; }
+    .t-success .aviso-chip { background:#2e7d32; }
+    .t-warning .aviso-chip { background:#E45103; }
+    .t-danger  .aviso-chip { background:#c62828; }
+    .t-navy    .aviso-chip { background:#1B2A4E; }
+    .aviso-card .aviso-titulo { font-size:17px; font-weight:800; color:var(--text-main); }
+    .aviso-card .aviso-cuerpo { font-size:14.5px; line-height:1.6; color:var(--text-main); }
+    .aviso-card .aviso-cuerpo ul,
+    .aviso-card .aviso-cuerpo ol { margin:8px 0 8px 22px; }
+    .aviso-card .aviso-fecha { font-size:11.5px; color:var(--text-muted); margin-top:10px; }
+</style>
+<div class="avisos-wrap">
+    {% for aviso in avisos_vigentes %}
+    <div class="aviso-card t-{{ aviso.tema }}">
+        <div class="aviso-h">
+            <span class="aviso-chip">📢 Aviso</span>
+            <span class="aviso-titulo">{% if aviso.fijado %}📌 {% endif %}{{ aviso.titulo }}</span>
+        </div>
+        <div class="aviso-cuerpo">{{ aviso.contenido|safe }}</div>
+        <div class="aviso-fecha">Vigente hasta el {{ aviso.fecha_fin|date:"d/m/Y H:i" }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{# ─── fin avisos ──────────────────────────────────────────── #}
+
+{% if alertas_pago %}
+<style>
+    /* ── Panel de Gestión de Matrículas (versión suave y compacta) ── */
+    .gm-panel {
+        background: #f5f9ff;
+        border: 1px solid #dde8f7;
+        border-left: 4px solid #4f8ef7;
+        border-radius: 12px;
+        margin-bottom: 22px;
+        box-shadow: 0 2px 10px rgba(79, 142, 247, 0.06);
+        overflow: hidden;
+    }
+    body.dark-mode .gm-panel {
+        background: #1a2233;
+        border-color: #2c3a52;
+        border-left-color: #5c8ede;
+    }
+
+    /* Cabecera clicable (colapsa/expande todo) */
+    .gm-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 13px 18px;
+        cursor: pointer;
+        user-select: none;
+        transition: background .15s ease;
+    }
+    .gm-head:hover { background: rgba(79, 142, 247, 0.05); }
+    body.dark-mode .gm-head:hover { background: rgba(92, 142, 222, 0.10); }
+
+    .gm-head .gm-ico {
+        width: 30px; height: 30px; flex: 0 0 30px;
+        border-radius: 8px;
+        background: #e5f0ff;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 15px;
+    }
+    body.dark-mode .gm-head .gm-ico { background: #26344d; }
+
+    .gm-head .gm-titulo {
+        font-size: 15px;
+        font-weight: 700;
+        color: #2b4a75;
+        margin: 0;
+        flex: 1 1 auto;
+    }
+    body.dark-mode .gm-head .gm-titulo { color: #bcd4f5; }
+
+    .gm-head .gm-count {
+        display: inline-flex; align-items: center;
+        background: #4f8ef7;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 2px 10px;
+        border-radius: 20px;
+        margin-left: 4px;
+    }
+    .gm-head .gm-flecha {
+        font-size: 13px;
+        color: #7a93b5;
+        transition: transform .2s ease;
+    }
+    /* Cuerpo colapsable */
+    .gm-body {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height .28s ease;
+    }
+    .gm-panel.abierto .gm-body { max-height: 3000px; }
+    .gm-panel.abierto .gm-flecha { transform: rotate(180deg); }
+
+    .gm-body-inner { padding: 0 16px 14px; }
+    .gm-resumen {
+        font-size: 12.5px;
+        color: #5a6b82;
+        margin: 0 0 12px;
+        line-height: 1.5;
+    }
+    body.dark-mode .gm-resumen { color: #93a6c0; }
+
+    /* Tarjeta de estudiante */
+    .gm-card {
+        background: #fff;
+        border: 1px solid #e7eef9;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-top: 9px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+    }
+    body.dark-mode .gm-card {
+        background: #212c40;
+        border-color: #303f59;
+        color: #dce6f5;
+    }
+    .gm-card .gm-nombre {
+        font-weight: 700;
+        color: #29406a;
+        font-size: 14.5px;
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    body.dark-mode .gm-card .gm-nombre { color: #9fc0ec; }
+
+    .gm-card .gm-dias {
+        display: inline-block;
+        background: #eef3fb;
+        color: #5b76a0;
+        font-size: 10.5px;
+        font-weight: 600;
+        padding: 2px 9px;
+        border-radius: 10px;
+    }
+    body.dark-mode .gm-card .gm-dias { background: #2c3a52; color: #a9c0e0; }
+
+    .gm-card .gm-meta {
+        font-size: 11.5px;
+        color: #778699;
+        margin-top: 3px;
+    }
+    body.dark-mode .gm-card .gm-meta { color: #8394ab; }
+
+    /* Chips de estado del pago */
+    .gm-estado {
+        display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+    }
+    .gm-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 11.5px; font-weight: 600;
+        padding: 3px 10px; border-radius: 8px;
+    }
+    .gm-chip.pendiente { background: #fff4e5; color: #b26a00; }
+    .gm-chip.modulo    { background: #eaf3ff; color: #2b6cb0; }
+    .gm-chip.jornada   { background: #f0f2f5; color: #566579; }
+    body.dark-mode .gm-chip.pendiente { background: #3a2e1a; color: #e0b060; }
+    body.dark-mode .gm-chip.modulo    { background: #22344d; color: #7fb0e8; }
+    body.dark-mode .gm-chip.jornada   { background: #2a3040; color: #9aabc0; }
+
+    /* Acciones */
+    .gm-acciones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .gm-acciones .btn { font-size: 12px; padding: 6px 11px; }
+    .gm-btn-wa { background: #25d366 !important; color: #fff !important; border: none !important; }
+    .gm-btn-wa:hover { background: #1ebe5a !important; }
+    .gm-btn-asis { background: #0e7c6b !important; color: #fff !important; border: none !important; }
+    .gm-btn-asis:hover { background: #0a6357 !important; }
+    .gm-btn-rev { background: #8496ab !important; color: #fff !important; border: none !important; }
+    .gm-btn-rev:hover { background: #6f8299 !important; }
+
+    /* "Ver más" dentro del cuerpo */
+    .gm-vermas > summary {
+        cursor: pointer; list-style: none;
+        font-size: 12.5px; color: #4f8ef7; font-weight: 600;
+        margin-top: 10px; text-align: center;
+    }
+    .gm-vermas > summary::-webkit-details-marker { display: none; }
+    body.dark-mode .gm-vermas > summary { color: #7fb0e8; }
+
+    @media (max-width: 640px) {
+        .gm-card { grid-template-columns: 1fr; }
+        .gm-acciones { justify-content: flex-start; }
+    }
+</style>
+
+{% comment %}
+   Panel colapsable de Gestión de Matrículas.
+   - Cabecera clicable: esconde/muestra todo el contenido.
+   - Estilo suave (azul claro), compacto.
+   - Cada tarjeta muestra el MÓDULO faltante y el MONTO pendiente.
+{% endcomment %}
+<div class="gm-panel" id="gm-panel">
+    <div class="gm-head" onclick="document.getElementById('gm-panel').classList.toggle('abierto');">
+        <span class="gm-ico">🎓</span>
+        <h3 class="gm-titulo">
+            Gestión de Matrículas
+            <span class="gm-count">{{ alertas_pago|length }}</span>
+        </h3>
+        <span class="gm-flecha">▾</span>
+    </div>
+
+    <div class="gm-body">
+        <div class="gm-body-inner">
+            <p class="gm-resumen">
+                Estudiantes que ya iniciaron clases y tienen un saldo por confirmar.
+                Coordina el pago o consulta su asistencia con un clic.
+            </p>
+
+            {% for a in alertas_pago|slice:":3" %}
+            <div class="gm-card">
+                <div>
+                    <div class="gm-nombre">
+                        {{ a.estudiante.nombres }}
+                        <span class="gm-dias">Seguimiento: {{ a.dias_atraso }} día{{ a.dias_atraso|pluralize }}</span>
+                    </div>
+                    <div class="gm-meta">
+                        {{ a.estudiante.cedula }} · {{ a.curso.nombre }} · {{ a.tipo_matricula_label }}
+                    </div>
+                    <div class="gm-estado">
+                        <span class="gm-chip modulo">📘 Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}</span>
+                        <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                        <span class="gm-chip jornada">📅 {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
+                        {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
+                    </div>
+                </div>
+                <div class="gm-acciones">
+                    {% if a.celular_wa %}
+                    <a href="https://wa.me/{{ a.celular_wa }}?text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Nos+comunicamos+con+usted+para+coordinar+los+detalles+pendientes+de+su+inscripci%C3%B3n+en+el+curso+de+{{ a.curso.nombre|urlencode }}.+%C2%BFPodr%C3%ADa+ayudarnos+confirmando+su+pago%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                       target="_blank" rel="noopener"
+                       class="btn btn-sm gm-btn-wa" title="Coordinar pago por WhatsApp">💬 Pago</a>
+                    <a href="https://wa.me/{{ a.celular_wa }}?text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ a.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                       target="_blank" rel="noopener"
+                       class="btn btn-sm gm-btn-asis" title="Consultar asistencia">🗓 Asistencia</a>
+                    {% endif %}
+                    <a href="{% url 'academia:matricula_abonos' a.matricula.pk %}"
+                       class="btn btn-sm btn-secondary" title="Ver detalle del estudiante">👁 Detalle</a>
+                    <form method="post" action="{% url 'academia:alerta_marcar_revisada' a.matricula.pk %}"
+                          class="form-revisar-alerta" style="display:inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="numero_modulo" value="{{ a.numero_modulo }}">
+                        <input type="hidden" name="next" value="/bienvenida/">
+                        <button type="button" class="btn btn-sm gm-btn-rev js-marcar-revisada"
+                                data-nombre="{{ a.estudiante.nombres }}"
+                                title="Ya gestioné este caso, ocultar hasta mañana">✓ Ya revisado</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+
+            {% if alertas_pago|length > 3 %}
+            <details class="gm-vermas">
+                <summary>▾ Ver {{ alertas_pago|length|add:"-3" }} caso{{ alertas_pago|length|add:"-3"|pluralize }} más</summary>
+                {% for a in alertas_pago|slice:"3:" %}
+                <div class="gm-card">
+                    <div>
+                        <div class="gm-nombre">
+                            {{ a.estudiante.nombres }}
+                            <span class="gm-dias">Seguimiento: {{ a.dias_atraso }} día{{ a.dias_atraso|pluralize }}</span>
+                        </div>
+                        <div class="gm-meta">
+                            {{ a.estudiante.cedula }} · {{ a.curso.nombre }} · {{ a.tipo_matricula_label }}
+                        </div>
+                        <div class="gm-estado">
+                            <span class="gm-chip modulo">📘 Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}</span>
+                            <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                            <span class="gm-chip jornada">📅 {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
+                            {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
+                        </div>
+                    </div>
+                    <div class="gm-acciones">
+                        {% if a.celular_wa %}
+                        <a href="https://wa.me/{{ a.celular_wa }}?text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Nos+comunicamos+con+usted+para+coordinar+los+detalles+pendientes+de+su+inscripci%C3%B3n+en+el+curso+de+{{ a.curso.nombre|urlencode }}.+%C2%BFPodr%C3%ADa+ayudarnos+confirmando+su+pago%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                           target="_blank" rel="noopener"
+                           class="btn btn-sm gm-btn-wa" title="Coordinar pago por WhatsApp">💬 Pago</a>
+                        <a href="https://wa.me/{{ a.celular_wa }}?text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ a.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                           target="_blank" rel="noopener"
+                           class="btn btn-sm gm-btn-asis" title="Consultar asistencia">🗓 Asistencia</a>
+                        {% endif %}
+                        <a href="{% url 'academia:matricula_abonos' a.matricula.pk %}"
+                           class="btn btn-sm btn-secondary" title="Ver detalle del estudiante">👁 Detalle</a>
+                        <form method="post" action="{% url 'academia:alerta_marcar_revisada' a.matricula.pk %}"
+                              class="form-revisar-alerta" style="display:inline;">
+                            {% csrf_token %}
+                            <input type="hidden" name="numero_modulo" value="{{ a.numero_modulo }}">
+                            <input type="hidden" name="next" value="/bienvenida/">
+                            <button type="button" class="btn btn-sm gm-btn-rev js-marcar-revisada"
+                                    data-nombre="{{ a.estudiante.nombres }}"
+                                    title="Ya gestioné este caso, ocultar hasta mañana">✓ Ya revisado</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </details>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ── Modal de confirmación para "Ya revisado" (reemplaza al confirm() nativo) ── #}
+<div id="modal-revisar-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-revisar-titulo"
+     style="display:none; position:fixed; inset:0; background:rgba(15,18,40,0.55);
+            backdrop-filter:blur(3px); z-index:2500; justify-content:center; align-items:center;
+            opacity:0; transition:opacity .18s ease;">
+    <div id="modal-revisar-box"
+         style="background:#0f1430; color:#e8ecff; width:90%; max-width:380px; border-radius:18px;
+                border:1px solid rgba(120,140,255,.25); box-shadow:0 24px 70px rgba(0,0,0,.5);
+                padding:26px 24px; text-align:center; transform:scale(.94); transition:transform .18s ease;
+                font-family:'Inter',sans-serif;">
+        <div style="width:54px; height:54px; margin:0 auto 14px; border-radius:50%;
+                    background:linear-gradient(135deg,#3949ab,#5c6bc0); display:flex;
+                    align-items:center; justify-content:center; font-size:26px;">✓</div>
+        <h3 id="modal-revisar-titulo" style="margin:0 0 8px; font-size:18px; font-weight:700; color:#fff;">
+            ¿Marcar como revisada?
+        </h3>
+        <p style="margin:0 0 4px; font-size:14px; line-height:1.5; color:#aeb6e0;">
+            Esta alerta se ocultará hasta mañana.
+        </p>
+        <p id="modal-revisar-nombre" style="margin:0 0 22px; font-size:13px; font-weight:600; color:#90caf9;"></p>
+        <div style="display:flex; gap:12px;">
+            <button type="button" id="modal-revisar-cancelar"
+                    style="flex:1; padding:11px 0; border:1px solid rgba(160,170,220,.3); background:transparent;
+                           color:#cfd5f5; border-radius:10px; font-weight:600; font-size:14px; cursor:pointer;
+                           transition:.15s;"
+                    onmouseover="this.style.background='rgba(255,255,255,.06)';"
+                    onmouseout="this.style.background='transparent';">Cancelar</button>
+            <button type="button" id="modal-revisar-confirmar"
+                    style="flex:1; padding:11px 0; border:none;
+                           background:linear-gradient(135deg,#3949ab,#5c6bc0); color:#fff;
+                           border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; transition:.15s;"
+                    onmouseover="this.style.filter='brightness(1.1)';"
+                    onmouseout="this.style.filter='brightness(1)';">Sí, marcar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var overlay  = document.getElementById('modal-revisar-overlay');
+    if (!overlay) return;
+    var box      = document.getElementById('modal-revisar-box');
+    var nombreEl = document.getElementById('modal-revisar-nombre');
+    var btnCancel= document.getElementById('modal-revisar-cancelar');
+    var btnOk    = document.getElementById('modal-revisar-confirmar');
+    var formPendiente = null;
+
+    function abrir(form, nombre) {
+        formPendiente = form;
+        nombreEl.textContent = nombre || '';
+        overlay.style.display = 'flex';
+        requestAnimationFrame(function () {
+            overlay.style.opacity = '1';
+            box.style.transform = 'scale(1)';
+        });
+    }
+    function cerrar() {
+        overlay.style.opacity = '0';
+        box.style.transform = 'scale(.94)';
+        setTimeout(function () { overlay.style.display = 'none'; formPendiente = null; }, 180);
+    }
+
+    document.querySelectorAll('.js-marcar-revisada').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            abrir(btn.closest('form'), btn.getAttribute('data-nombre'));
+        });
+    });
+
+    btnCancel.addEventListener('click', cerrar);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) cerrar(); });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && overlay.style.display === 'flex') cerrar();
+    });
+    btnOk.addEventListener('click', function () {
+        if (formPendiente) formPendiente.submit();
+    });
+})();
+</script>
+{% endif %}
+
+<div class="dashboard-grid">
+
+    {% if puede_gestionar_matriculas %}
+    <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}" class="card-box" style="animation-delay:.05s;">
+        <div class="card-header">
+            <div class="card-title">Registro de Matrículas</div>
+            <div class="card-icon-wrap">🎓</div>
+        </div>
+        <div class="card-desc">
+            Registro, edición y consulta de matrículas presenciales y online.
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    <a href="{% url 'academia:cursos_lista' modalidad='presencial' %}" class="card-box" style="animation-delay:.1s;">
+        <div class="card-header">
+            <div class="card-title">Cursos Disponibles</div>
+            <div class="card-icon-wrap">📘</div>
+        </div>
+        <div class="card-desc">
+            {% if es_admin %}
+            Gestión completa de cursos presenciales.
+            {% else %}
+            Consulta de cursos y horarios.
+            {% endif %}
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+
+
+    {% if puede_gestionar_matriculas %}
+    <a href="{% url 'academia:pagos_lista' %}" class="card-box" style="animation-delay:.15s;">
+        <div class="card-header">
+            <div class="card-title">Pagos</div>
+            <div class="card-icon-wrap">💳</div>
+        </div>
+        <div class="card-desc">
+            Control de pagos, estados y reportes.
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+
+    <a href="{% url 'academia:historial_lista' %}" class="card-box" style="animation-delay:.2s;">
+        <div class="card-header">
+            <div class="card-title">Historial</div>
+            <div class="card-icon-wrap">📚</div>
+        </div>
+        <div class="card-desc">
+            Matrículas organizadas por año y mes.
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+
+    <a href="{% url 'academia:archivo_index' %}" class="card-box" style="animation-delay:.25s;">
+        <div class="card-header">
+            <div class="card-title">Archivo</div>
+            <div class="card-icon-wrap">🗄️</div>
+        </div>
+        <div class="card-desc">
+            Todo lo archivado en carpetas: cursos cerrados, estudiantes archivados y cortes de caja. Organizado para no mezclar nada.
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    {% if puede_gestionar_matriculas %}
+    <a href="{% url 'academia:adicional_menu' %}" class="card-box" style="animation-delay:.3s;">
+        <div class="card-header">
+            <div class="card-title">Adicional</div>
+            <div class="card-icon-wrap">➕</div>
+        </div>
+        <div class="card-desc">
+            Certificados, examen supletorio y camisas extra.
+            Para estudiantes internos y personas externas.
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    {% if es_admin %}
+    <a href="{% url 'academia:admin_dashboard' %}" class="card-box" style="animation-delay:.35s;">
+        <div class="card-header">
+            <div class="card-title">Registro Administrativo</div>
+            <div class="card-icon-wrap">📊</div>
+        </div>
+        <div class="card-desc">
+            Control financiero mensual con métricas.
+        </div>
+        <div class="card-footer">
+            <span class="status-admin">🔒 Admin</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    {% if es_admin %}
+    <a href="{% url 'academia:control_registro' %}" class="card-box" style="animation-delay:.36s;">
+        <div class="card-header">
+            <div class="card-title">Control de Registro</div>
+            <div class="card-icon-wrap">📋</div>
+        </div>
+        <div class="card-desc">
+            Auditoría de todos los registros de matrículas y pagos realizados.
+        </div>
+        <div class="card-footer">
+            <span class="status-admin">🔒 Admin</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    {% if es_admin %}
+    <a href="{% url 'academia:avisos_lista' %}" class="card-box" style="animation-delay:.38s;">
+        <div class="card-header">
+            <div class="card-title">Avisos del panel</div>
+            <div class="card-icon-wrap">📢</div>
+        </div>
+        <div class="card-desc">
+            Publica anuncios con formato y colores. Aparecen en el inicio para todo el equipo y caducan solos.
+        </div>
+        <div class="card-footer">
+            <span class="status-admin">🔒 Admin</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    {% if puede_gestionar_matriculas %}
+    <a href="{% url 'academia:recordatorio_lista' %}" class="card-box" style="animation-delay:.39s;">
+        <div class="card-header">
+            <div class="card-title">Recordatorio - Borrador</div>
+            <div class="card-icon-wrap">🗒️</div>
+        </div>
+        <div class="card-desc">
+            Notas rápidas para ti o para avisar a un compañero. Con fecha,
+            vencimiento y campana cuando se conecta el destinatario.
+        </div>
+        <div class="card-footer">
+            {% if recordatorios_no_leidos_n %}
+            <span class="status-ok" style="background:#ffebee; color:#c62828;">🔔 {{ recordatorios_no_leidos_n }} sin leer</span>
+            {% else %}
+            <span class="status-ok">Disponible</span>
+            {% endif %}
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    {% if puede_gestionar_matriculas %}
+    <a href="{% url 'academia:ayuda' %}" class="card-box" style="animation-delay:.4s;">
+        <div class="card-header">
+            <div class="card-title">Ayuda</div>
+            <div class="card-icon-wrap">❓</div>
+        </div>
+        <div class="card-desc">
+            Manuales y soporte del sistema.
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+</div>
+
+{% if not puede_gestionar_matriculas and not es_admin %}
+<div class="alert-box">
+    ⚠ Tu usuario no tiene rol asignado. Solicita acceso a un administrador.
+</div>
+{% endif %}
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Obtenemos la hora actual del navegador del usuario (0 - 23)
+        const horaActual = new Date().getHours();
+        const elementoSaludo = document.getElementById("saludo-dinamico");
+        
+        let saludo = "Hola"; // Saludo por defecto
+        
+        if (horaActual >= 5 && horaActual < 12) {
+            saludo = "Buenos días ☀️";
+        } else if (horaActual >= 12 && horaActual < 19) {
+            saludo = "Buenas tardes 🌤️";
+        } else {
+            saludo = "Buenas noches 🌙";
+        }
+        
+        // Reemplazamos el texto en la pantalla
+        elementoSaludo.innerText = saludo;
+
+        /* ════════════════════════════════════════════
+           Sonido de bienvenida — generado por código.
+           Acorde suave ascendente (campanas de cristal),
+           sin archivos externos. Respeta la preferencia
+           de "silencio" guardada para Mercy.
+           ════════════════════════════════════════════ */
+        (function reproducirSonidoBienvenida() {
+            // Si el usuario silenció a Mercy, no molestamos con el sonido tampoco
+            try {
+                if (localStorage.getItem('mercybot_muted') === '1') return;
+            } catch (e) {}
+            // Eliminado el check de sessionStorage para que suene siempre
+
+            function tocar() {
+                try {
+                    var AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioCtx) return;
+                    var ctx = new AudioCtx();
+                    var ahora = ctx.currentTime;
+
+                    // Reverb suave (cola corta) para sensación "profesional/espaciosa"
+                    var master = ctx.createGain();
+                    master.gain.value = 0.0001;
+                    master.connect(ctx.destination);
+
+                    // Notas de un acorde mayor add9 (cálido y alegre): C5 E5 G5 D6
+                    var notas = [523.25, 659.25, 783.99, 1174.66];
+                    notas.forEach(function (freq, i) {
+                        var t = ahora + i * 0.12;          // entrada escalonada (arpegio)
+                        var osc = ctx.createOscillator();
+                        var g   = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.value = freq;
+
+                        // Envolvente: ataque suave, caída larga (campana)
+                        g.gain.setValueAtTime(0.0001, t);
+                        g.gain.exponentialRampToValueAtTime(0.16, t + 0.04);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+
+                        osc.connect(g);
+                        g.connect(master);
+                        osc.start(t);
+                        osc.stop(t + 2.4);
+                    });
+
+                    // Subida global de volumen muy breve para que no haga "clic"
+                    master.gain.setValueAtTime(0.0001, ahora);
+                    master.gain.exponentialRampToValueAtTime(0.9, ahora + 0.05);
+
+                    setTimeout(function () { ctx.close(); }, 3200);
+
+                } catch (e) { /* silencioso si el navegador bloquea audio */ }
+            }
+
+            // Muchos navegadores exigen interacción previa para reproducir audio.
+            // Intentamos al cargar; si está bloqueado, sonará al primer gesto del usuario.
+            tocar();
+            var dispararConGesto = function () {
+                tocar();
+                limpiar();
+            };
+            function limpiar() {
+                document.removeEventListener('click', dispararConGesto);
+                document.removeEventListener('keydown', dispararConGesto);
+                document.removeEventListener('touchstart', dispararConGesto);
+            }
+            // Agregamos listeners por si el navegador bloquea el autoplay, 
+            // pero los quitamos en cuanto se escuche.
+            document.addEventListener('click', dispararConGesto, { once: true });
+            document.addEventListener('keydown', dispararConGesto, { once: true });
+            document.addEventListener('touchstart', dispararConGesto, { once: true });
+        })();
+    });
+</script>
+
+{% endblock %}

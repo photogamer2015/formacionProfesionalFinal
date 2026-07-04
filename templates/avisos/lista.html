@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block title %}Avisos del panel{% endblock %}
+
+{% block extra_head %}
+<style>
+    .aviso-row {
+        background: var(--card-bg, #fff); border:1px solid var(--line,#ecedf2);
+        border-radius:14px; padding:16px 18px; margin-bottom:14px;
+        display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;
+    }
+    .aviso-tema-bar { width:6px; align-self:stretch; border-radius:4px; min-height:40px; }
+    .tema-info    { background:#1565c0; }
+    .tema-success { background:#2e7d32; }
+    .tema-warning { background:#E45103; }
+    .tema-danger  { background:#c62828; }
+    .tema-navy    { background:#1B2A4E; }
+    .aviso-body { flex:1; min-width:240px; }
+    .aviso-titulo { font-size:16px; font-weight:700; color: var(--primary,#1B2A4E); margin-bottom:4px; }
+    .aviso-meta { font-size:12px; color:#888; margin-bottom:8px; }
+    .aviso-contenido { font-size:14px; line-height:1.5; color: var(--text-main,#333); }
+    .aviso-contenido ul, .aviso-contenido ol { margin:6px 0 6px 20px; }
+    .estado-pill {
+        display:inline-block; padding:3px 10px; border-radius:99px;
+        font-size:11px; font-weight:700;
+    }
+    .est-Vigente    { background:#e8f5e9; color:#2e7d32; }
+    .est-Programado { background:#e3f2fd; color:#1565c0; }
+    .est-Expirado   { background:#f5f5f5; color:#888; }
+    .est-Oculto     { background:#fff3e0; color:#E45103; }
+    body.dark-mode .aviso-row { background:#161922; border-color:#262b38; }
+    body.dark-mode .aviso-contenido { color:#e6e8ee; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Avisos del panel
+</div>
+
+<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h2 class="page-title">📢 Avisos del panel principal</h2>
+        <p class="page-subtitle">
+            Mensajes que ven todos los usuarios en la pantalla de inicio.
+            {{ total_vigentes }} vigente{{ total_vigentes|pluralize }} de {{ total }} en total.
+        </p>
+    </div>
+    <a href="{% url 'academia:aviso_crear' %}" class="btn btn-primary"
+       style="background:#E45103; border-color:#E45103; font-weight:700;">
+        + Nuevo aviso
+    </a>
+</div>
+<br><hr><br>
+
+{% if not avisos %}
+<div class="empty-state" style="padding:40px; text-align:center; background:var(--card-bg,#fff); border-radius:12px;">
+    <p style="font-size:15px; margin-bottom:8px;">Aún no has creado ningún aviso.</p>
+    <p style="font-size:13px; color:#888; margin-bottom:16px;">
+        Crea uno para comunicar algo a todo el equipo en el panel de inicio.
+    </p>
+    <a href="{% url 'academia:aviso_crear' %}" class="btn btn-primary" style="background:#E45103; border-color:#E45103;">
+        + Crear primer aviso
+    </a>
+</div>
+{% endif %}
+
+{% for aviso in avisos %}
+<div class="aviso-row">
+    <div class="aviso-tema-bar tema-{{ aviso.tema }}"></div>
+    <div class="aviso-body">
+        <div class="aviso-titulo">
+            {% if aviso.fijado %}📌 {% endif %}{{ aviso.titulo }}
+            <span class="estado-pill est-{{ aviso.estado_legible }}">{{ aviso.estado_legible }}</span>
+        </div>
+        <div class="aviso-meta">
+            🗓 {{ aviso.fecha_inicio|date:"d/m/Y H:i" }} → {{ aviso.fecha_fin|date:"d/m/Y H:i" }}
+            {% if aviso.creado_por %} · por {{ aviso.creado_por.first_name|default:aviso.creado_por.username }}{% endif %}
+        </div>
+        <div class="aviso-contenido">{{ aviso.contenido|safe }}</div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:6px; min-width:120px;">
+        <a href="{% url 'academia:aviso_editar' aviso.pk %}" class="btn btn-warning btn-sm">Editar</a>
+        <form method="post" action="{% url 'academia:aviso_toggle' aviso.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;">
+                {% if aviso.activo %}Ocultar{% else %}Mostrar{% endif %}
+            </button>
+        </form>
+        <form method="post" action="{% url 'academia:aviso_eliminar' aviso.pk %}" onsubmit="return false;">
+            {% csrf_token %}
+            <button type="button" class="btn btn-danger btn-sm" style="width:100%;"
+                onclick="confirmarAccion(this.closest('form'), '¿Eliminar el aviso «{{ aviso.titulo|escapejs }}»? Esta acción no se puede deshacer.', 'danger')">
+                Eliminar
+            </button>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

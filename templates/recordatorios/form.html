@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:recordatorio_lista' %}">Recordatorios</a> &nbsp;›&nbsp;
+    {{ titulo }}
+</div>
+
+<h2 class="page-title">🗒️ {{ titulo }}</h2>
+<p class="page-subtitle">
+    Escribe una nota tipo recordatorio. Puedes asignártela a ti o notificar a otro compañero;
+    al destinatario le llegará una campana cuando se conecte.
+</p>
+
+<div style="max-width:680px;">
+    <form method="post" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="alert-box" style="margin-bottom:14px;">
+            {{ form.non_field_errors }}
+        </div>
+        {% endif %}
+
+        <div class="card-box" style="padding:20px;">
+
+            <div style="margin-bottom:14px;">
+                <label class="form-label" for="{{ form.titulo.id_for_label }}">Título</label>
+                {{ form.titulo }}
+                {% if form.titulo.errors %}<div style="color:#c62828; font-size:12px; margin-top:4px;">{{ form.titulo.errors|striptags }}</div>{% endif %}
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label class="form-label" for="{{ form.contenido.id_for_label }}">Nota</label>
+                {{ form.contenido }}
+                {% if form.contenido.errors %}<div style="color:#c62828; font-size:12px; margin-top:4px;">{{ form.contenido.errors|striptags }}</div>{% endif %}
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:14px;">
+                <div>
+                    <label class="form-label" for="{{ form.destinatario.id_for_label }}">Notificar a</label>
+                    {{ form.destinatario }}
+                    {% if form.destinatario.errors %}<div style="color:#c62828; font-size:12px; margin-top:4px;">{{ form.destinatario.errors|striptags }}</div>{% endif %}
+                </div>
+                <div>
+                    <label class="form-label" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
+                    {{ form.prioridad }}
+                    {% if form.prioridad.errors %}<div style="color:#c62828; font-size:12px; margin-top:4px;">{{ form.prioridad.errors|striptags }}</div>{% endif %}
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px;">
+                <div>
+                    <label class="form-label" for="{{ form.fecha.id_for_label }}">Fecha</label>
+                    {{ form.fecha }}
+                    {% if form.fecha.errors %}<div style="color:#c62828; font-size:12px; margin-top:4px;">{{ form.fecha.errors|striptags }}</div>{% endif %}
+                </div>
+                <div>
+                    <label class="form-label" for="{{ form.fecha_vencimiento.id_for_label }}">Fecha de vencimiento</label>
+                    {{ form.fecha_vencimiento }}
+                    {% if form.fecha_vencimiento.errors %}<div style="color:#c62828; font-size:12px; margin-top:4px;">{{ form.fecha_vencimiento.errors|striptags }}</div>{% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:16px;">
+            <button type="submit" class="btn btn-primary">💾 Guardar recordatorio</button>
+            <a href="{% url 'academia:recordatorio_lista' %}" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,1380 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Formación Profesional EC{% endblock %}</title>
+    <style>
+        /* ════════════════════════════════════════════════════════
+           PALETA GLOBAL — basada en el logo de Formación Profesional
+           Azul petróleo + Naranja. Centralizada aquí para que todo
+           el sistema (cursos, archivo, admin, pagos, etc.) herede
+           el mismo look minimalista.
+           ════════════════════════════════════════════════════════ */
+        :root {
+            --fp-navy:      #1B2A4E;   /* azul profundo del logo */
+            --fp-navy-2:    #2E3F66;   /* hover / variante clara */
+            --fp-navy-3:    #3A4D7A;
+            --fp-orange:    #E45103;   /* naranja del logo */
+            --fp-orange-2:  #F47A33;
+            --fp-orange-3:  #C2440B;   /* hover oscuro */
+            --fp-green:     #2e7d32;
+            --fp-green-2:   #1b5e20;
+            --fp-danger:    #c62828;
+            --fp-danger-2:  #8e0000;
+            --fp-bg:        #f6f7fa;
+            --fp-line:      #ecedf2;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: var(--fp-bg);
+            min-height: 100vh;
+            color: #222;
+        }
+        
+        header.top {
+            background: var(--fp-navy);
+            color: white;
+            padding: 14px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        header.top h1 {
+            font-size: 18px; /* Ligeramente más grande */
+            font-weight: 600; /* Un poco más de grosor para que se vea profesional */
+            letter-spacing: -0.3px; /* Espaciado más moderno */
+            margin: 0;
+            padding: 0;
+        }
+        header.top .logo-circle {
+            width: 42px;
+            height: 42px;
+    
+            border-radius: 50%;
+    
+            object-fit: cover;
+    
+          
+            background: #ffffff;
+            padding: 2px;
+            border: 2px solid #f97618; /* Borde dorado sutil que combina con los badges */
+    
+
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    
+          
+            margin: 0 !important;
+    
+            
+            display: block;
+        }
+
+        header.top .brand {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* Un poco más de espacio entre logo y texto */
+        }  }
+        .logo-mini {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: var(--fp-orange); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px;
+        }
+        header.top nav { display: flex; gap: 8px; align-items: center; }
+        header.top a, header.top button {
+            color: white; text-decoration: none;
+            background: rgba(255,255,255,0.15);
+            padding: 8px 14px; border: none; border-radius: 6px;
+            font-size: 13px; font-family: inherit;
+            cursor: pointer; transition: background 0.2s;
+        }
+        header.top a:hover, header.top button:hover { background: rgba(255,255,255,0.28); }
+        header.top form { margin: 0; display: inline; }
+
+        header.top .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 5px;
+            padding-right: 20px;
+            margin-right: 20px;
+            border-right: 2px solid rgba(255, 255, 255, 0.25); /* Línea divisoria elegante */
+            border-right: 2px solid rgba(255, 255, 255, 0.25); /* Línea divisoria elegante */
+
+        }
+        header.top .user-info h3 {
+            margin: 0;
+            padding: 0;
+            font-size: 15px; /* Tamaño ideal, ni muy grande ni muy chico */
+            font-weight: 600;
+            color: #ffffff;
+            line-height: 1; /* Evita espacios extra arriba y abajo del texto */
+            letter-spacing: 0.3px;
+        }
+        header.top .role-badge {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 12px; /* Más redondito */
+            font-size: 10px;
+            font-weight: 800; /* Letra más gordita y legible */
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            line-height: 1;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15); /* Una sombra muy sutil */
+        }
+        .role-admin   { background: #ff7700; color: #ffffff; }
+        .role-asesor  { background: #377d2e; color: white; }
+        .role-default { background: rgba(255, 255, 255, 0.94); color: white; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+        .flash { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+        .flash-success { background: #e8f5e9; color: #2e7d32; border-left: 4px solid #2e7d32; }
+        .flash-error   { background: #ffebee; color: #c62828; border-left: 4px solid #c62828; }
+        .flash-warning { background: #fff8e1; color: #856404; border-left: 4px solid #f0ad4e; }
+        .flash-info    { background: #e3f2fd; color: #0d47a1; border-left: 4px solid #0d47a1; }
+
+        .btn {
+            display: inline-block; padding: 10px 18px; border-radius: 8px;
+            font-size: 14px; font-weight: 500; text-decoration: none;
+            cursor: pointer; border: none; font-family: inherit;
+            transition: all 0.15s;
+        }
+        .btn-primary    { background: var(--fp-navy); color: white; }
+        .btn-primary:hover    { background: var(--fp-navy-2); }
+        .btn-secondary  { background: #e7e9ef; color: #333; }
+        .btn-secondary:hover  { background: #d8dbe4; }
+        .btn-success    { background: var(--fp-green); color: white; }
+        .btn-success:hover    { background: var(--fp-green-2); }
+        .btn-danger     { background: var(--fp-danger); color: white; }
+        .btn-danger:hover     { background: var(--fp-danger-2); }
+        .btn-warning    { background: #F2B705; color: #1B2A4E; }
+        .btn-warning:hover    { background: #DDA300; }
+        .btn-sm { padding: 6px 10px; font-size: 12px; }
+
+        .card-box {
+            background: white; border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            padding: 28px;
+        }
+
+        .form-input {
+            width: 100%; padding: 10px 12px;
+            border: 2px solid #e0e0e0; border-radius: 8px;
+            font-size: 14px; font-family: inherit;
+            background: white; transition: border 0.15s;
+        }
+        .form-input:focus { outline: none; border-color: var(--fp-navy); }
+        .form-label {
+            display: block; font-size: 13px; font-weight: 600;
+            color: #444; margin-bottom: 6px;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+        .form-section-title {
+            font-size: 16px; color: var(--fp-navy);
+            font-weight: 600; margin: 24px 0 12px;
+            padding-bottom: 8px; border-bottom: 2px solid var(--fp-orange);
+        }
+        .errorlist {
+            list-style: none; color: #c62828;
+            font-size: 12px; margin-top: 4px;
+        }
+
+      
+        .radio-group {
+            display: flex; flex-direction: column; gap: 8px;
+            background: #fafafa;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .radio-group .radio-empty {
+            color: #888; font-size: 13px; font-style: italic;
+        }
+        .radio-group label {
+            display: flex; align-items: flex-start; gap: 8px;
+            font-size: 13px; cursor: pointer;
+            padding: 6px 8px; border-radius: 6px;
+            transition: background 0.1s;
+        }
+        .radio-group label:hover { background: #fff; }
+        .radio-group input[type="radio"] {
+            margin-top: 2px; accent-color: var(--fp-navy);
+            cursor: pointer;
+        }
+
+        .table-wrap {
+            background: white; border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            overflow-x: auto;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead tr { background: var(--fp-navy); color: white; }
+        th, td {
+            padding: 12px 14px; text-align: left;
+            border-bottom: 1px solid #f0f0f0;
+            white-space: nowrap;
+        }
+        tbody tr:hover { background: #fafafa; }
+
+        .badge {
+            display: inline-block; padding: 3px 10px;
+            border-radius: 12px; font-size: 11px; font-weight: 600;
+        }
+        .badge-pagado    { background: #e8f5e9; color: #2e7d32; }
+        .badge-pendiente { background: #ffebee; color: #c62828; }
+        .badge-parcial   { background: #fff8e1; color: #856404; }
+        .badge-presencial{ background: #e3f2fd; color: #0d47a1; }
+        .badge-online    { background: #e8f5e9; color: #2e7d32; }
+
+        .crumb { font-size: 13px; color: #666; margin-bottom: 16px; }
+        .crumb a { color: var(--fp-navy); text-decoration: none; }
+        .crumb a:hover { text-decoration: underline; }
+
+        .row-actions { display: flex; gap: 6px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #888; }
+
+        h2.page-title { font-size: 24px; color: var(--fp-navy); margin-bottom: 6px; }
+        .page-subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
+        .toolbar {
+            display: flex; gap: 12px; flex-wrap: wrap;
+            margin-bottom: 18px; align-items: center;
+        }
+        .toolbar form { display: flex; gap: 8px; flex: 1; min-width: 240px; }
+        .logo-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #ffffff;
+            color:  var(--fp-orange);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 700;
+            margin: 0 auto 16px;
+        }
+
+        .modalidad-tabs {
+            display: flex; gap: 4px;
+            background: #eef0f6;
+            padding: 4px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            width: fit-content;
+        }
+        .modalidad-tabs a {
+            padding: 8px 22px; border-radius: 8px;
+            text-decoration: none; font-size: 14px; font-weight: 600;
+            color: var(--fp-navy-3); transition: all 0.15s;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .modalidad-tabs a:hover { color: var(--fp-navy); }
+        .modalidad-tabs a.active {
+            background: white; color: var(--fp-navy);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        .modalidad-tabs .tab-count {
+            background: rgba(27,42,78,0.1); color: var(--fp-navy);
+            padding: 1px 8px; border-radius: 10px;
+            font-size: 11px; font-weight: 700;
+        }
+        .modalidad-tabs a.active .tab-count {
+            background: var(--fp-orange); color: #fff;
+        }
+
+        /* Indicador visual de modo solo lectura para asesores */
+        .readonly-banner {
+            background: #fff8e1;
+            border-left: 4px solid #f0ad4e;
+            padding: 10px 14px; border-radius: 6px;
+            margin-bottom: 16px; font-size: 13px;
+            color: #856404;
+        }
+
+        /* ── MODO OSCURO ── */
+        body.dark-mode { background: #121212; color: #e0e0e0; }
+        body.dark-mode header.top { background: #000000; border-bottom: 1px solid #333; }
+        body.dark-mode .card-box, body.dark-mode .table-wrap, body.dark-mode .toolbar {
+            background: #1e1e1e; border: 1px solid #333; color: #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        body.dark-mode h1, body.dark-mode h2, body.dark-mode h3, body.dark-mode h4, body.dark-mode h5, body.dark-mode .page-title, body.dark-mode .card-title, body.dark-mode .form-section-title {
+            color: #90caf9 !important; border-color: #555;
+        }
+        
+        /* ── Forzar todos los azules oscuros inline a celeste ── */
+        body.dark-mode [style*="color:#1a237e"],
+        body.dark-mode [style*="color: #1a237e"],
+        body.dark-mode [style*="color:#1A237E"],
+        body.dark-mode [style*="color: #1A237E"] {
+            color: #90caf9 !important;
+        }
+        body.dark-mode [style*="border-top:4px solid #1a237e"],
+        body.dark-mode [style*="border-top: 4px solid #1a237e"],
+        body.dark-mode [style*="border-left: 4px solid #1a237e"],
+        body.dark-mode [style*="border-left:4px solid #1a237e"],
+        body.dark-mode [style*="border-color: #1a237e"],
+        body.dark-mode [style*="border-color:#1a237e"] {
+            border-color: #90caf9 !important;
+        }
+        /* Cajas de info con fondo azul claro (ej: vendedora) */
+        body.dark-mode [style*="background:#E3F2FD"],
+        body.dark-mode [style*="background: #E3F2FD"] {
+            background: #1a2a3a !important;
+        }
+        /* Flash info en dark mode */
+        body.dark-mode .flash-info {
+            background: #1a2a3a;
+            color: #90caf9;
+            border-left-color: #90caf9;
+        }
+        body.dark-mode .form-label, body.dark-mode .crumb, body.dark-mode .page-subtitle, body.dark-mode .card-desc {
+            color: #aaa;
+        }
+        body.dark-mode .crumb a { color: #90caf9; }
+        body.dark-mode .form-input, body.dark-mode select.form-input {
+            background: #2c2c2c; color: #fff; border-color: #444;
+        }
+        body.dark-mode .form-input:focus { border-color: #90caf9; }
+        body.dark-mode th { background: #111; color: #ccc; border-bottom: 1px solid #333; }
+        body.dark-mode td { border-bottom: 1px solid #333; color: #ddd; }
+        body.dark-mode tbody tr:hover { background: #2a2a2a; }
+        body.dark-mode .radio-group { background: #222; border-color: #444; }
+        body.dark-mode .radio-group label:hover { background: #333; }
+        body.dark-mode .modalidad-tabs { background: #222; }
+        body.dark-mode .modalidad-tabs a { color: #aaa; }
+        body.dark-mode .modalidad-tabs a.active { background: #333; color: #fff; }
+        body.dark-mode .btn-secondary { background: #444; color: #fff; }
+        body.dark-mode .btn-secondary:hover { background: #555; }
+        body.dark-mode .alert-box, body.dark-mode .readonly-banner { background: #3e2723; color: #ffb300; border-color: #ffb300; }
+        body.dark-mode .empty-state { color: #888; }
+        body.dark-mode .logo-circle { background: #ffffff !important; }
+
+        /* ════════════════════════════════════════════════════════
+           CAPA DE ARMONIZACIÓN — Paleta del logo en todo el sistema
+           Remapea los azules (#1a237e) y amarillos (#FFD700) que
+           están escritos "inline" en las ~42 plantillas, para que
+           hereden la identidad del logo sin tocar cada archivo.
+           Solo aplica en MODO CLARO (el modo oscuro tiene sus reglas).
+           ════════════════════════════════════════════════════════ */
+        /* Texto azul intenso -> navy del logo */
+        body:not(.dark-mode) [style*="color:#1a237e"],
+        body:not(.dark-mode) [style*="color: #1a237e"],
+        body:not(.dark-mode) [style*="color:#1A237E"],
+        body:not(.dark-mode) [style*="color: #1A237E"],
+        body:not(.dark-mode) [style*="color:#283593"],
+        body:not(.dark-mode) [style*="color: #283593"],
+        body:not(.dark-mode) [style*="color:#0d47a1"],
+        body:not(.dark-mode) [style*="color: #0d47a1"] {
+            color: var(--fp-navy) !important;
+        }
+        /* Fondos azul intenso -> navy del logo */
+        body:not(.dark-mode) [style*="background:#1a237e"],
+        body:not(.dark-mode) [style*="background: #1a237e"],
+        body:not(.dark-mode) [style*="background-color:#1a237e"],
+        body:not(.dark-mode) [style*="background-color: #1a237e"],
+        body:not(.dark-mode) [style*="background:#1A237E"],
+        body:not(.dark-mode) [style*="background: #1A237E"],
+        body:not(.dark-mode) [style*="background:#283593"],
+        body:not(.dark-mode) [style*="background: #283593"] {
+            background-color: var(--fp-navy) !important;
+        }
+        /* Bordes azul intenso -> navy del logo */
+        body:not(.dark-mode) [style*="border:4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border: 4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border-top:4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border-top: 4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border-left:4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border-left: 4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border-bottom:4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border-bottom: 4px solid #1a237e"],
+        body:not(.dark-mode) [style*="border-color:#1a237e"],
+        body:not(.dark-mode) [style*="border-color: #1a237e"] {
+            border-color: var(--fp-navy) !important;
+        }
+        /* Amarillo dorado -> naranja del logo (texto / fondo / borde) */
+        body:not(.dark-mode) [style*="color:#FFD700"],
+        body:not(.dark-mode) [style*="color: #FFD700"],
+        body:not(.dark-mode) [style*="color:#ffd700"],
+        body:not(.dark-mode) [style*="color: #ffd700"] {
+            color: var(--fp-orange) !important;
+        }
+        body:not(.dark-mode) [style*="background:#FFD700"],
+        body:not(.dark-mode) [style*="background: #FFD700"],
+        body:not(.dark-mode) [style*="background-color:#FFD700"],
+        body:not(.dark-mode) [style*="background-color: #FFD700"],
+        body:not(.dark-mode) [style*="background:#ffd700"],
+        body:not(.dark-mode) [style*="background: #ffd700"] {
+            background-color: var(--fp-orange) !important;
+        }
+        body:not(.dark-mode) [style*="border-top:4px solid #FFD700"],
+        body:not(.dark-mode) [style*="border-top: 4px solid #FFD700"],
+        body:not(.dark-mode) [style*="border-bottom:4px solid #FFD700"],
+        body:not(.dark-mode) [style*="border-bottom: 4px solid #FFD700"],
+        body:not(.dark-mode) [style*="border-color:#FFD700"],
+        body:not(.dark-mode) [style*="border-color: #FFD700"] {
+            border-color: var(--fp-orange) !important;
+        }
+
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header class="top" style="position: relative;">
+        {% if user.is_authenticated %}
+        <a href="{% url 'academia:bienvenida' %}" class="brand" style="text-decoration:none; color:inherit; cursor:pointer;" title="Ir al menú principal">
+            <div class="logo-area">
+                <img src="{% static 'logo.png' %}" alt="Logo Formación Profesional EC" class="logo-circle">
+            </div>
+            <h1>Formación Profesional EC</h1>
+        </a>
+        {% else %}
+        <div class="brand">
+            <div class="logo-area">
+                <img src="{% static 'logo.png' %}" alt="Logo Formación Profesional EC" class="logo-circle">
+            </div>
+            <h1>Formación Profesional EC</h1>
+        </div>
+        {% endif %}
+        
+        {% if user.is_authenticated %}
+        <div style="position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center;">
+            <a href="{% url 'academia:comprobante_asesor_detalle' user.id %}" style="background: rgba(255,255,255,0.15); color: white; text-decoration: none; border-radius: 20px; font-weight: 600; padding: 8px 18px; font-size: 14px; display: flex; align-items: center; gap: 8px; transition: background 0.2s;">
+                <span style="font-size: 16px;">👤</span> Perfil {{ user.first_name|default:user.username }}
+            </a>
+        </div>
+        {% endif %}
+
+        <nav>
+            {% if user.is_authenticated %}
+                <div class="user-info">
+                    <h3>{{ user.first_name|default:user.username }}</h3>
+                    {% if es_admin %}
+                        <span class="role-badge role-admin">Administrador</span>
+                    {% elif es_asesor %}
+                        <span class="role-badge role-asesor">Asesor</span>
+                    {% else %}
+                        <span class="role-badge role-default">Sin rol</span>
+                    {% endif %}
+                </div>
+                <div class="notif-bell" style="position:relative;">
+                    <button type="button" id="notif-toggle" title="Recordatorios" aria-label="Recordatorios"
+                            style="background: rgba(255,255,255,0.15); border:none; border-radius:50%; width:36px; height:36px; padding:0; display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; position:relative;">
+                        🔔
+                        {% if recordatorios_no_leidos_n %}
+                        <span id="notif-badge" style="position:absolute; top:-4px; right:-4px; background:#dc3545; color:#fff; font-size:10px; font-weight:700; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #1B2A4E;">{{ recordatorios_no_leidos_n }}</span>
+                        {% endif %}
+                    </button>
+                    <div id="notif-panel" style="display:none; position:absolute; right:0; top:46px; width:330px; max-width:90vw; background:#fff; color:#222; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.25); z-index:1200; overflow:hidden; text-align:left;">
+                        <div style="padding:12px 16px; background:#1B2A4E; color:#fff; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:space-between;">
+                            <span>🔔 Recordatorios</span>
+                            {% if recordatorios_no_leidos_n %}<span style="font-size:11px; background:#dc3545; border-radius:10px; padding:2px 8px;">{{ recordatorios_no_leidos_n }} nuevo{{ recordatorios_no_leidos_n|pluralize }}</span>{% endif %}
+                        </div>
+                        <div style="max-height:340px; overflow-y:auto;">
+                            {% if recordatorios_no_leidos %}
+                                {% for r in recordatorios_no_leidos %}
+                                <div style="padding:12px 16px; border-bottom:1px solid #f0f0f0;">
+                                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px;">
+                                        <strong style="font-size:13.5px; color:#1B2A4E;">{{ r.titulo }}</strong>
+                                        {% if r.prioridad == 'alta' %}<span style="font-size:10px; background:#ffebee; color:#c62828; border-radius:8px; padding:1px 6px;">Alta</span>{% endif %}
+                                        {% if r.por_vencer %}<span style="font-size:10px; background:#fff3e0; color:#E45103; border-radius:8px; padding:1px 6px;">Por vencer</span>{% endif %}
+                                    </div>
+                                    <div style="font-size:12px; color:#555; line-height:1.4;">{{ r.contenido|truncatechars:90 }}</div>
+                                    <div style="font-size:11px; color:#888; margin-top:5px;">
+                                        De {{ r.creado_por.first_name|default:r.creado_por.username }} · vence {{ r.fecha_vencimiento|date:"d/m/Y" }}
+                                    </div>
+                                    <div style="margin-top:7px; display:flex; gap:8px;">
+                                        <form method="post" action="{% url 'academia:recordatorio_marcar_leido' r.id %}" style="margin:0;">
+                                            {% csrf_token %}
+                                            <button type="submit" style="background:#2e7d32; color:#fff; border:none; border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer;">✓ Enterado</button>
+                                        </form>
+                                        <a href="{% url 'academia:recordatorio_lista' %}" style="background:#eef0f5; color:#1B2A4E; border-radius:6px; padding:4px 10px; font-size:11px; text-decoration:none;">Ver</a>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div style="padding:22px 16px; text-align:center; color:#888; font-size:13px;">
+                                    No tienes recordatorios pendientes.
+                                </div>
+                            {% endif %}
+                        </div>
+                        <a href="{% url 'academia:recordatorio_lista' %}" style="display:block; padding:11px 16px; text-align:center; background:#f7f8fa; color:#1B2A4E; font-weight:600; font-size:13px; text-decoration:none; border-top:1px solid #eee;">
+                            Ver todos los recordatorios →
+                        </a>
+                    </div>
+                </div>
+                <button id="theme-toggle" title="Alternar modo oscuro" style="background: rgba(255,255,255,0.15); border-radius: 50%; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px;">🌙</button>
+                <a href="{% url 'academia:bienvenida' %}">Inicio</a>
+                {% if es_admin %}
+                    <a href="/admin/" title="Panel administrativo de Django">Dashboard Admin</a>
+                {% endif %}
+                <form id="logout-form" method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="button" id="logout-btn" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cerrar sesión</button>
+                </form>
+            {% endif %}
+        </nav>
+    </header>
+
+    <div class="container">
+        {% block global_back_button %}
+        <!-- Botón Global de Retroceder -->
+        <div style="margin-bottom: 24px;">
+            <button onclick="history.back()" style="display: inline-flex; align-items: center; gap: 10px; background: white; color: #1B2A4E; border: 2px solid #1B2A4E; font-weight: 700; font-size: 15px; padding: 10px 20px; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: all 0.2s;" onmouseover="this.style.background='#1B2A4E'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='#1B2A4E';">
+                <span style="font-size: 20px; line-height: 1;">⬅️</span> Regresar
+            </button>
+        </div>
+        {% endblock %}
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="flash flash-{{ message.tags|default:'info' }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        {% if es_asesor and not es_admin %}
+            {% block readonly_banner %}{% endblock %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    {% block extra_js %}{% endblock %}
+
+    <!-- ══ MODAL DE CONFIRMACIÓN GLOBAL ════════════════════════════════ -->
+    <div id="confirm-modal-overlay" style="
+        display: none; position: fixed; inset: 0; z-index: 9999;
+        background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+        align-items: center; justify-content: center;
+        animation: fadeInOverlay 0.2s ease;
+    ">
+        <div id="confirm-modal-box" style="
+            background: white; border-radius: 16px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+            padding: 36px 32px 28px; max-width: 420px; width: 90%;
+            text-align: center;
+            animation: slideUpModal 0.25s cubic-bezier(0.34,1.56,0.64,1);
+            position: relative;
+        ">
+            <!-- Icono dinámico -->
+            <div id="confirm-modal-icon" style="
+                width: 64px; height: 64px; border-radius: 50%;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 28px; margin: 0 auto 16px; 
+            "></div>
+
+            <h3 id="confirm-modal-title" style="
+                font-size: 18px; font-weight: 700; color: #1a237e;
+                margin: 0 0 10px;
+            "></h3>
+
+            <p id="confirm-modal-message" style="
+                font-size: 14px; color: #666; line-height: 1.5;
+                margin: 0 0 28px;
+            "></p>
+
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button id="confirm-modal-cancel" onclick="cerrarModal()" style="
+                    flex: 1; max-width: 160px;
+                    padding: 11px 20px; border-radius: 10px;
+                    border: 2px solid #e0e0e0; background: white;
+                    font-size: 14px; font-weight: 600; color: #555;
+                    cursor: pointer; transition: all 0.15s; font-family: inherit;
+                ">Cancelar</button>
+                <button id="confirm-modal-confirm" style="
+                    flex: 1; max-width: 160px;
+                    padding: 11px 20px; border-radius: 10px;
+                    border: none; background: #c62828; color: white;
+                    font-size: 14px; font-weight: 600;
+                    cursor: pointer; transition: all 0.15s; font-family: inherit;
+                    box-shadow: 0 4px 12px rgba(198,40,40,0.3);
+                ">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes fadeInOverlay {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        @keyframes slideUpModal {
+            from { opacity: 0; transform: translateY(30px) scale(0.95); }
+            to   { opacity: 1; transform: translateY(0)    scale(1); }
+        }
+        #confirm-modal-cancel:hover {
+            background: #f5f5f5; border-color: #bbb;
+        }
+        #confirm-modal-confirm:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+        /* Dark mode */
+        body.dark-mode #confirm-modal-box {
+            background: #1e1e1e; border: 1px solid #333;
+        }
+        body.dark-mode #confirm-modal-title { color: #90caf9; }
+        body.dark-mode #confirm-modal-message { color: #aaa; }
+        body.dark-mode #confirm-modal-cancel {
+            background: #2c2c2c; border-color: #555; color: #ddd;
+        }
+        body.dark-mode #confirm-modal-cancel:hover {
+            background: #383838;
+        }
+    </style>
+
+    <script>
+        // ── Sistema de Modal de Confirmación ─────────────────────────────
+        let _modalFormTarget = null;
+
+        const MODAL_TIPOS = {
+            danger: {
+                icon: '🗑️',
+                bgIcon: '#ffebee',
+                colorBtn: '#c62828',
+                shadowBtn: 'rgba(198,40,40,0.3)',
+            },
+            warning: {
+                icon: '⚠️',
+                bgIcon: '#fff8e1',
+                colorBtn: '#e65100',
+                shadowBtn: 'rgba(230,81,0,0.3)',
+            },
+            info: {
+                icon: 'ℹ️',
+                bgIcon: '#e3f2fd',
+                colorBtn: '#1a237e',
+                shadowBtn: 'rgba(26,35,126,0.3)',
+            },
+        };
+
+        let _modalUrlTarget = null;
+
+        function confirmarAccion(form, mensaje, tipo) {
+            tipo = tipo || 'danger';
+            const cfg = MODAL_TIPOS[tipo] || MODAL_TIPOS.danger;
+            _modalFormTarget = form;
+            _modalUrlTarget = null;
+
+            const overlay = document.getElementById('confirm-modal-overlay');
+            const iconEl   = document.getElementById('confirm-modal-icon');
+            const titleEl  = document.getElementById('confirm-modal-title');
+            const msgEl    = document.getElementById('confirm-modal-message');
+            const btnConf  = document.getElementById('confirm-modal-confirm');
+
+            iconEl.textContent         = cfg.icon;
+            iconEl.style.background    = cfg.bgIcon;
+            titleEl.textContent        = '¿Estás seguro?';
+            msgEl.textContent          = mensaje;
+            btnConf.style.background   = cfg.colorBtn;
+            btnConf.style.boxShadow    = `0 4px 12px ${cfg.shadowBtn}`;
+
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function confirmarEnlace(url, mensaje, tipo) {
+            tipo = tipo || 'warning';
+            const cfg = MODAL_TIPOS[tipo] || MODAL_TIPOS.warning;
+            _modalFormTarget = null;
+            _modalUrlTarget = url;
+
+            const overlay = document.getElementById('confirm-modal-overlay');
+            const iconEl   = document.getElementById('confirm-modal-icon');
+            const titleEl  = document.getElementById('confirm-modal-title');
+            const msgEl    = document.getElementById('confirm-modal-message');
+            const btnConf  = document.getElementById('confirm-modal-confirm');
+
+            iconEl.textContent         = cfg.icon;
+            iconEl.style.background    = cfg.bgIcon;
+            titleEl.textContent        = '¿Estás seguro?';
+            msgEl.textContent          = mensaje;
+            btnConf.style.background   = cfg.colorBtn;
+            btnConf.style.boxShadow    = `0 4px 12px ${cfg.shadowBtn}`;
+
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function cerrarModal() {
+            const overlay = document.getElementById('confirm-modal-overlay');
+            overlay.style.display = 'none';
+            document.body.style.overflow = '';
+            _modalFormTarget = null;
+            _modalUrlTarget = null;
+        }
+
+        document.getElementById('confirm-modal-confirm').addEventListener('click', function() {
+            if (_modalFormTarget) {
+                _modalFormTarget.submit();
+            } else if (_modalUrlTarget) {
+                window.location.href = _modalUrlTarget;
+            }
+            cerrarModal();
+        });
+
+        // Cerrar al hacer clic en el fondo
+        document.getElementById('confirm-modal-overlay').addEventListener('click', function(e) {
+            if (e.target === this) cerrarModal();
+        });
+
+        // Cerrar con Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') cerrarModal();
+        });
+
+        // ── Modo Oscuro ──────────────────────────────────────────────────
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const body = document.body;
+        
+        if (localStorage.getItem('theme') === 'dark') {
+            body.classList.add('dark-mode');
+            if (themeToggleBtn) themeToggleBtn.textContent = '☀️';
+        }
+
+        if (themeToggleBtn) {
+            themeToggleBtn.addEventListener('click', () => {
+                body.classList.toggle('dark-mode');
+                if (body.classList.contains('dark-mode')) {
+                    localStorage.setItem('theme', 'dark');
+                    themeToggleBtn.textContent = '☀️';
+                } else {
+                    localStorage.setItem('theme', 'light');
+                    themeToggleBtn.textContent = '🌙';
+                }
+            });
+        }
+    </script>
+    </script>
+
+    <!-- Estilos para la animación de escritura de MercyBot -->
+    <style>
+        .mercy-typing {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .mercy-typing span {
+            width: 4px;
+            height: 4px;
+            background-color: #1a237e;
+            border-radius: 50%;
+            animation: mercyBounce 1.4s infinite ease-in-out both;
+        }
+        .mercy-typing span:nth-child(1) { animation-delay: -0.32s; }
+        .mercy-typing span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes mercyBounce {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+
+    <!-- MercyBot Widget (AI + Voice based) -->
+    <div id="assistant-widget" style="position:fixed; right:24px; bottom:24px; z-index:1200; font-family:'Inter', sans-serif;">
+        <!-- Botón flotante -->
+        <button id="assistant-toggle" class="btn btn-primary" style="border-radius:50px; padding:12px 20px; font-size:15px; font-weight:600; background:#1a237e; border:none; box-shadow:0 8px 24px rgba(26,35,126,0.3); display:flex; align-items:center; gap:10px; transition:all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); cursor:pointer;" onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 28px rgba(26,35,126,0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 24px rgba(26,35,126,0.3)';">
+            <span style="width:22px; height:22px; display:inline-block;">
+                <svg viewBox="0 0 100 100" width="100%" height="100%"><defs><linearGradient id="mGradBtn" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#3949ab"/><stop offset="100%" stop-color="#5c6bc0"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#mGradBtn)"/><path d="M28 65 L28 40 L50 60 L72 40 L72 65" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+            </span> MercyBot
+        </button>
+        
+        <!-- Panel de chat -->
+        <div id="assistant-panel" style="display:none; width:360px; max-width:90vw; box-shadow:0 12px 40px rgba(0,0,0,0.15); background:#ffffff; border-radius:20px; overflow:hidden; margin-top:16px; border:1px solid rgba(0,0,0,0.05); flex-direction:column;">
+            
+            <!-- Header -->
+            <div style="padding:16px 20px; background:#ffffff; color:#1a237e; font-weight:700; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #f0f0f0;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:32px; height:32px; display:flex; align-items:center; justify-content:center;">
+                        <svg viewBox="0 0 100 100" width="100%" height="100%"><defs><linearGradient id="mGradHeader" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1a237e"/><stop offset="100%" stop-color="#3949ab"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#mGradHeader)"/><path d="M28 65 L28 40 L50 60 L72 40 L72 65" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                    </div>
+                    <div style="display:flex; flex-direction:column;">
+                        <span style="font-size:15px; line-height:1.2;">MercyBot</span>
+                        <span id="mercybot-status" style="font-size:11px; font-weight:500; color:#1a237e; display:none; align-items:center; gap:6px;">
+                            Escribiendo <div class="mercy-typing"><span></span><span></span><span></span></div>
+                        </span>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <button id="assistant-mute" title="Silenciar voz de Mercy" style="background:transparent; border:none; color:#999; width:28px; height:28px; border-radius:50%; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;" onmouseover="this.style.background='#f5f5f5';" onmouseout="this.style.background='transparent';">
+                        <svg id="mute-icon-on" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+                        <svg id="mute-icon-off" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+                    </button>
+                    <button id="assistant-restart" title="Reiniciar chat" style="background:transparent; border:none; color:#999; width:28px; height:28px; border-radius:50%; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;" onmouseover="this.style.background='#f5f5f5'; this.style.color='#1a237e';" onmouseout="this.style.background='transparent'; this.style.color='#999';">↻</button>
+                    <button id="assistant-close" title="Cerrar" style="background:transparent; border:none; color:#999; width:28px; height:28px; border-radius:50%; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;" onmouseover="this.style.background='#f5f5f5'; this.style.color='#333';" onmouseout="this.style.background='transparent'; this.style.color='#999';">✕</button>
+                </div>
+            </div>
+            
+            <!-- Mensajes -->
+            <div id="assistant-messages" style="height:340px; overflow-y:auto; padding:20px; background:#fcfcfc; display:flex; flex-direction:column; gap:12px;">
+                <!-- El contenido se llenará por JS -->
+            </div>
+            
+            <!-- Input Area -->
+            <div style="padding:14px 16px; background:#ffffff; border-top:1px solid #f0f0f0; display:flex; align-items:center; gap:12px;">
+                <button id="assistant-mic" style="background:#1e1e1e; border:none; border-radius:50%; width:48px; height:48px; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all 0.2s; color:#ffffff; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.1);" title="Hablar con MercyBot" onmouseover="if(!this.classList.contains('listening')) this.style.background='#333333'; this.style.transform='scale(1.05)';" onmouseout="if(!this.classList.contains('listening')) this.style.background='#1e1e1e'; this.style.transform='scale(1)';">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="22"></line>
+                    </svg>
+                </button>
+                
+                <div style="flex:1; position:relative; display:flex; align-items:center;">
+                    <input id="assistant-input" placeholder="Escribe un mensaje..." style="width:100%; border-radius:24px; padding:14px 48px 14px 18px; border:1px solid #e0e0e0; background:#ffffff; font-size:14px; font-family:inherit; outline:none; transition:all 0.2s; box-shadow: inset 0 1px 3px rgba(0,0,0,0.02);" onfocus="this.style.borderColor='#1a237e'; this.style.boxShadow='0 0 0 2px rgba(26,35,126,0.1)';" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='inset 0 1px 3px rgba(0,0,0,0.02)';" />
+                    
+                    <button id="assistant-send" style="position:absolute; right:6px; background:#000051; border:none; color:white; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:0.2s;" onmouseover="this.style.background='#1a237e'; this.style.transform='scale(1.05)';" onmouseout="this.style.background='#000051'; this.style.transform='scale(1)';">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 4px rgba(76, 175, 80, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+        #assistant-mic.listening {
+            background: #ff4757 !important;
+            color: white !important;
+            box-shadow: 0 4px 12px rgba(255, 71, 87, 0.4);
+            animation: pulseRecord 1.5s infinite;
+        }
+        @keyframes pulseRecord {
+            0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(255, 71, 87, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+        }
+        
+        /* Ocultar barra de scroll para que se vea más limpio */
+        #assistant-messages::-webkit-scrollbar {
+            width: 4px;
+        }
+        #assistant-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #assistant-messages::-webkit-scrollbar-thumb {
+            background: #e0e0e0;
+            border-radius: 4px;
+        }
+    </style>
+
+    <script>
+        (function(){
+            function getCookie(name) {
+                const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+                return v ? v.pop() : '';
+            }
+            const toggle = document.getElementById('assistant-toggle');
+            const panel = document.getElementById('assistant-panel');
+            const closeBtn = document.getElementById('assistant-close');
+            const restartBtn = document.getElementById('assistant-restart');
+            const sendBtn = document.getElementById('assistant-send');
+            const input = document.getElementById('assistant-input');
+            const msgs = document.getElementById('assistant-messages');
+            const micBtn = document.getElementById('assistant-mic');
+            const statusIndicator = document.getElementById('mercybot-status');
+            const muteBtn = document.getElementById('assistant-mute');
+            const muteIconOn = document.getElementById('mute-icon-on');
+            const muteIconOff = document.getElementById('mute-icon-off');
+
+            const MUTE_KEY = 'mercybot_muted';
+            let isMuted = localStorage.getItem(MUTE_KEY) === 'true';
+
+            function applyMuteUI() {
+                if (isMuted) {
+                    muteIconOn.style.display = 'none';
+                    muteIconOff.style.display = 'block';
+                    muteBtn.style.color = '#e53935';
+                    muteBtn.title = 'Activar voz de Mercy';
+                } else {
+                    muteIconOn.style.display = 'block';
+                    muteIconOff.style.display = 'none';
+                    muteBtn.style.color = '#999';
+                    muteBtn.title = 'Silenciar voz de Mercy';
+                }
+            }
+            applyMuteUI();
+
+            muteBtn.addEventListener('click', function () {
+                isMuted = !isMuted;
+                localStorage.setItem(MUTE_KEY, isMuted ? 'true' : 'false');
+                applyMuteUI();
+                // Si se silencia mientras habla, callar de inmediato
+                if (isMuted && 'speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                }
+            });
+
+            const STORAGE_KEY = 'mercybot_chat_history';
+            
+            function saveChatHistory() {
+                localStorage.setItem(STORAGE_KEY, msgs.innerHTML);
+            }
+            
+            function loadChatHistory() {
+                const history = localStorage.getItem(STORAGE_KEY);
+                if (history) {
+                    msgs.innerHTML = history;
+                    msgs.scrollTop = msgs.scrollHeight;
+                } else {
+                    renderWelcomeMessage();
+                }
+            }
+            
+            function renderWelcomeMessage() {
+                msgs.innerHTML = `
+                    <div style="text-align:center; margin-bottom:10px;">
+                        <span style="background:#f0f0f0; color:#888; font-size:11px; padding:4px 10px; border-radius:12px;">Hoy</span>
+                    </div>
+                    <div style="display:flex; align-items:flex-end; gap:8px;">
+                        <div style="width:28px; height:28px; background:#f0f4ff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">🤖</div>
+                        <div style="background:#ffffff; border:1px solid #eaeaea; padding:12px 16px; border-radius:16px; border-bottom-left-radius:4px; font-size:13px; color:#444; line-height:1.5; box-shadow:0 2px 5px rgba(0,0,0,0.02); max-width:85%;">
+                            Hola, soy Mercy. ¿En qué te puedo ayudar hoy?
+                        </div>
+                    </div>
+                `;
+                saveChatHistory();
+            }
+            
+            // Cargar historial inicial
+            loadChatHistory();
+            
+        // Modal logic for restart
+        const restartModal = document.createElement('div');
+        restartModal.innerHTML = `
+            <div id="restart-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px); z-index:2000; justify-content:center; align-items:center; opacity:0; transition:opacity 0.2s;">
+                <div style="background:#fff; border-radius:16px; padding:24px; width:90%; max-width:320px; box-shadow:0 10px 40px rgba(0,0,0,0.2); transform:scale(0.95); transition:transform 0.2s; text-align:center; font-family:'Inter', sans-serif;">
+                    <div style="font-size:32px; margin-bottom:12px;">🧹</div>
+                    <h3 style="margin:0 0 12px 0; font-size:18px; color:#1a237e;">¿Reiniciar chat?</h3>
+                    <p style="margin:0 0 24px 0; font-size:14px; color:#666; line-height:1.5;">MercyBot olvidará la conversación actual y empezará desde cero.</p>
+                    <div style="display:flex; gap:12px; justify-content:center;">
+                        <button id="restart-cancel" style="padding:10px 16px; border:none; background:#f0f0f0; color:#555; border-radius:8px; font-weight:600; cursor:pointer; flex:1; transition:0.2s;">Cancelar</button>
+                        <button id="restart-confirm" style="padding:10px 16px; border:none; background:#e53935; color:#fff; border-radius:8px; font-weight:600; cursor:pointer; flex:1; transition:0.2s;">Reiniciar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(restartModal);
+        
+        const modalEl = document.getElementById('restart-modal');
+        const modalBox = modalEl.querySelector('div');
+        const cancelBtn = document.getElementById('restart-cancel');
+        const confirmBtn = document.getElementById('restart-confirm');
+
+        function openModal() {
+            modalEl.style.display = 'flex';
+            setTimeout(() => {
+                modalEl.style.opacity = '1';
+                modalBox.style.transform = 'scale(1)';
+            }, 10);
+        }
+
+        function closeModal() {
+            modalEl.style.opacity = '0';
+            modalBox.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+                modalEl.style.display = 'none';
+            }, 200);
+        }
+
+        restartBtn.addEventListener('click', openModal);
+        cancelBtn.addEventListener('click', closeModal);
+
+        confirmBtn.addEventListener('click', () => {
+            closeModal();
+            localStorage.removeItem(STORAGE_KEY);
+            renderWelcomeMessage();
+            // Limpiar memoria en el servidor
+            fetch('{% url "academia:assistant_simple_chat" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ message: '/clear' })
+            });
+        });
+
+            // Web Speech API
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            let recognition = null;
+            let isListening = false;
+            
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'es-EC';
+                recognition.interimResults = true; // Para ver lo que se escribe en tiempo real
+                recognition.maxAlternatives = 1;
+
+                recognition.onstart = function() {
+                    isListening = true;
+                    micBtn.classList.add('listening');
+                    input.placeholder = 'Escuchando...';
+                    input.value = '';
+                };
+
+                recognition.onresult = function(event) {
+                    let interimTranscript = '';
+                    let finalTranscript = '';
+                    
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        if (event.results[i].isFinal) {
+                            finalTranscript += event.results[i][0].transcript;
+                        } else {
+                            interimTranscript += event.results[i][0].transcript;
+                        }
+                    }
+                    
+                    if (finalTranscript !== '') {
+                        input.value = finalTranscript;
+                    } else {
+                        input.value = interimTranscript;
+                    }
+                };
+
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error', event.error);
+                    stopListening();
+                };
+
+                recognition.onend = function() {
+                    // Si paró solo, enviamos si hay texto
+                    if (isListening) {
+                        isListening = false;
+                        micBtn.classList.remove('listening');
+                        input.placeholder = 'Escribe un mensaje...';
+                        if (input.value.trim() !== '') {
+                            sendQuery();
+                        }
+                    }
+                };
+            } else {
+                micBtn.style.display = 'none';
+            }
+
+            function stopListening() {
+                isListening = false;
+                micBtn.classList.remove('listening');
+                input.placeholder = 'Escribe un mensaje...';
+                if (recognition) recognition.stop();
+            }
+
+            micBtn.addEventListener('click', () => {
+                // Detener a MercyBot si está hablando en este momento
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                }
+
+                if (recognition) {
+                    if (isListening) {
+                        // Click again to stop and send
+                        stopListening();
+                        if (input.value.trim() !== '') {
+                            sendQuery();
+                        }
+                    } else {
+                        // Click to start
+                        recognition.start();
+                    }
+                }
+            });
+
+            function speakText(text) {
+                if (isMuted) return;  // Mercy silenciada por el usuario
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang  = 'es-MX'; // Español latino: más dulce y cercano
+                    utterance.rate  = 0.96;    // Un poco más pausada para que suene cálida
+                    utterance.pitch = 1.15;    // Tono moderado, voz femenina suave y acogedora
+                    utterance.volume = 1.0;
+
+                    const voices = window.speechSynthesis.getVoices();
+
+                    // Voces FEMENINAS naturales preferidas (Mac, Windows, Google, Edge)
+                    // Mónica/Paulina/Sabina (Mac), Helena/Sabina (Windows),
+                    // Google español (Android/Chrome), Microsoft online "Dalia/Salomé/Paloma"
+                    const vocesFemeninas = [
+                        'dalia', 'salome', 'salomé', 'paloma', 'mónica', 'monica',
+                        'paulina', 'sabina', 'helena', 'elena', 'isabela', 'femenina', 'female'
+                    ];
+
+                    let bestVoice = null;
+
+                    // 1. Buscar una voz femenina en español por nombre
+                    for (let nombre of vocesFemeninas) {
+                        bestVoice = voices.find(v =>
+                            v.lang.toLowerCase().startsWith('es') &&
+                            v.name.toLowerCase().includes(nombre)
+                        );
+                        if (bestVoice) break;
+                    }
+
+                    // 2. Google español (suele ser voz femenina clara y agradable)
+                    if (!bestVoice) {
+                        bestVoice = voices.find(v =>
+                            v.name.toLowerCase().includes('google') &&
+                            v.lang.toLowerCase().startsWith('es')
+                        );
+                    }
+
+                    // 3. Cualquier voz que NO sea claramente masculina, en español
+                    if (!bestVoice) {
+                        const masculinas = ['jorge', 'diego', 'pablo', 'carlos', 'juan', 'male', 'masculin'];
+                        bestVoice = voices.find(v =>
+                            v.lang.toLowerCase().startsWith('es') &&
+                            !masculinas.some(m => v.name.toLowerCase().includes(m))
+                        );
+                    }
+
+                    // 4. Fallback final: primera voz en español que exista
+                    if (!bestVoice) {
+                        bestVoice = voices.find(v => v.lang.toLowerCase().startsWith('es'));
+                    }
+
+                    if (bestVoice) {
+                        utterance.voice = bestVoice;
+                    }
+
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+            window.mercySpeakText = speakText; // Exponer globalmente
+
+            function appendMessage(who, text) {
+                const el = document.createElement('div');
+                el.style.marginBottom = '8px';
+                
+                // Formatear negritas simples
+                let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                
+                if (who === 'MercyBot') {
+                    const avatarSvg = `<svg viewBox="0 0 100 100" width="100%" height="100%"><defs><linearGradient id="mGradMsg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1a237e"/><stop offset="100%" stop-color="#3949ab"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#mGradMsg)"/><path d="M28 65 L28 40 L50 60 L72 40 L72 65" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
+                    el.innerHTML = `
+                        <div style="display:flex; align-items:flex-start; gap:8px; margin-top:10px;">
+                            <div style="width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${avatarSvg}</div>
+                            <div style="background:#ffffff; border:1px solid #eaeaea; padding:12px 16px; border-radius:16px; border-bottom-left-radius:4px; font-size:13px; color:#444; line-height:1.5; box-shadow:0 2px 5px rgba(0,0,0,0.02); max-width:85%;">${formattedText}</div>
+                        </div>
+                    `;
+                } else {
+                    el.innerHTML = `
+                        <div style="display:flex; align-items:flex-start; gap:8px; justify-content:flex-end; margin-top:10px;">
+                            <div style="background:#1a237e; color:#ffffff; padding:12px 16px; border-radius:16px; border-bottom-right-radius:4px; font-size:13px; line-height:1.5; max-width:85%;">${formattedText}</div>
+                        </div>
+                    `;
+                }
+                msgs.appendChild(el);
+                msgs.scrollTop = msgs.scrollHeight;
+                saveChatHistory();
+            }
+
+            toggle.addEventListener('click', ()=> {
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+                if (panel.style.display === 'block') input.focus();
+            });
+            closeBtn.addEventListener('click', ()=> panel.style.display='none');
+
+            async function sendQuery() {
+                const q = input.value.trim();
+                if (!q) return;
+                appendMessage('Tú', q);
+                input.value = '';
+                
+                // Status header fallback
+                statusIndicator.style.display = 'inline-block';
+                input.disabled = true;
+                sendBtn.disabled = true;
+
+                // Añadir burbuja de "Escribiendo..."
+                const avatarSvg = `<svg viewBox="0 0 100 100" width="100%" height="100%"><defs><linearGradient id="mGradMsg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1a237e"/><stop offset="100%" stop-color="#3949ab"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#mGradMsg)"/><path d="M28 65 L28 40 L50 60 L72 40 L72 65" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
+                const typingBubble = document.createElement('div');
+                typingBubble.id = 'mercy-typing-bubble';
+                typingBubble.innerHTML = `
+                    <div style="display:flex; align-items:flex-start; gap:8px; margin-top:10px;">
+                        <div style="width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${avatarSvg}</div>
+                        <div style="background:#ffffff; border:1px solid #eaeaea; padding:12px 16px; border-radius:16px; border-bottom-left-radius:4px; box-shadow:0 2px 5px rgba(0,0,0,0.02); display:flex; align-items:center;">
+                            <div class="mercy-typing"><span></span><span></span><span></span></div>
+                        </div>
+                    </div>
+                `;
+                msgs.appendChild(typingBubble);
+                msgs.scrollTop = msgs.scrollHeight;
+
+                try {
+                    const res = await fetch('{% url "academia:assistant_simple_chat" %}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                        body: JSON.stringify({ message: q, path: window.location.pathname })
+                    });
+                    const data = await res.json();
+                    let reply = data.reply || 'No hay respuesta';
+                    
+                    // Interceptar comando mágico de redirección
+                    let redirectUrl = null;
+                    const redirectMatch = reply.match(/\[REDIRECT:\s*(.+?)\]/);
+                    if (redirectMatch) {
+                        redirectUrl = redirectMatch[1];
+                        reply = reply.replace(redirectMatch[0], '').trim(); // Quitar de la vista y del habla
+                    }
+
+                    appendMessage('MercyBot', reply);
+                    
+                    // Solo leer si no es un mensaje de error muy largo
+                    if (!reply.includes("Error en la Inteligencia Artificial")) {
+                        // Limpiar markdown antes de hablar
+                        const cleanText = reply.replace(/\*\*(.*?)\*\*/g, '$1').replace(/#/g, '');
+                        speakText(cleanText);
+                    }
+                    
+                    // Si hubo redirección, ejecutarla después de dar tiempo a que empiece a hablar
+                    if (redirectUrl) {
+                        setTimeout(() => {
+                            window.location.href = redirectUrl;
+                        }, 1500); // 1.5 segundos
+                    }
+
+                } catch (err) {
+                    appendMessage('MercyBot', 'Hubo un error de conexión con mi cerebro artificial. Intenta nuevamente.');
+                } finally {
+                    const tb = document.getElementById('mercy-typing-bubble');
+                    if (tb) tb.remove();
+                    statusIndicator.style.display = 'none';
+                    input.disabled = false;
+                    sendBtn.disabled = false;
+                    input.focus();
+                }
+            }
+
+            sendBtn.addEventListener('click', sendQuery);
+            input.addEventListener('keydown', function(e){ if (e.key === 'Enter') sendQuery(); });
+            
+            // Cargar voces en background
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.onvoiceschanged = function() {
+                    window.speechSynthesis.getVoices();
+                };
+            }
+            
+            // ── Lógica de sonido al cerrar sesión ──
+            const logoutBtn = document.getElementById('logout-btn');
+            const logoutForm = document.getElementById('logout-form');
+            if (logoutBtn && logoutForm) {
+                logoutBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if ('speechSynthesis' in window && !isMuted) {
+                        speakText("Vuelva pronto. Gracias.");
+                        // Esperar a que hable un momento antes de redirigir
+                        setTimeout(() => {
+                            logoutForm.submit();
+                        }, 2200);
+                    } else {
+                        logoutForm.submit();
+                    }
+                });
+            }
+
+            // ── Lógica de inactividad ──
+            {% if user.is_authenticated %}
+            const TIEMPO_INACTIVIDAD = 20 * 60 * 1000; // 20 minutos
+            let temporizadorInactividad;
+
+            function reiniciarTemporizador() {
+                clearTimeout(temporizadorInactividad);
+                temporizadorInactividad = setTimeout(function() {
+                    alert("Sección finalizada por inactividad.");
+                    if (logoutForm) logoutForm.submit();
+                }, TIEMPO_INACTIVIDAD);
+            }
+
+            reiniciarTemporizador();
+            window.addEventListener('mousemove', reiniciarTemporizador);
+            window.addEventListener('keypress', reiniciarTemporizador);
+            window.addEventListener('click', reiniciarTemporizador);
+            window.addEventListener('scroll', reiniciarTemporizador);
+            {% endif %}
+
+            // ── Campana de recordatorios (abrir/cerrar panel) ──
+            const notifToggle = document.getElementById('notif-toggle');
+            const notifPanel = document.getElementById('notif-panel');
+            if (notifToggle && notifPanel) {
+                notifToggle.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    notifPanel.style.display = (notifPanel.style.display === 'block') ? 'none' : 'block';
+                });
+                // Cerrar al hacer click fuera del panel
+                document.addEventListener('click', function (e) {
+                    if (notifPanel.style.display === 'block'
+                        && !notifPanel.contains(e.target)
+                        && !notifToggle.contains(e.target)) {
+                        notifPanel.style.display = 'none';
+                    }
+                });
+            }
+
+        })();
+    </script>
+
+    
+
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const bancoSelects = document.querySelectorAll('select#id_banco');
+    bancoSelects.forEach(select => {
+        const originalName = select.name || 'banco';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = select.className;
+        input.placeholder = 'Escriba el nombre del banco...';
+        input.style.display = 'none';
+        input.style.marginTop = '8px';
+        input.id = 'id_banco_otro';
+        
+        select.parentNode.insertBefore(input, select.nextSibling);
+        
+        select.addEventListener('change', function() {
+            if (this.value === 'OTRO') {
+                input.style.display = 'block';
+                input.name = originalName;
+                select.removeAttribute('name');
+                input.focus();
+            } else {
+                input.style.display = 'none';
+                input.name = 'banco_otro';
+                select.name = originalName;
+            }
+        });
+        
+        const form = select.closest('form');
+        if (form) {
+            form.addEventListener('submit', function() {
+                if (select.value === 'OTRO') {
+                    input.name = originalName;
+                    select.removeAttribute('name');
+                } else {
+                    select.name = originalName;
+                    input.removeAttribute('name');
+                }
+            });
+        }
+    });
+});
+</script>
+</body>
+
+
+</html>

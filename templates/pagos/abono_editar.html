@@ -1,0 +1,311 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar abono {{ abono.numero_recibo }}{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:pagos_lista' %}">Pagos</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:matricula_abonos' matricula.pk %}">{{ matricula.estudiante.nombre_completo }}</a> &nbsp;›&nbsp;
+    Editar {{ abono.numero_recibo }}
+</div>
+
+<h2 class="page-title">Editar abono {{ abono.numero_recibo }}</h2>
+<p class="page-subtitle">
+    Matrícula: <strong>{{ matricula.estudiante.nombre_completo }}</strong> — {{ matricula.curso.nombre }}<br>
+    Valor del curso: <strong>${{ matricula.valor_curso|floatformat:2 }}</strong> ·
+    Pagado actualmente: <strong>${{ matricula.valor_pagado|floatformat:2 }}</strong>
+</p>
+
+<form method="post" class="card-box" novalidate style="max-width: 560px;">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="flash flash-error" style="margin-bottom:16px;">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+
+    {# ── Tipo de pago + Módulo ── #}
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:14px;">
+        <div>
+            <label class="form-label">Tipo de pago *</label>
+            {{ form.tipo_pago }}
+            {{ form.tipo_pago.errors }}
+        </div>
+        <div id="bloque-modulo" style="display:none;">
+            <label class="form-label">Módulo *</label>
+            {{ form.numero_modulo }}
+            {{ form.numero_modulo.errors }}
+        </div>
+    </div>
+
+    {# ── Bloque Recuperación: ¿suma al saldo o cobrar aparte? ── #}
+    <div id="bloque-recuperacion"
+        style="margin-bottom:14px; display:none; background:#fff8e1; border:1px solid #f0ad4e; border-radius:8px; padding:12px;">
+        <label class="form-label" style="color:#c9a227;">✱ ¿Suma al pago del curso? *</label>
+        {{ form.cuenta_para_saldo }}
+        {{ form.cuenta_para_saldo.errors }}
+        <small style="color:#666; font-size:11px; display:block; margin-top:4px;">
+            <strong>Sí</strong>: la recuperación se suma al pago del curso (afecta el saldo). ·
+            <strong>No</strong>: se cobra aparte como ingreso adicional, no afecta el saldo del curso.
+        </small>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:14px;">
+        <div>
+            <label class="form-label">Fecha *</label>
+            {{ form.fecha }}
+            {{ form.fecha.errors }}
+        </div>
+        <div>
+            <label class="form-label">Monto (USD) *</label>
+            {{ form.monto }}
+            {{ form.monto.errors }}
+        </div>
+    </div>
+
+    <!-- Selector de Distribución de Pago -->
+    <div style="margin-bottom:14px;">
+        <label class="form-label" for="id_tipo_cobro_abono">Distribución de pago *</label>
+        {{ form.tipo_cobro }}
+        {{ form.tipo_cobro.errors }}
+        <small style="color:#666; font-size:11px; display:block; margin-top:4px;">Selecciona si el pago es de un solo método o combinado.</small>
+    </div>
+
+    <div id="un-solo-metodo-abono-container" style="display: contents;">
+        <div style="margin-bottom:14px;">
+            <label class="form-label">Método de pago *</label>
+            {{ form.metodo }}
+            {{ form.metodo.errors }}
+        </div>
+
+        {# Banco — solo si método es Transferencia bancaria #}
+        <div id="bloque-banco" style="margin-bottom:14px; display:none; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
+            <label class="form-label" style="color:#1a237e;">🏦 Banco *</label>
+            {{ form.banco }}
+            {{ form.banco.errors }}
+        </div>
+    </div>
+
+    <div id="mixto-abono-container" style="display: none; margin-bottom:14px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+        <p style="margin: 0 0 4px 0; font-weight: 600; color: #1a237e; font-size: 14px;">Pago Mixto (Dividir el monto en dos)</p>
+        <p style="margin: 0 0 12px 0; font-size: 11.5px; color: #666;">
+            💡 <strong>Nota:</strong> Ingresa el pago total en el campo <strong style="color:#333;">"Monto (USD)"</strong> de arriba y luego divide ese valor entre el <strong>Monto 1</strong> y el <strong>Monto 2</strong> aquí abajo.
+        </p>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div>
+                <label class="form-label">Monto 1 *</label>
+                {{ form.monto_pago_1 }}{{ form.monto_pago_1.errors }}
+            </div>
+            <div>
+                <label class="form-label">Método 1 *</label>
+                {{ form.metodo_pago_1 }}{{ form.metodo_pago_1.errors }}
+            </div>
+            <div id="bloque-banco-1" style="display:none;">
+                <label class="form-label">🏦 Banco 1 *</label>
+                {{ form.banco_1 }}{{ form.banco_1.errors }}
+            </div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
+            <div>
+                <label class="form-label">Monto 2 *</label>
+                {{ form.monto_pago_2 }}{{ form.monto_pago_2.errors }}
+            </div>
+            <div>
+                <label class="form-label">Método 2 *</label>
+                {{ form.metodo_pago_2 }}{{ form.metodo_pago_2.errors }}
+            </div>
+            <div id="bloque-banco-2" style="display:none;">
+                <label class="form-label">🏦 Banco 2 *</label>
+                {{ form.banco_2 }}{{ form.banco_2.errors }}
+            </div>
+        </div>
+        <small id="mixto-abono-error-msg" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600; font-size:12px;">
+            ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Monto (USD)" principal.
+        </small>
+    </div>
+
+    <div style="margin-bottom:14px;">
+        <label class="form-label">Nº de recibo</label>
+        {{ form.numero_recibo }}
+        {{ form.numero_recibo.errors }}
+        <small style="color:#888; font-size:11px;">Si lo dejas vacío, se conserva el actual.</small>
+    </div>
+
+    <div style="margin-bottom:14px;">
+        <label class="form-label">Observaciones</label>
+        {{ form.observaciones }}
+    </div>
+
+    <div style="background:#fafafa; padding:10px; border-radius:6px; font-size:12px; color:#666; margin-bottom:16px;">
+        Registrado el {{ abono.creado|date:"d/m/Y H:i" }}
+        {% if abono.registrado_por %}
+            por <strong>{{ abono.registrado_por.get_full_name|default:abono.registrado_por.username }}</strong>
+        {% endif %}.
+    </div>
+
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <a href="{% url 'academia:matricula_abonos' matricula.pk %}" class="btn btn-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ========== MOSTRAR/OCULTAR BANCO SEGÚN MÉTODO DE PAGO ==========
+    function _aplicarToggleBanco(metodoSel, bancoCont, bancoSel) {
+        if (!metodoSel || !bancoCont) return;
+        const met = metodoSel.value;
+        const labelBanco = bancoCont.querySelector('label');
+
+        if (met === 'transferencia') {
+            bancoCont.style.display = 'block';
+            if (labelBanco) labelBanco.innerText = '🏦 Banco *';
+            if (bancoSel) {
+                bancoSel.required = true;
+                Array.from(bancoSel.options).forEach(opt => {
+                    if (opt.value === 'payphone') {
+                        opt.style.display = 'none';
+                    } else {
+                        opt.style.display = '';
+                    }
+                });
+                if (bancoSel.value === 'payphone') { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
+            }
+        } else if (met === 'tarjeta') {
+            bancoCont.style.display = 'block';
+            if (labelBanco) labelBanco.innerText = '💳 Tarjeta / App *';
+            if (bancoSel) {
+                bancoSel.required = true;
+                Array.from(bancoSel.options).forEach(opt => {
+                    if (opt.value === 'payphone' || opt.value === '') {
+                        opt.style.display = '';
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                });
+                if (bancoSel.value !== 'payphone') { bancoSel.value = 'payphone'; bancoSel.dispatchEvent(new Event('change')); }
+            }
+        } else {
+            bancoCont.style.display = 'none';
+            if (bancoSel) {
+                bancoSel.required = false;
+                bancoSel.value = '';
+                bancoSel.dispatchEvent(new Event('change'));
+            }
+        }
+        validarMonto();
+    }
+
+    const metodoSel = document.getElementById('id_metodo');
+    const bloqueBanco = document.getElementById('bloque-banco');
+    const bancoSel = document.getElementById('id_banco');
+
+    const metodoSel1 = document.getElementById('id_metodo_pago_1_abono');
+    const bloqueBanco1 = document.getElementById('bloque-banco-1');
+    const bancoSel1 = document.getElementById('id_banco_1_abono');
+
+    const metodoSel2 = document.getElementById('id_metodo_pago_2_abono');
+    const bloqueBanco2 = document.getElementById('bloque-banco-2');
+    const bancoSel2 = document.getElementById('id_banco_2_abono');
+
+    function actualizar() {
+        if (metodoSel) _aplicarToggleBanco(metodoSel, bloqueBanco, bancoSel);
+        if (metodoSel1) _aplicarToggleBanco(metodoSel1, bloqueBanco1, bancoSel1);
+        if (metodoSel2) _aplicarToggleBanco(metodoSel2, bloqueBanco2, bancoSel2);
+    }
+    
+    if (metodoSel) metodoSel.addEventListener('change', actualizar);
+    if (metodoSel1) metodoSel1.addEventListener('change', actualizar);
+    if (metodoSel2) metodoSel2.addEventListener('change', actualizar);
+
+    // ========== MOSTRAR/OCULTAR MÓDULO Y BLOQUE RECUPERACIÓN ==========
+    const tipoSel = document.getElementById('id_tipo_pago');
+    const bloqueModulo = document.getElementById('bloque-modulo');
+    const bloqueRecup = document.getElementById('bloque-recuperacion');
+
+    function actualizarTipoPago() {
+        if (!tipoSel) return;
+        const v = tipoSel.value;
+        if (bloqueModulo) {
+            bloqueModulo.style.display = (v === 'por_modulo' || v === 'solo_modulo' || v === 'recuperacion') ? 'block' : 'none';
+        }
+        if (bloqueRecup) {
+            bloqueRecup.style.display = (v === 'recuperacion') ? 'block' : 'none';
+        }
+    }
+    if (tipoSel) {
+        tipoSel.addEventListener('change', actualizarTipoPago);
+    }
+
+    // ========== MOSTRAR/OCULTAR CONTENEDORES DE PAGO MIXTO ==========
+    const tipoCobroSelect = document.getElementById('id_tipo_cobro_abono');
+    const unSoloMetodoContainer = document.getElementById('un-solo-metodo-abono-container');
+    const mixtoContainer = document.getElementById('mixto-abono-container');
+    
+    function toggleDistribucionPago() {
+        if (!tipoCobroSelect) return;
+        if (tipoCobroSelect.value === 'mixto') {
+            if (unSoloMetodoContainer) unSoloMetodoContainer.style.display = 'none';
+            if (mixtoContainer) mixtoContainer.style.display = 'block';
+            if (metodoSel) metodoSel.required = false;
+        } else {
+            if (unSoloMetodoContainer) unSoloMetodoContainer.style.display = 'contents';
+            if (mixtoContainer) mixtoContainer.style.display = 'none';
+            if (metodoSel) metodoSel.required = true;
+        }
+        validarMonto();
+    }
+    if (tipoCobroSelect) {
+        tipoCobroSelect.addEventListener('change', toggleDistribucionPago);
+    }
+
+    // ── Validar monto > 0 y mixto para habilitar botón ──
+    const montoInput = document.getElementById('id_monto');
+    const monto1Input = document.getElementById('id_monto_pago_1_abono');
+    const monto2Input = document.getElementById('id_monto_pago_2_abono');
+    const mixtoErrorMsg = document.getElementById('mixto-abono-error-msg');
+    const btnGuardar = document.querySelector('button[type="submit"]');
+
+    function validarMonto() {
+        if (!btnGuardar || !montoInput) return;
+        const val = parseFloat(montoInput.value) || 0;
+        let esValido = (val > 0);
+
+        if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
+            const m1 = parseFloat(monto1Input.value) || 0;
+            const m2 = parseFloat(monto2Input.value) || 0;
+            if (Math.abs((m1 + m2) - val) > 0.01) {
+                esValido = false;
+                if (mixtoErrorMsg) mixtoErrorMsg.style.display = 'block';
+            } else {
+                if (mixtoErrorMsg) mixtoErrorMsg.style.display = 'none';
+            }
+        } else {
+            if (mixtoErrorMsg) mixtoErrorMsg.style.display = 'none';
+        }
+
+        if (esValido) {
+            btnGuardar.disabled = false;
+            btnGuardar.style.opacity = '1';
+            btnGuardar.style.cursor = 'pointer';
+        } else {
+            btnGuardar.disabled = true;
+            btnGuardar.style.opacity = '0.4';
+            btnGuardar.style.cursor = 'not-allowed';
+        }
+    }
+
+    if (montoInput) montoInput.addEventListener('input', validarMonto);
+    if (monto1Input) monto1Input.addEventListener('input', validarMonto);
+    if (monto2Input) monto2Input.addEventListener('input', validarMonto);
+
+    // INICIALIZACIÓN
+    actualizar();
+    actualizarTipoPago();
+    if (tipoCobroSelect) toggleDistribucionPago();
+    validarMonto();
+</script>
+{% endblock %}
