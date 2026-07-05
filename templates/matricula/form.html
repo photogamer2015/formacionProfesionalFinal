@@ -590,7 +590,7 @@
     }
 
     /* Estilos para campos requeridos dinámicos */
-    .field-required { box-shadow: 0 0 0 2px rgba(198,40,40,0.06); border-color: #c62828 !important; }
+    .field-required { /* Se quitó el border-color rojo para evitar confusión con errores */ }
     .req-star { color: #c62828; margin-left:6px; font-weight:700; }
 </style>
 {% endblock %}
@@ -863,26 +863,12 @@
         }
 
         function validarCamposPrincipales() {
-            const btn = document.getElementById('submit-btn');
-            if (!btn) return;
-
-            let todosCompletos = true;
-
-            for (const { name } of CAMPOS_REQUERIDOS) {
-                if (campoEstaVacio(name)) {
-                    todosCompletos = false;
-                    break;
-                }
+            // Ya no deshabilitamos el botón silenciosamente aquí.
+            // Permitimos que el usuario intente enviar para que el evento 'submit'
+            // intercepte, pinte de rojo el campo faltante y haga scroll hacia él.
+            if (typeof toggleSubmitBtn === 'function') {
+                toggleSubmitBtn();
             }
-
-            if (todosCompletos && jornadaNoSeleccionada()) {
-                todosCompletos = false;
-            }
-
-            btn.disabled = !todosCompletos;
-            btn.style.opacity = todosCompletos ? '1' : '0.45';
-            btn.style.cursor = todosCompletos ? 'pointer' : 'not-allowed';
-            btn.style.pointerEvents = todosCompletos ? 'auto' : 'none';
         }
 
         // ── Segunda capa: interceptar submit del formulario ───────────────
