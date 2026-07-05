@@ -140,6 +140,8 @@ urlpatterns = [
     # ── Registro Administrativo ────────────────────────────────
     path('admin-panel/',
          views_admin.admin_dashboard, name='admin_dashboard'),
+    path('admin-panel/backup/',
+         views_admin.ejecutar_backup_s3, name='backup_s3'),
     path('admin-panel/control-registro/',
          views_admin.control_registro, name='control_registro'),
     path('admin-panel/egresos/',

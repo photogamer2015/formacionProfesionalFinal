@@ -134,6 +134,12 @@ body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
         <a href="{% url 'academia:admin_egresos_lista' %}" class="btn btn-secondary">📒 Ver todos los egresos</a>
         <a href="{% url 'academia:sedes_lista' %}" class="btn btn-secondary no-print" title="Administrar sedes / campus">🏢 Sedes</a>
         <a href="{% url 'academia:admin_egreso_crear' %}" class="btn btn-success">+ Nuevo egreso</a>
+        {% if user.is_superuser %}
+        <form method="post" action="{% url 'academia:backup_s3' %}" class="no-print" onsubmit="return confirm('¿Deseas generar y subir una copia de seguridad a AWS S3 en este momento? Esto puede tardar unos segundos.');" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn" style="background-color:#ff9800; color:#fff; border:none;">💾 Backup S3</button>
+        </form>
+        {% endif %}
         <a href="{% url 'academia:admin_export_reporte' %}?anio={{ anio }}&mes={{ mes }}"
            class="btn btn-secondary no-print" title="Descargar reporte en CSV (abre con Excel)">📥 Exportar</a>
         <button type="button" onclick="window.print()" class="btn btn-secondary no-print">🖨️ Imprimir</button>

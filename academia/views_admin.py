@@ -10,6 +10,8 @@ Solo accesible por administradores. Muestra:
 """
 import calendar
 import json
+import os
+import subprocess
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -1702,3 +1704,26 @@ def control_registro(request):
         'pagos': pagos,
         'titulo': 'Control de Registro',
     })
+
+@admin_requerido
+@require_POST
+def ejecutar_backup_s3(request):
+    """Ejecuta el script bash de backup y redirige con mensaje."""
+    from django.conf import settings
+    script_path = os.path.join(settings.BASE_DIR, 'scripts', 'backup_s3.sh')
+    
+    if not os.path.exists(script_path):
+        messages.error(request, 'No se encontró el script de backup en el servidor.')
+        return redirect('academia:admin_dashboard')
+        
+    try:
+        resultado = subprocess.run(['bash', script_path], capture_output=True, text=True)
+        if resultado.returncode == 0:
+            messages.success(request, '✅ ¡Backup generado y subido a S3 con éxito!')
+        else:
+            messages.error(request, f'❌ Hubo un problema al subir el backup. Revisa los logs. Detalle: {resultado.stderr}')
+    except Exception as e:
+        messages.error(request, f'❌ Error inesperado ejecutando el backup: {str(e)}')
+        
+    return redirect('academia:admin_dashboard')
+
