@@ -2457,30 +2457,7 @@ def hoja_recaudacion(request):
                 recup_str = '✱ Recuperar' if tiene_recup else ''
 
                 # ── LÓGICA DE CUOTAS ──
-                n_modulos = m.curso.get_numero_modulos(m.modalidad) or 1
-                if n_modulos <= 0:
-                    n_modulos = 1
-                
-                primer_abono = m.abonos.filter(cuenta_para_saldo=True).order_by('fecha', 'id').first()
-                if not primer_abono:
-                    reserva = Decimal('0.00')
-                else:
-                    abonos_primer_dia = m.abonos.filter(cuenta_para_saldo=True, fecha=primer_abono.fecha)
-                    suma_primer_dia = sum((a.monto for a in abonos_primer_dia), Decimal('0.00'))
-                    
-                    if m.tipo_matricula == 'reserva_modulo_1' and n_modulos > 1:
-                        # Si pagó Reserva + Módulo 1 juntos el primer día:
-                        # suma_primer_dia = Reserva + (Valor Neto - Reserva) / n_modulos
-                        r = (suma_primer_dia * Decimal(n_modulos) - m.valor_neto) / Decimal(n_modulos - 1)
-                        reserva = r if r >= 0 else suma_primer_dia
-                    else:
-                        reserva = suma_primer_dia
-                
-                total_a_financiar = m.valor_neto - reserva
-                if total_a_financiar < 0:
-                    total_a_financiar = Decimal('0.00')
-                    
-                cuota_sugerida = (total_a_financiar / Decimal(n_modulos)).quantize(Decimal('0.01'))
+                cuota_sugerida = m.valor_modulo
 
                 # Suma a totales por método
                 for a in abonos_dia:
@@ -2900,31 +2877,7 @@ def _hojas_recaudacion_data(request):
             recup_str = '✱ Recuperar' if tiene_recup else ''
 
             # ── LÓGICA DE CUOTAS ──
-            n_modulos = m.curso.get_numero_modulos(m.modalidad) or 1
-            if n_modulos <= 0:
-                n_modulos = 1
-            
-            primer_abono = m.abonos.filter(cuenta_para_saldo=True).order_by('fecha', 'id').first()
-            if not primer_abono:
-                reserva = Decimal('0.00')
-            else:
-                abonos_primer_dia = m.abonos.filter(cuenta_para_saldo=True, fecha=primer_abono.fecha)
-                suma_primer_dia = sum((a.monto for a in abonos_primer_dia), Decimal('0.00'))
-                
-                if m.tipo_matricula == 'reserva_modulo_1' and n_modulos > 1:
-                    # Si pagó Reserva + Módulo 1 juntos el primer día:
-                    # suma_primer_dia = Reserva + (Valor Neto - Reserva) / n_modulos
-                    # Despejando Reserva: Reserva = (suma_primer_dia * n_modulos - Valor Neto) / (n_modulos - 1)
-                    r = (suma_primer_dia * Decimal(n_modulos) - m.valor_neto) / Decimal(n_modulos - 1)
-                    reserva = r if r >= 0 else suma_primer_dia
-                else:
-                    reserva = suma_primer_dia
-            
-            total_a_financiar = m.valor_neto - reserva
-            if total_a_financiar < 0:
-                total_a_financiar = Decimal('0.00')
-                
-            cuota_sugerida = (total_a_financiar / Decimal(n_modulos)).quantize(Decimal('0.01'))
+            cuota_sugerida = m.valor_modulo
 
             for a in abonos_dia:
                 if a.metodo == 'efectivo':
