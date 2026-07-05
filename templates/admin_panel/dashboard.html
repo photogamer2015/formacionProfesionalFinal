@@ -135,10 +135,7 @@ body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
         <a href="{% url 'academia:sedes_lista' %}" class="btn btn-secondary no-print" title="Administrar sedes / campus">🏢 Sedes</a>
         <a href="{% url 'academia:admin_egreso_crear' %}" class="btn btn-success">+ Nuevo egreso</a>
         {% if user.is_superuser %}
-        <form method="post" action="{% url 'academia:backup_s3' %}" class="no-print" onsubmit="return confirm('¿Deseas generar y subir una copia de seguridad a AWS S3 en este momento? Esto puede tardar unos segundos.');" style="display:inline;">
-            {% csrf_token %}
-            <button type="submit" class="btn" style="background-color:#ff9800; color:#fff; border:none;">💾 Backup S3</button>
-        </form>
+        <button type="button" class="btn no-print" onclick="openDashboardModal('modal-backup')" style="background-color:#ff9800; color:#fff; border:none;">💾 Backup S3</button>
         {% endif %}
         <a href="{% url 'academia:admin_export_reporte' %}?anio={{ anio }}&mes={{ mes }}"
            class="btn btn-secondary no-print" title="Descargar reporte en CSV (abre con Excel)">📥 Exportar</a>
@@ -1449,6 +1446,33 @@ window.addEventListener('click', function(e) {
             {% else %}
                 <p style="text-align:center; color:#888; padding:30px;">No se cobraron clases de recuperación en este periodo.</p>
             {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ═══════ Modal Backup S3 ═══════ -->
+<div id="modal-backup" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box" style="max-width:420px; text-align:center; position:relative;">
+        <div class="dashboard-modal-header" style="justify-content:center; border-bottom:none; padding-bottom:0;">
+            <span style="font-size:42px;">💾</span>
+            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-backup')" style="position:absolute; right:15px; top:15px;">&times;</button>
+        </div>
+        <div class="dashboard-modal-body" style="padding:10px 28px 28px;">
+            <h3 style="color:#e65100; margin:10px 0 12px; font-size:18px;">Confirmar Backup a S3</h3>
+            <p style="font-size:14px; color:#555; margin-bottom:8px;">
+                ¿Deseas generar y subir una copia de seguridad de la base de datos a <strong>AWS S3</strong> en este momento?
+            </p>
+            <p style="font-size:12px; color:#999; margin-bottom:24px;">
+                ⏳ Esto puede tardar unos segundos. No cierres la ventana.
+            </p>
+            <form method="post" action="{% url 'academia:backup_s3' %}" id="form-backup" style="display:flex; gap:12px; justify-content:center;">
+                {% csrf_token %}
+                <button type="button" class="btn btn-secondary" onclick="closeDashboardModal('modal-backup')" style="min-width:110px;">Cancelar</button>
+                <button type="submit" id="btn-backup-confirmar" class="btn" style="background:#ff9800; color:#fff; border:none; font-weight:700; min-width:140px;"
+                    onclick="this.innerHTML='Subiendo ⏳'; this.style.opacity='0.7'; this.disabled=true; document.getElementById('form-backup').submit();">
+                    Sí, hacer Backup
+                </button>
+            </form>
         </div>
     </div>
 </div>
