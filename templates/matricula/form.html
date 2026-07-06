@@ -208,9 +208,6 @@
                 <span style="color:#888; font-weight:400; font-size:11px;">(desde el módulo 1)</span>
             </label>
             {{ mat_form.modulos_a_pagar }}{{ mat_form.modulos_a_pagar.errors }}
-            <small id="modulos-a-pagar-hint" style="color:#666; display:block; margin-top:5px;">
-                Elige hasta qué módulo se cancela en esta matrícula. Esos módulos quedarán marcados como pagados.
-            </small>
         </div>
         <div>
             <label class="form-label" for="{{ mat_form.fecha_matricula.id_for_label }}">Fecha de matrícula *</label>
@@ -674,7 +671,6 @@
         // ── Reserva + Módulo: desplegable de "Módulo a pagar" ───────────────
         const modulosWrap = document.getElementById('modulos-a-pagar-wrap');
         const modulosSelect = document.getElementById('id_modulos_a_pagar');
-        const modulosHint = document.getElementById('modulos-a-pagar-hint');
 
         function valorModuloActual() {
             const n = (cursoNumModulos[modalidadPagoActual] || 1);
@@ -692,22 +688,14 @@
         function aplicarModulosAlPago(forzar = false) {
             if (!modulosSelect || !valorPagadoInput) return;
             if (!tipoMatriculaSelect || tipoMatriculaSelect.value !== 'reserva_modulo_1') return;
-            const k = Number(modulosSelect.value || 1);
-            const vMod = valorModuloActual();
-            const monto = vMod * k;
-            
+
             const vAct = valorPagadoInput.value.trim();
             const tieneValorMio = vAct !== '' && vAct !== '0.00';
-            
+
             if (forzar || !tieneValorMio) {
                 valorPagadoInput.value = '';
             }
-            
-            if (modulosHint) {
-                modulosHint.textContent =
-                    'Se abonará al módulo(s): $' + monto.toFixed(2) +
-                    ' (valor por módulo $' + vMod.toFixed(2) + '). Ingresa el valor a pagar.';
-            }
+
             if (typeof toggleSubmitBtn === 'function') toggleSubmitBtn();
         }
 
