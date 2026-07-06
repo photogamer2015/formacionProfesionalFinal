@@ -1161,7 +1161,11 @@
                 matriculaConfirmada = true;
                 confirmSiBtn.disabled = true;
                 confirmSiBtn.textContent = 'Registrando...';
-                form.submit();
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    HTMLFormElement.prototype.submit.call(form);
+                }
             });
         }
         if (submitBtn && MODO !== 'editar') {
