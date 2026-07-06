@@ -521,12 +521,19 @@ def _registrar_pago_inicial(matricula, usuario, mat_form=None,
             (matricula.valor_neto / Decimal(n_mod)).quantize(Decimal('0.01'))
             if n_mod > 0 else Decimal('0.00')
         )
+        monto_restante = monto
         ultimo = None
         for i in range(1, k + 1):
+            if monto_restante <= 0:
+                break
+            if i < k:
+                monto_abono = min(valor_modulo, monto_restante)
+            else:
+                monto_abono = monto_restante
             kwargs = dict(
                 matricula=matricula,
                 fecha=matricula.fecha_matricula,
-                monto=valor_modulo,
+                monto=monto_abono,
                 tipo_pago='por_modulo',
                 numero_modulo=i,
                 cuenta_para_saldo=True,
@@ -542,6 +549,9 @@ def _registrar_pago_inicial(matricula, usuario, mat_form=None,
             else:
                 kwargs.update(metodo=metodo, banco=banco)
             ultimo = Abono.objects.create(**kwargs)
+            monto_restante -= monto_abono
+        if ultimo is None:
+            return None
         matricula.refresh_from_db()
         matricula.save()
         return ultimo
