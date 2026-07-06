@@ -16,6 +16,14 @@
             Matriculados {{ modalidad_label }}
         </h2>
         <p class="page-subtitle">Total: {{ matriculas.count }} estudiante{{ matriculas.count|pluralize }} matriculado{{ matriculas.count|pluralize }} en esta modalidad.</p>
+        {% if jornada_filtrada %}
+        <p class="page-subtitle" style="margin-top:4px;">
+            Filtro de jornada:
+            <strong>{{ jornada_filtrada.curso.nombre }}</strong> ·
+            {{ jornada_filtrada.descripcion_legible }} ·
+            {{ jornada_filtrada.fecha_inicio|date:"d/m/Y" }}
+        </p>
+        {% endif %}
     </div>
 </div>
 
@@ -33,6 +41,9 @@
 
 <div class="toolbar" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:white; padding:16px; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,0.04);">
     <form method="get" style="display:flex; gap:8px; flex-wrap:wrap; flex:1; min-width:280px;">
+        {% if jornada_seleccionada %}
+        <input type="hidden" name="jornada" value="{{ jornada_seleccionada }}">
+        {% endif %}
         <input type="text" name="q" value="{{ q }}" placeholder="Buscar por cédula, nombre, curso o cédula de factura…"
             class="form-input" style="flex:1; min-width:220px;">
         <select name="curso" class="form-input" style="max-width:220px;">
@@ -57,17 +68,17 @@
             {% endfor %}
         </select>
         <button type="submit" class="btn btn-primary">Filtrar</button>
-        {% if q or curso_seleccionado or descuento_seleccionado or registrador_seleccionado %}
+        {% if q or curso_seleccionado or descuento_seleccionado or registrador_seleccionado or jornada_seleccionada %}
         <a href="{% url 'academia:matricula_lista' modalidad=modalidad %}" class="btn btn-secondary">Limpiar</a>
         {% endif %}
     </form>
 
     <div style="display:flex; gap:6px;">
-        <a href="{% url 'academia:matricula_export_excel' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}"
+        <a href="{% url 'academia:matricula_export_excel' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}&jornada={{ jornada_seleccionada }}"
             class="btn btn-secondary" title="Exportar a Excel">
             📊 Excel
         </a>
-        <a href="{% url 'academia:matricula_export_pdf' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}"
+        <a href="{% url 'academia:matricula_export_pdf' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}&jornada={{ jornada_seleccionada }}"
             class="btn btn-secondary" title="Exportar a PDF">
             📄 PDF
         </a>

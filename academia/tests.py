@@ -2,12 +2,13 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.urls import reverse
 
 from .forms import AbonoForm, AdicionalSupletorioRapidoForm
 from .models import Abono, Curso, Estudiante, JornadaCurso, Matricula
+from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
 
 
@@ -25,6 +26,78 @@ class SessionKeepaliveTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {'ok': True})
+
+
+class JornadaMatriculasAccessTests(TestCase):
+    def setUp(self):
+        self.asesor = User.objects.create_user(username='asesor')
+        grupo = Group.objects.create(name='Asesores')
+        self.asesor.groups.add(grupo)
+        self.curso = Curso.objects.create(
+            nombre='Curso Jornadas Test',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('100.00'),
+        )
+        self.jornada_1 = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='lun_mie_vie',
+            fecha_inicio=date(2026, 7, 5),
+        )
+        self.jornada_2 = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_jue',
+            fecha_inicio=date(2026, 7, 6),
+        )
+        self.estudiante_1 = Estudiante.objects.create(
+            cedula='1207342716',
+            nombres='Estudiante Jornada Uno',
+        )
+        self.estudiante_2 = Estudiante.objects.create(
+            cedula='1207342717',
+            nombres='Estudiante Jornada Dos',
+        )
+        Matricula.objects.create(
+            estudiante=self.estudiante_1,
+            curso=self.curso,
+            jornada=self.jornada_1,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('100.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.asesor,
+        )
+        Matricula.objects.create(
+            estudiante=self.estudiante_2,
+            curso=self.curso,
+            jornada=self.jornada_2,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('100.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.asesor,
+        )
+
+    def test_asesor_puede_ver_panel_de_jornadas(self):
+        self.assertTrue(puede_ver_jornadas(self.asesor))
+        self.assertTrue(puede_gestionar_jornadas(self.asesor))
+
+    def test_lista_matriculas_filtra_por_jornada(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(
+            reverse('academia:matricula_lista', kwargs={'modalidad': 'presencial'}),
+            {'jornada': str(self.jornada_1.id)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = list(response.context['matriculas'])
+        self.assertEqual(len(matriculas), 1)
+        self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
+        self.assertEqual(response.context['jornada_filtrada'], self.jornada_1)
 
 
 class PagoInicialMatriculaTests(TestCase):

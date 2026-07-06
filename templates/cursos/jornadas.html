@@ -133,7 +133,19 @@
                                 <span class="badge badge-pendiente">Inactiva</span>
                                 {% endif %}
                             </td>
-                            <td>{{ j.matriculas.count }}</td>
+                            <td>
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <strong>{{ j.matriculas.count }}</strong>
+                                    {% if j.matriculas.count > 0 %}
+                                    <a href="{% url 'academia:matricula_lista' modalidad='presencial' %}?jornada={{ j.pk }}"
+                                       class="btn btn-secondary btn-sm"
+                                       style="padding:5px 10px;"
+                                       title="Ver estudiantes matriculados en esta jornada">
+                                        Ver
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </td>
                             {% if puede_editar_jornada or puede_eliminar_jornada or es_admin %}
                             <td>
                                 <div class="row-actions">
@@ -213,7 +225,19 @@
                                 <span class="badge badge-pendiente">Inactiva</span>
                                 {% endif %}
                             </td>
-                            <td>{{ j.matriculas.count }}</td>
+                            <td>
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <strong>{{ j.matriculas.count }}</strong>
+                                    {% if j.matriculas.count > 0 %}
+                                    <a href="{% url 'academia:matricula_lista' modalidad='online' %}?jornada={{ j.pk }}"
+                                       class="btn btn-secondary btn-sm"
+                                       style="padding:5px 10px;"
+                                       title="Ver estudiantes matriculados en esta jornada">
+                                        Ver
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </td>
                             {% if puede_editar_jornada or puede_eliminar_jornada or es_admin %}
                             <td>
                                 <div class="row-actions">

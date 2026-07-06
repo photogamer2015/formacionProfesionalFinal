@@ -823,6 +823,7 @@ def matricula_lista(request, modalidad):
     q = request.GET.get('q', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
+    jornada_id = request.GET.get('jornada', '').strip()
 
     registrado_por_id = request.GET.get('registrador', '').strip()
 
@@ -840,6 +841,14 @@ def matricula_lista(request, modalidad):
         )
     if curso_id:
         qs = qs.filter(curso_id=curso_id)
+    jornada_filtrada = None
+    if jornada_id.isdigit():
+        jornada_filtrada = JornadaCurso.objects.filter(
+            id=int(jornada_id),
+            modalidad=modalidad,
+        ).select_related('curso').first()
+        if jornada_filtrada:
+            qs = qs.filter(jornada_id=jornada_filtrada.id)
         
     if descuento_str == 'si':
         qs = qs.filter(descuento__gt=0)
@@ -865,6 +874,8 @@ def matricula_lista(request, modalidad):
         'q': q,
         'curso_seleccionado': curso_id,
         'descuento_seleccionado': descuento_str,
+        'jornada_seleccionada': jornada_id if jornada_filtrada else '',
+        'jornada_filtrada': jornada_filtrada,
         'registrador_seleccionado': registrado_por_id,
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
@@ -1532,6 +1543,7 @@ def _matriculas_filtradas_para_export(request, modalidad):
     q = request.GET.get('q', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
+    jornada_id = request.GET.get('jornada', '').strip()
     registrador_id = request.GET.get('registrador', '').strip()
 
     qs = (Matricula.objects
@@ -1548,6 +1560,8 @@ def _matriculas_filtradas_para_export(request, modalidad):
         )
     if curso_id:
         qs = qs.filter(curso_id=curso_id)
+    if jornada_id.isdigit():
+        qs = qs.filter(jornada_id=int(jornada_id), jornada__modalidad=modalidad)
         
     if descuento_str == 'si':
         qs = qs.filter(descuento__gt=0)

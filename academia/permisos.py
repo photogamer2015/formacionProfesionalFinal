@@ -101,7 +101,7 @@ def puede_eliminar_jornadas(user):
 
 
 def puede_ver_jornadas(user):
-    return es_admin(user) or (
+    return es_admin(user) or es_asesor(user) or (
         user.is_authenticated and user.has_perm('academia.view_jornadacurso')
     )
 
