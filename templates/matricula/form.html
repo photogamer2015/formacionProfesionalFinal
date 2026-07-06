@@ -427,13 +427,165 @@
     <div style="display:flex; gap:10px; margin-top:24px; justify-content:flex-end;">
         <a href="{% url 'academia:matricula_lista' modalidad=modalidad %}" class="btn btn-secondary">Cancelar</a>
         <!-- CORRECCIÓN: Se quitó el onclick que llamaba a una función inexistente -->
-        <button type="submit" id="submit-btn" class="btn btn-primary">
+        <button type="{% if modo == 'editar' %}submit{% else %}button{% endif %}" id="submit-btn" class="btn btn-primary">
             {% if modo == 'editar' %}Guardar cambios{% else %}Registrar matrícula{% endif %}
         </button>
     </div>
 </form>
 
+{% if modo != 'editar' %}
+<div id="confirmar-matricula-modal" class="confirm-modal" aria-hidden="true">
+    <div class="confirm-modal__panel" role="dialog" aria-modal="true" aria-labelledby="confirmar-matricula-title">
+        <div class="confirm-modal__header">
+            <div>
+                <h3 id="confirmar-matricula-title">Confirmar matrícula</h3>
+                <p>Revisa los datos antes de registrar. Si algo no está correcto, vuelve al formulario.</p>
+            </div>
+        </div>
+
+        <div id="confirmar-matricula-resumen" class="confirm-summary"></div>
+
+        <div class="confirm-modal__actions">
+            <button type="button" class="btn btn-secondary" id="confirmar-matricula-no">No, revisar</button>
+            <button type="button" class="btn btn-primary" id="confirmar-matricula-si">Sí, registrar matrícula</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <style>
+    .confirm-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.58);
+    }
+
+    .confirm-modal.is-open {
+        display: flex;
+    }
+
+    .confirm-modal__panel {
+        width: min(760px, 100%);
+        max-height: 90vh;
+        overflow-y: auto;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        padding: 24px;
+    }
+
+    .confirm-modal__header {
+        border-bottom: 2px solid #f05a1a;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+    }
+
+    .confirm-modal__header h3 {
+        margin: 0;
+        color: #1a237e;
+        font-size: 24px;
+        line-height: 1.2;
+    }
+
+    .confirm-modal__header p {
+        margin: 6px 0 0;
+        color: #666;
+        font-size: 13px;
+    }
+
+    .confirm-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .confirm-summary__section {
+        border: 1px solid #e3e6ef;
+        border-radius: 8px;
+        padding: 12px;
+        background: #fafbff;
+    }
+
+    .confirm-summary__section--wide {
+        grid-column: 1 / -1;
+    }
+
+    .confirm-summary__title {
+        margin: 0 0 8px;
+        color: #1a237e;
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .confirm-summary__row {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 10px;
+        padding: 5px 0;
+        border-top: 1px solid #edf0f6;
+        font-size: 13px;
+    }
+
+    .confirm-summary__row:first-of-type {
+        border-top: 0;
+    }
+
+    .confirm-summary__label {
+        color: #666;
+        font-weight: 700;
+    }
+
+    .confirm-summary__value {
+        color: #222;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .confirm-summary__warning {
+        margin-top: 10px;
+        padding: 10px;
+        border-left: 4px solid #f0ad4e;
+        background: #fff8e1;
+        color: #6d4c41;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .confirm-modal__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid #edf0f6;
+    }
+
+    @media (max-width: 720px) {
+        .confirm-summary {
+            grid-template-columns: 1fr;
+        }
+
+        .confirm-summary__row {
+            grid-template-columns: 1fr;
+            gap: 2px;
+        }
+
+        .confirm-modal__actions {
+            flex-direction: column-reverse;
+        }
+
+        .confirm-modal__actions .btn {
+            width: 100%;
+        }
+    }
+
     .native-course-select {
         position: absolute;
         left: -9999px;
@@ -859,8 +1011,181 @@
             }
         }
 
-        // ── Segunda capa: interceptar submit del formulario ───────────────
+        let matriculaConfirmada = false;
+        const confirmModal = document.getElementById('confirmar-matricula-modal');
+        const confirmResumen = document.getElementById('confirmar-matricula-resumen');
+        const confirmNoBtn = document.getElementById('confirmar-matricula-no');
+        const confirmSiBtn = document.getElementById('confirmar-matricula-si');
         const form = document.querySelector('form[method="post"]');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function textoSeguro(valor) {
+            return String(valor || '—')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function valorCampo(name) {
+            const el = obtenerElementoCampo(name);
+            return el ? (el.value || '').trim() : '';
+        }
+
+        function textoSeleccion(name) {
+            const el = obtenerElementoCampo(name);
+            if (!el) return '';
+            if (el.tagName === 'SELECT') {
+                const opt = el.options[el.selectedIndex];
+                return opt ? opt.text.trim() : '';
+            }
+            return (el.value || '').trim();
+        }
+
+        function textoCursoSeleccionado() {
+            const tarjeta = document.querySelector('.course-option.selected .course-option-main strong');
+            if (tarjeta) return tarjeta.textContent.trim();
+            return textoSeleccion('curso');
+        }
+
+        function textoJornadaSeleccionada() {
+            const radio = document.querySelector('[name="mat-jornada"]:checked');
+            if (!radio) return '';
+            const label = radio.closest('label');
+            if (label) return label.textContent.replace(/\s+/g, ' ').trim();
+            return radio.value;
+        }
+
+        function textoAsesorSeleccionado() {
+            const select = document.getElementById('vendedora_id');
+            if (!select) return '';
+            const opt = select.options[select.selectedIndex];
+            return opt ? opt.text.trim() : '';
+        }
+
+        function filaResumen(label, value) {
+            return `
+                <div class="confirm-summary__row">
+                    <div class="confirm-summary__label">${textoSeguro(label)}</div>
+                    <div class="confirm-summary__value">${textoSeguro(value)}</div>
+                </div>
+            `;
+        }
+
+        function seccionResumen(title, rows, wide = false) {
+            return `
+                <section class="confirm-summary__section${wide ? ' confirm-summary__section--wide' : ''}">
+                    <h4 class="confirm-summary__title">${textoSeguro(title)}</h4>
+                    ${rows.map(([label, value]) => filaResumen(label, value)).join('')}
+                </section>
+            `;
+        }
+
+        function datosPagoResumen() {
+            const tipoCobro = textoSeleccion('tipo_cobro');
+            const rows = [
+                ['Valor curso', '$' + (valorCampo('valor_curso') || '0.00')],
+                ['Descuento', '$' + (valorCampo('descuento') || '0.00')],
+                ['Valor pagado', '$' + (valorCampo('valor_pagado') || '0.00')],
+                ['Forma pago', textoSeleccion('forma_pago')],
+                ['Distribución', tipoCobro],
+            ];
+            if ((obtenerElementoCampo('tipo_cobro') || {}).value === 'mixto') {
+                rows.push(['Monto 1', '$' + (valorCampo('monto_pago_1') || '0.00')]);
+                rows.push(['Método 1', textoSeleccion('metodo_pago_1')]);
+                rows.push(['Monto 2', '$' + (valorCampo('monto_pago_2') || '0.00')]);
+                rows.push(['Método 2', textoSeleccion('metodo_pago_2')]);
+            } else {
+                rows.push(['Método', textoSeleccion('metodo_pago')]);
+            }
+            return rows;
+        }
+
+        function abrirConfirmacionMatricula() {
+            if (!confirmModal || !confirmResumen) return;
+            const duplicadoVisible = cursoDuplicadoAlert && cursoDuplicadoAlert.style.display !== 'none';
+            const duplicadoTexto = duplicadoVisible && cursoDuplicadoDetalle
+                ? cursoDuplicadoDetalle.textContent.trim()
+                : '';
+            const facturaSi = (valorCampo('factura_realizada') || '').toLowerCase() === 'si';
+
+            confirmResumen.innerHTML = [
+                seccionResumen('Estudiante', [
+                    ['Cédula/RUC', valorCampo('cedula')],
+                    ['Nombres', valorCampo('nombres')],
+                    ['Celular', valorCampo('celular')],
+                    ['Correo', valorCampo('correo')],
+                    ['Ciudad', valorCampo('ciudad')],
+                ]),
+                seccionResumen('Matrícula', [
+                    ['Estado', textoSeleccion('estado')],
+                    ['Curso', textoCursoSeleccionado()],
+                    ['Tipo', textoSeleccion('tipo_matricula')],
+                    ['Fecha', valorCampo('fecha_matricula')],
+                    ['Jornada', textoJornadaSeleccionada()],
+                ]),
+                seccionResumen('Pago inicial', datosPagoResumen()),
+                seccionResumen('Comprobante', [
+                    ['Tipo registro', textoSeleccion('tipo_registro')],
+                    ['Asesor', textoAsesorSeleccionado()],
+                    ['Factura', textoSeleccion('factura_realizada')],
+                    ['Titular factura', facturaSi ? valorCampo('fact_nombres') : 'No aplica'],
+                    ['Cédula/RUC factura', facturaSi ? valorCampo('fact_cedula') : 'No aplica'],
+                    ['Correo factura', facturaSi ? valorCampo('fact_correo') : 'No aplica'],
+                ]),
+            ].join('') + (
+                duplicadoTexto
+                    ? `<div class="confirm-summary__warning confirm-summary__section--wide">⚠️ ${textoSeguro(duplicadoTexto)}</div>`
+                    : ''
+            );
+            confirmModal.classList.add('is-open');
+            confirmModal.setAttribute('aria-hidden', 'false');
+            if (confirmSiBtn) confirmSiBtn.focus();
+        }
+
+        function cerrarConfirmacionMatricula() {
+            if (!confirmModal) return;
+            confirmModal.classList.remove('is-open');
+            confirmModal.setAttribute('aria-hidden', 'true');
+            const btn = document.getElementById('submit-btn');
+            if (btn) btn.focus();
+        }
+
+        if (confirmNoBtn) {
+            confirmNoBtn.addEventListener('click', cerrarConfirmacionMatricula);
+        }
+        if (confirmSiBtn) {
+            confirmSiBtn.addEventListener('click', function () {
+                if (!form) return;
+                matriculaConfirmada = true;
+                confirmSiBtn.disabled = true;
+                confirmSiBtn.textContent = 'Registrando...';
+                form.submit();
+            });
+        }
+        if (submitBtn && MODO !== 'editar') {
+            submitBtn.addEventListener('click', function () {
+                if (!form) return;
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                }
+            });
+        }
+        if (confirmModal) {
+            confirmModal.addEventListener('click', function (e) {
+                if (e.target === confirmModal) cerrarConfirmacionMatricula();
+            });
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && confirmModal && confirmModal.classList.contains('is-open')) {
+                cerrarConfirmacionMatricula();
+            }
+        });
+
+        // ── Segunda capa: interceptar submit del formulario ───────────────
         if (form) {
             form.addEventListener('submit', function (e) {
                 let primerError = null;
@@ -921,6 +1246,24 @@
                     if (primerError.el) primerError.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     try { primerError.el.focus(); } catch (_) { }
                     return false;
+                }
+
+                if (MODO !== 'editar') {
+                    const faltantesRegistro = (typeof obtenerFaltantesRegistro === 'function')
+                        ? obtenerFaltantesRegistro()
+                        : [];
+                    if (faltantesRegistro.length > 0) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (typeof toggleSubmitBtn === 'function') toggleSubmitBtn();
+                        return false;
+                    }
+                    if (!matriculaConfirmada) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        abrirConfirmacionMatricula();
+                        return false;
+                    }
                 }
             });
         }
