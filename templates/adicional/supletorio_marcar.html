@@ -47,6 +47,15 @@
                 <small style="color:#888; font-size:11px;">Tú decides el valor del supletorio.</small>
             </div>
             <div>
+                <label class="form-label">{{ form.tipo_cobro.label }}</label>
+                {{ form.tipo_cobro }}
+                {{ form.tipo_cobro.errors }}
+                <small style="color:#888; font-size:11px;">Selecciona si el cobro es de un solo método o combinado.</small>
+            </div>
+        </div>
+
+        <div id="supletorio-un-solo-metodo" class="form-grid" style="margin-top:14px;">
+            <div>
                 <label class="form-label">{{ form.metodo_pago.label }}</label>
                 {{ form.metodo_pago }}
                 {{ form.metodo_pago.errors }}
@@ -56,6 +65,47 @@
                 {{ form.banco }}
                 {{ form.banco.errors }}
             </div>
+        </div>
+
+        <div id="supletorio-mixto-container" style="display:none; margin-top:14px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:15px;">
+            <p style="margin:0 0 4px; font-weight:700; color:#1a237e;">Pago Mixto (Dividir el valor en dos)</p>
+            <p style="margin:0 0 12px; color:#666; font-size:12px;">
+                Ingresa el valor total arriba y divide ese mismo valor entre Monto 1 y Monto 2.
+            </p>
+            <div class="form-grid" style="gap:12px; margin-bottom:12px;">
+                <div>
+                    <label class="form-label">{{ form.monto_pago_1.label }}</label>
+                    {{ form.monto_pago_1 }}{{ form.monto_pago_1.errors }}
+                </div>
+                <div>
+                    <label class="form-label">{{ form.metodo_pago_1.label }}</label>
+                    {{ form.metodo_pago_1 }}{{ form.metodo_pago_1.errors }}
+                </div>
+                <div id="bloque-banco-1" style="display:none; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
+                    <label class="form-label" style="color:#1a237e;">🏦 Banco 1 *</label>
+                    {{ form.banco_1 }}{{ form.banco_1.errors }}
+                </div>
+            </div>
+            <div class="form-grid" style="gap:12px;">
+                <div>
+                    <label class="form-label">{{ form.monto_pago_2.label }}</label>
+                    {{ form.monto_pago_2 }}{{ form.monto_pago_2.errors }}
+                </div>
+                <div>
+                    <label class="form-label">{{ form.metodo_pago_2.label }}</label>
+                    {{ form.metodo_pago_2 }}{{ form.metodo_pago_2.errors }}
+                </div>
+                <div id="bloque-banco-2" style="display:none; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
+                    <label class="form-label" style="color:#1a237e;">🏦 Banco 2 *</label>
+                    {{ form.banco_2 }}{{ form.banco_2.errors }}
+                </div>
+            </div>
+            <small id="mixto-supletorio-error-msg" aria-live="polite" style="display:none; margin-top:10px; color:#d32f2f; font-weight:700; font-size:12px;">
+                ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al valor del supletorio.
+            </small>
+        </div>
+
+        <div class="form-grid" style="margin-top:14px;">
             <div>
                 <label class="form-label">
                     {{ form.numero_recibo.label }}
@@ -85,45 +135,133 @@
     (function () {
         const metodoSel = document.getElementById('id_metodo_pago');
         const bloqueBanco = document.getElementById('bloque-banco');
-        if (!metodoSel || !bloqueBanco) return;
+        const tipoCobroSel = document.getElementById('id_tipo_cobro_adicional');
+        const unSoloMetodo = document.getElementById('supletorio-un-solo-metodo');
+        const mixtoContainer = document.getElementById('supletorio-mixto-container');
+        const valorInput = document.getElementById('id_valor');
+        const monto1Input = document.getElementById('id_monto_pago_1_adicional');
+        const monto2Input = document.getElementById('id_monto_pago_2_adicional');
+        const mixtoError = document.getElementById('mixto-supletorio-error-msg');
+        const submitBtn = document.querySelector('button[type="submit"]');
 
-        function actualizar() {
-            const bancoSel = document.getElementById('id_banco');
-            const labelBanco = bloqueBanco.querySelector('label');
+        const metodoSel1 = document.getElementById('id_metodo_pago_1_adicional');
+        const bancoBloque1 = document.getElementById('bloque-banco-1');
+        const bancoSel1 = document.getElementById('id_banco_1_adicional');
+        const metodoSel2 = document.getElementById('id_metodo_pago_2_adicional');
+        const bancoBloque2 = document.getElementById('bloque-banco-2');
+        const bancoSel2 = document.getElementById('id_banco_2_adicional');
 
-            if (metodoSel.value === 'transferencia') {
-                bloqueBanco.style.display = 'block';
+        function numero(input) {
+            if (!input) return 0;
+            return parseFloat((input.value || '').replace(',', '.')) || 0;
+        }
+
+        function mostrarErrorMixto(mostrar, mensaje) {
+            if (mixtoError) {
+                if (mensaje) mixtoError.textContent = '⚠️ ' + mensaje;
+                mixtoError.style.display = mostrar ? 'block' : 'none';
+            }
+            [monto1Input, monto2Input].forEach((input) => {
+                if (!input) return;
+                input.style.borderColor = mostrar ? '#d32f2f' : '';
+                input.style.borderWidth = mostrar ? '2px' : '';
+            });
+        }
+
+        function actualizarBanco(metodo, bloque, banco) {
+            if (!metodo || !bloque) return;
+            const labelBanco = bloque.querySelector('label');
+
+            if (metodo.value === 'transferencia') {
+                bloque.style.display = 'block';
                 if (labelBanco) labelBanco.innerText = '🏦 Banco *';
-                if (bancoSel) {
-                    Array.from(bancoSel.options).forEach(opt => {
+                if (banco) {
+                    Array.from(banco.options).forEach(opt => {
                         if (opt.value === 'payphone') {
                             opt.style.display = 'none';
                         } else {
                             opt.style.display = '';
                         }
                     });
-                    if (bancoSel.value === 'payphone') { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
+                    if (banco.value === 'payphone') { banco.value = ''; banco.dispatchEvent(new Event('change')); }
                 }
-            } else if (metodoSel.value === 'tarjeta') {
-                bloqueBanco.style.display = 'block';
+            } else if (metodo.value === 'tarjeta') {
+                bloque.style.display = 'block';
                 if (labelBanco) labelBanco.innerText = '💳 Tarjeta / App *';
-                if (bancoSel) {
-                    Array.from(bancoSel.options).forEach(opt => {
+                if (banco) {
+                    Array.from(banco.options).forEach(opt => {
                         if (opt.value === 'payphone' || opt.value === '') {
                             opt.style.display = '';
                         } else {
                             opt.style.display = 'none';
                         }
                     });
-                    if (bancoSel.value !== 'payphone') { bancoSel.value = 'payphone'; bancoSel.dispatchEvent(new Event('change')); }
+                    if (banco.value !== 'payphone') { banco.value = 'payphone'; banco.dispatchEvent(new Event('change')); }
                 }
             } else {
-                bloqueBanco.style.display = 'none';
-                if (bancoSel) { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
+                bloque.style.display = 'none';
+                if (banco) { banco.value = ''; banco.dispatchEvent(new Event('change')); }
             }
         }
-        metodoSel.addEventListener('change', actualizar);
-        actualizar();
+
+        function validarMixto() {
+            if (!submitBtn || !tipoCobroSel) return true;
+            let valido = numero(valorInput) > 0;
+            if (tipoCobroSel.value === 'mixto') {
+                const m1 = numero(monto1Input);
+                const m2 = numero(monto2Input);
+                const total = numero(valorInput);
+                if (m1 <= 0 || m2 <= 0) {
+                    valido = false;
+                    mostrarErrorMixto(true, 'Completa Monto 1 y Monto 2 con valores mayores a $0.00.');
+                } else if (Math.abs((m1 + m2) - total) > 0.01) {
+                    valido = false;
+                    mostrarErrorMixto(true, 'La suma del Monto 1 y Monto 2 debe ser exactamente igual al valor del supletorio.');
+                } else {
+                    mostrarErrorMixto(false);
+                }
+            } else {
+                mostrarErrorMixto(false);
+            }
+            submitBtn.disabled = !valido;
+            submitBtn.style.opacity = valido ? '1' : '0.45';
+            submitBtn.style.cursor = valido ? 'pointer' : 'not-allowed';
+            return valido;
+        }
+
+        function actualizarDistribucion() {
+            const mixto = tipoCobroSel && tipoCobroSel.value === 'mixto';
+            if (unSoloMetodo) unSoloMetodo.style.display = mixto ? 'none' : 'grid';
+            if (mixtoContainer) mixtoContainer.style.display = mixto ? 'block' : 'none';
+            if (metodoSel) metodoSel.required = !mixto;
+            if (metodoSel1) metodoSel1.required = mixto;
+            if (metodoSel2) metodoSel2.required = mixto;
+            validarMixto();
+        }
+
+        if (metodoSel) metodoSel.addEventListener('change', () => actualizarBanco(metodoSel, bloqueBanco, document.getElementById('id_banco')));
+        if (metodoSel1) metodoSel1.addEventListener('change', () => actualizarBanco(metodoSel1, bancoBloque1, bancoSel1));
+        if (metodoSel2) metodoSel2.addEventListener('change', () => actualizarBanco(metodoSel2, bancoBloque2, bancoSel2));
+        if (tipoCobroSel) tipoCobroSel.addEventListener('change', actualizarDistribucion);
+        [valorInput, monto1Input, monto2Input].forEach((input) => {
+            if (input) input.addEventListener('input', validarMixto);
+        });
+        const form = submitBtn ? submitBtn.closest('form') : null;
+        if (form) {
+            form.addEventListener('submit', function (e) {
+                if (!validarMixto()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (monto2Input) monto2Input.focus();
+                    return false;
+                }
+            });
+        }
+
+        actualizarBanco(metodoSel, bloqueBanco, document.getElementById('id_banco'));
+        actualizarBanco(metodoSel1, bancoBloque1, bancoSel1);
+        actualizarBanco(metodoSel2, bancoBloque2, bancoSel2);
+        actualizarDistribucion();
     })();
 </script>
 {% endblock %}

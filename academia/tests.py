@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from django.contrib.auth.models import User
 from django.test import TestCase
 
-from .forms import AbonoForm
+from .forms import AbonoForm, AdicionalSupletorioRapidoForm
 from .models import Abono, Curso, Estudiante, JornadaCurso, Matricula
 from .views import _registrar_pago_inicial
 
@@ -165,3 +165,72 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(form.cleaned_data['monto'], Decimal('25.00'))
         self.assertEqual(form.cleaned_data['monto_pago_1'], Decimal('10.00'))
         self.assertEqual(form.cleaned_data['monto_pago_2'], Decimal('15.00'))
+
+    def _supletorio_data(self, **overrides):
+        data = {
+            'numero_modulo': '1',
+            'fecha': '2026-07-06',
+            'valor': '20.00',
+            'metodo_pago': 'efectivo',
+            'banco': '',
+            'tipo_cobro': 'mixto',
+            'monto_pago_1': '10.00',
+            'metodo_pago_1': 'efectivo',
+            'banco_1': '',
+            'monto_pago_2': '10.00',
+            'metodo_pago_2': 'efectivo',
+            'banco_2': '',
+            'numero_recibo': '',
+            'observaciones': '',
+        }
+        data.update(overrides)
+        return data
+
+    def test_supletorio_rapido_mixto_rechaza_suma_distinta_al_valor(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('40.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+
+        form = AdicionalSupletorioRapidoForm(
+            self._supletorio_data(
+                valor='20.00',
+                monto_pago_1='15.00',
+                monto_pago_2='10.00',
+            ),
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('monto_pago_2', form.errors)
+
+    def test_supletorio_rapido_mixto_acepta_suma_igual_al_valor(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('40.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+
+        form = AdicionalSupletorioRapidoForm(self._supletorio_data(), matricula=matricula)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['tipo_cobro'], 'mixto')
+        self.assertEqual(form.cleaned_data['monto_pago_1'], Decimal('10.00'))
+        self.assertEqual(form.cleaned_data['monto_pago_2'], Decimal('10.00'))

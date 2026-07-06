@@ -1659,6 +1659,47 @@ class AdicionalSupletorioRapidoForm(forms.Form):
         label='Banco',
         required=False,
     )
+    tipo_cobro = forms.ChoiceField(
+        choices=[('un_solo_metodo', 'Un solo método'), ('mixto', 'Pago Mixto')],
+        required=False,
+        initial='un_solo_metodo',
+        widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_tipo_cobro_adicional'}),
+        label='Distribución de pago *',
+    )
+    monto_pago_1 = forms.DecimalField(
+        required=False, min_value=0, decimal_places=2,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-input', 'step': '0.01', 'id': 'id_monto_pago_1_adicional',
+        }),
+        label='Monto 1 (USD) *',
+    )
+    metodo_pago_1 = forms.ChoiceField(
+        choices=[], required=False,
+        widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_metodo_pago_1_adicional'}),
+        label='Método 1 *',
+    )
+    banco_1 = forms.CharField(
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_banco_1_adicional'}),
+        label='Banco 1',
+    )
+    monto_pago_2 = forms.DecimalField(
+        required=False, min_value=0, decimal_places=2,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-input', 'step': '0.01', 'id': 'id_monto_pago_2_adicional',
+        }),
+        label='Monto 2 (USD) *',
+    )
+    metodo_pago_2 = forms.ChoiceField(
+        choices=[], required=False,
+        widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_metodo_pago_2_adicional'}),
+        label='Método 2 *',
+    )
+    banco_2 = forms.CharField(
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_banco_2_adicional'}),
+        label='Banco 2',
+    )
     numero_recibo = forms.CharField(
         max_length=30,
         required=False,
@@ -1680,6 +1721,23 @@ class AdicionalSupletorioRapidoForm(forms.Form):
     def __init__(self, *args, matricula=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.matricula = matricula
+        metodos = list(Adicional.METODOS_PAGO)
+        self.fields['metodo_pago_1'].choices = [('', '— Método 1 —')] + metodos
+        self.fields['metodo_pago_2'].choices = [('', '— Método 2 —')] + metodos
+        bancos_list = [
+            ('', '— Selecciona un banco —'),
+            ('pichincha', 'Pichincha'),
+            ('guayaquil', 'Guayaquil'),
+            ('produbanco', 'Produbanco'),
+            ('banco_pacifico', 'Banco del Pacífico'),
+            ('payphone', 'Payphone'),
+            ('interbancario', 'Interbancario'),
+            ('OTRO', 'Otro banco...'),
+        ]
+        self.fields['banco'].widget.choices = bancos_list
+        self.fields['banco_1'].widget.choices = bancos_list
+        self.fields['banco_2'].widget.choices = bancos_list
+
         # Construir choices del módulo según el curso
         choices = [('', '— Selecciona módulo —')]
         if matricula and matricula.curso_id:
@@ -1700,13 +1758,53 @@ class AdicionalSupletorioRapidoForm(forms.Form):
         cleaned = super().clean()
         metodo = cleaned.get('metodo_pago')
         banco = cleaned.get('banco')
+        valor = cleaned.get('valor') or Decimal('0.00')
+        tipo_cobro = cleaned.get('tipo_cobro') or 'un_solo_metodo'
 
-        if metodo == 'transferencia' and not banco:
-            self.add_error('banco', 'Debes indicar el banco cuando el método es Transferencia.')
-        if metodo == 'tarjeta' and not banco:
-            self.add_error('banco', 'Debes indicar la opción correspondiente (Payphone).')
-        if metodo not in ['transferencia', 'tarjeta']:
+        if tipo_cobro == 'mixto':
+            m1 = cleaned.get('monto_pago_1') or Decimal('0.00')
+            m2 = cleaned.get('monto_pago_2') or Decimal('0.00')
+            metodo1 = cleaned.get('metodo_pago_1')
+            metodo2 = cleaned.get('metodo_pago_2')
+            banco1 = cleaned.get('banco_1')
+            banco2 = cleaned.get('banco_2')
+
+            if m1 <= 0:
+                self.add_error('monto_pago_1', 'El Monto 1 debe ser mayor a cero.')
+            if m2 <= 0:
+                self.add_error('monto_pago_2', 'El Monto 2 debe ser mayor a cero.')
+            if (m1 + m2).quantize(Decimal('0.01')) != valor.quantize(Decimal('0.01')):
+                self.add_error(
+                    'monto_pago_2',
+                    'La suma del Monto 1 y Monto 2 debe ser exactamente igual al valor del supletorio.'
+                )
+            if not metodo1:
+                self.add_error('metodo_pago_1', 'Selecciona el método del Monto 1.')
+            if not metodo2:
+                self.add_error('metodo_pago_2', 'Selecciona el método del Monto 2.')
+            if metodo1 in ('transferencia', 'tarjeta') and not banco1:
+                self.add_error('banco_1', 'Selecciona el banco o app del Monto 1.')
+            if metodo2 in ('transferencia', 'tarjeta') and not banco2:
+                self.add_error('banco_2', 'Selecciona el banco o app del Monto 2.')
+            if metodo1 not in ('transferencia', 'tarjeta'):
+                cleaned['banco_1'] = ''
+            if metodo2 not in ('transferencia', 'tarjeta'):
+                cleaned['banco_2'] = ''
+            cleaned['metodo_pago'] = ''
             cleaned['banco'] = ''
+        else:
+            if metodo == 'transferencia' and not banco:
+                self.add_error('banco', 'Debes indicar el banco cuando el método es Transferencia.')
+            if metodo == 'tarjeta' and not banco:
+                self.add_error('banco', 'Debes indicar la opción correspondiente (Payphone).')
+            if metodo not in ['transferencia', 'tarjeta']:
+                cleaned['banco'] = ''
+            cleaned['monto_pago_1'] = None
+            cleaned['metodo_pago_1'] = ''
+            cleaned['banco_1'] = ''
+            cleaned['monto_pago_2'] = None
+            cleaned['metodo_pago_2'] = ''
+            cleaned['banco_2'] = ''
 
         return cleaned
 
