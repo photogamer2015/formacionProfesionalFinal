@@ -33,6 +33,12 @@ from .permisos import (
 
 
 @login_required
+def session_keepalive(request):
+    request.session.modified = True
+    return JsonResponse({'ok': True})
+
+
+@login_required
 @require_POST
 def assistant_simple_chat(request):
     """Endpoint simple y basado en reglas para respuestas rápidas.

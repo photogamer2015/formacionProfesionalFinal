@@ -4,10 +4,27 @@ from types import SimpleNamespace
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.urls import reverse
 
 from .forms import AbonoForm, AdicionalSupletorioRapidoForm
 from .models import Abono, Curso, Estudiante, JornadaCurso, Matricula
 from .views import _registrar_pago_inicial
+
+
+class SessionKeepaliveTests(TestCase):
+    def test_keepalive_requiere_login(self):
+        response = self.client.get(reverse('academia:session_keepalive'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response['Location'])
+
+    def test_keepalive_refresca_sesion_autenticada(self):
+        usuario = User.objects.create_user(username='soporte', password='clave12345')
+        self.client.force_login(usuario)
+
+        response = self.client.get(reverse('academia:session_keepalive'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'ok': True})
 
 
 class PagoInicialMatriculaTests(TestCase):

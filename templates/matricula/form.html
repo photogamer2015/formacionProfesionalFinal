@@ -1018,6 +1018,7 @@
         const confirmSiBtn = document.getElementById('confirmar-matricula-si');
         const form = document.querySelector('form[method="post"]');
         const submitBtn = document.getElementById('submit-btn');
+        const keepaliveUrl = "{% url 'academia:session_keepalive' %}";
 
         function textoSeguro(valor) {
             return String(valor || '—')
@@ -1182,6 +1183,18 @@
             confirmModal.addEventListener('click', function (e) {
                 if (e.target === confirmModal) cerrarConfirmacionMatricula();
             });
+        }
+        if (MODO !== 'editar' && keepaliveUrl) {
+            const mantenerSesionActiva = function () {
+                fetch(keepaliveUrl, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    cache: 'no-store',
+                }).catch(function () {});
+            };
+            mantenerSesionActiva();
+            setInterval(mantenerSesionActiva, 5 * 60 * 1000);
         }
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && confirmModal && confirmModal.classList.contains('is-open')) {

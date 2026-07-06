@@ -11,6 +11,7 @@ app_name = 'academia'
 
 urlpatterns = [
     path('bienvenida/', views.bienvenida, name='bienvenida'),
+    path('session/keepalive/', views.session_keepalive, name='session_keepalive'),
 
     # ── Ayuda ──────────────────────────────────────────────────
     path('ayuda/', views.ayuda, name='ayuda'),
