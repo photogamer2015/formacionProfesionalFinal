@@ -775,6 +775,7 @@ class AbonoForm(forms.ModelForm):
         monto = cleaned.get('monto')
         metodo = cleaned.get('metodo')
         banco = cleaned.get('banco')
+        tipo_cobro = cleaned.get('tipo_cobro') or 'un_solo_metodo'
         tipo_pago = cleaned.get('tipo_pago') or 'abono'
         numero_modulo = cleaned.get('numero_modulo')
         cuenta = cleaned.get('cuenta_para_saldo')
@@ -826,11 +827,42 @@ class AbonoForm(forms.ModelForm):
         if metodo not in ['transferencia', 'tarjeta']:
             cleaned['banco'] = ''
 
+        if tipo_cobro == 'mixto':
+            monto_1 = cleaned.get('monto_pago_1') or Decimal('0.00')
+            monto_2 = cleaned.get('monto_pago_2') or Decimal('0.00')
+            metodo_1 = cleaned.get('metodo_pago_1')
+            metodo_2 = cleaned.get('metodo_pago_2')
+            banco_1 = cleaned.get('banco_1')
+            banco_2 = cleaned.get('banco_2')
+
+            if monto_1 <= 0:
+                self.add_error('monto_pago_1', 'El Monto 1 debe ser mayor a cero.')
+            if monto_2 <= 0:
+                self.add_error('monto_pago_2', 'El Monto 2 debe ser mayor a cero.')
+            suma_mixta = (monto_1 + monto_2).quantize(Decimal('0.01'))
+            monto_principal = monto.quantize(Decimal('0.01')) if monto is not None else None
+            if monto_principal is not None and suma_mixta != monto_principal:
+                self.add_error(
+                    'monto_pago_2',
+                    'La suma del Monto 1 y Monto 2 debe ser exactamente igual al Monto (USD).'
+                )
+            if not metodo_1:
+                self.add_error('metodo_pago_1', 'Selecciona el método del Monto 1.')
+            if not metodo_2:
+                self.add_error('metodo_pago_2', 'Selecciona el método del Monto 2.')
+            if metodo_1 in ('transferencia', 'tarjeta') and not banco_1:
+                self.add_error('banco_1', 'Selecciona el banco o app del Monto 1.')
+            if metodo_2 in ('transferencia', 'tarjeta') and not banco_2:
+                self.add_error('banco_2', 'Selecciona el banco o app del Monto 2.')
+            if metodo_1 not in ('transferencia', 'tarjeta'):
+                cleaned['banco_1'] = ''
+            if metodo_2 not in ('transferencia', 'tarjeta'):
+                cleaned['banco_2'] = ''
+
         # Validación de saldo: solo aplica si el pago cuenta para el saldo del curso.
         # Recuperaciones cobradas APARTE no se validan contra el saldo.
         if (self.matricula and monto and
                 cleaned.get('cuenta_para_saldo', True)):
-            from decimal import Decimal
             valor_neto = self.matricula.valor_neto
             otros = self.matricula.abonos.filter(cuenta_para_saldo=True)
             if self.instance and self.instance.pk:

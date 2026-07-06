@@ -1460,9 +1460,8 @@ def abono_crear(request, matricula_pk):
             abono = form.save(commit=False)
             abono.matricula = matricula
             abono.registrado_por = request.user
-            monto_1 = form.cleaned_data.get('monto_pago_1') or Decimal('0.00')
             monto_2 = form.cleaned_data.get('monto_pago_2') or Decimal('0.00')
-            abono.monto = monto_1 + monto_2
+            abono.monto = form.cleaned_data.get('monto')
             abono.metodo = form.cleaned_data.get('metodo_pago_1') or 'efectivo'
             abono.banco = form.cleaned_data.get('banco_1') or ''
             abono.monto_2 = monto_2
@@ -1511,9 +1510,8 @@ def abono_editar(request, matricula_pk, abono_pk):
             tipo_cobro = form.cleaned_data.get('tipo_cobro')
             if tipo_cobro == 'mixto':
                 abono = form.save(commit=False)
-                monto_1 = form.cleaned_data.get('monto_pago_1') or Decimal('0.00')
                 monto_2 = form.cleaned_data.get('monto_pago_2') or Decimal('0.00')
-                abono.monto = monto_1 + monto_2
+                abono.monto = form.cleaned_data.get('monto')
                 abono.metodo = form.cleaned_data.get('metodo_pago_1') or 'efectivo'
                 abono.banco = form.cleaned_data.get('banco_1') or ''
                 abono.monto_2 = monto_2

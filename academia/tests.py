@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from django.contrib.auth.models import User
 from django.test import TestCase
 
+from .forms import AbonoForm
 from .models import Abono, Curso, Estudiante, JornadaCurso, Matricula
 from .views import _registrar_pago_inicial
 
@@ -93,3 +94,74 @@ class PagoInicialMatriculaTests(TestCase):
         )
         self.assertEqual(matricula.valor_pagado, Decimal('50.00'))
         self.assertEqual(montos, [Decimal('28.75'), Decimal('21.25')])
+
+    def _abono_data(self, **overrides):
+        data = {
+            'fecha': '2026-07-06',
+            'monto': '25.00',
+            'tipo_pago': 'solo_modulo',
+            'numero_modulo': '1',
+            'cuenta_para_saldo': 'True',
+            'metodo': 'efectivo',
+            'banco': '',
+            'numero_recibo': '',
+            'observaciones': '',
+            'tipo_cobro': 'mixto',
+            'monto_pago_1': '10.00',
+            'metodo_pago_1': 'efectivo',
+            'banco_1': '',
+            'monto_pago_2': '15.00',
+            'metodo_pago_2': 'efectivo',
+            'banco_2': '',
+        }
+        data.update(overrides)
+        return data
+
+    def test_abono_mixto_rechaza_suma_distinta_al_monto_principal(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('40.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+
+        form = AbonoForm(
+            self._abono_data(
+                monto='25.00',
+                monto_pago_1='15.00',
+                monto_pago_2='15.00',
+            ),
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('monto_pago_2', form.errors)
+
+    def test_abono_mixto_acepta_suma_igual_al_monto_principal(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('40.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+
+        form = AbonoForm(self._abono_data(), matricula=matricula)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['monto'], Decimal('25.00'))
+        self.assertEqual(form.cleaned_data['monto_pago_1'], Decimal('10.00'))
+        self.assertEqual(form.cleaned_data['monto_pago_2'], Decimal('15.00'))

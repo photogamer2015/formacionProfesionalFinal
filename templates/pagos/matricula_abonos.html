@@ -510,7 +510,7 @@
                         {{ form.banco_2 }}{{ form.banco_2.errors }}
                     </div>
                 </div>
-                <small id="mixto-abono-error-msg" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600; font-size:12px;">
+                <small id="mixto-abono-error-msg" aria-live="polite" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600; font-size:12px;">
                     ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Monto (USD)" principal.
                 </small>
             </div>
@@ -660,7 +660,6 @@
     }
     if (tipoCobroSelect) {
         tipoCobroSelect.addEventListener('change', toggleDistribucionPago);
-        toggleDistribucionPago();
     }
 
     // ── Validar monto > 0 y mixto para habilitar botón ──
@@ -669,23 +668,48 @@
     const monto2Input = document.getElementById('id_monto_pago_2_abono');
     const mixtoErrorMsg = document.getElementById('mixto-abono-error-msg');
     const btnGuardar = document.getElementById('btn-guardar-pago');
+    const formPago = btnGuardar ? btnGuardar.closest('form') : null;
+
+    function valorNumero(input) {
+        if (!input) return 0;
+        return parseFloat((input.value || '').replace(',', '.')) || 0;
+    }
+
+    function mostrarErrorMixto(mostrar, mensaje = '') {
+        if (mixtoErrorMsg) {
+            if (mensaje) mixtoErrorMsg.textContent = '⚠️ ' + mensaje;
+            mixtoErrorMsg.style.display = mostrar ? 'block' : 'none';
+        }
+        [monto1Input, monto2Input].forEach((input) => {
+            if (!input) return;
+            input.style.borderColor = mostrar ? '#d32f2f' : '';
+            input.style.borderWidth = mostrar ? '2px' : '';
+        });
+    }
 
     function validarMonto() {
-        if (!btnGuardar || !montoInput) return;
-        const val = parseFloat(montoInput.value) || 0;
+        if (!btnGuardar || !montoInput) return false;
+        const val = valorNumero(montoInput);
         let esValido = (val > 0);
 
         if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
-            const m1 = parseFloat(monto1Input.value) || 0;
-            const m2 = parseFloat(monto2Input.value) || 0;
-            if (Math.abs((m1 + m2) - val) > 0.01) {
+            const m1 = valorNumero(monto1Input);
+            const m2 = valorNumero(monto2Input);
+            const suma = m1 + m2;
+            if (m1 <= 0 || m2 <= 0) {
                 esValido = false;
-                if (mixtoErrorMsg) mixtoErrorMsg.style.display = 'block';
+                mostrarErrorMixto(true, 'Completa Monto 1 y Monto 2 con valores mayores a $0.00.');
+            } else if (Math.abs(suma - val) > 0.01) {
+                esValido = false;
+                mostrarErrorMixto(
+                    true,
+                    'La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Monto (USD)" principal.'
+                );
             } else {
-                if (mixtoErrorMsg) mixtoErrorMsg.style.display = 'none';
+                mostrarErrorMixto(false);
             }
         } else {
-            if (mixtoErrorMsg) mixtoErrorMsg.style.display = 'none';
+            mostrarErrorMixto(false);
         }
 
         if (esValido) {
@@ -697,11 +721,24 @@
             btnGuardar.style.opacity = '0.4';
             btnGuardar.style.cursor = 'not-allowed';
         }
+        return esValido;
     }
 
     if (montoInput) montoInput.addEventListener('input', validarMonto);
     if (monto1Input) monto1Input.addEventListener('input', validarMonto);
     if (monto2Input) monto2Input.addEventListener('input', validarMonto);
+    if (formPago) {
+        formPago.addEventListener('submit', function (e) {
+            if (!validarMonto()) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (tipoCobroSelect && tipoCobroSelect.value === 'mixto' && monto2Input) {
+                    monto2Input.focus();
+                }
+                return false;
+            }
+        });
+    }
 
     // INICIALIZACIÓN
     if (metodoSel) {
