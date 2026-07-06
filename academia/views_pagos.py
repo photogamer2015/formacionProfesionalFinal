@@ -313,7 +313,7 @@ def pagos_lista(request):
     qs, filtros = _filtrar_matriculas(request)
     qs = qs.prefetch_related(
         Prefetch('abonos', queryset=Abono.objects.order_by('fecha', 'id'), to_attr='abonos_para_resumen')
-    ).order_by('-fecha_matricula', '-id')
+    ).order_by('-creado', '-id')
     matriculas = _adjuntar_resumen_abonos(list(qs))
 
     # Estadísticas globales (con los filtros aplicados, excepto el de estado)
@@ -386,7 +386,7 @@ def pagos_export(request):
     qs, filtros = _filtrar_matriculas(request)
     qs = qs.prefetch_related(
         Prefetch('abonos', queryset=Abono.objects.order_by('fecha', 'id'), to_attr='abonos_para_resumen')
-    ).order_by('-fecha_matricula', '-id')
+    ).order_by('-creado', '-id')
 
     headers = [
         'Fecha matrícula', 'Cédula', 'Apellidos', 'Nombres',
@@ -490,7 +490,7 @@ def pagos_export_pdf(request):
     qs, filtros = _filtrar_matriculas(request)
     qs = qs.prefetch_related(
         Prefetch('abonos', queryset=Abono.objects.order_by('fecha', 'id'), to_attr='abonos_para_resumen')
-    ).order_by('-fecha_matricula', '-id')
+    ).order_by('-creado', '-id')
     matriculas = _adjuntar_resumen_abonos(list(qs))
 
     buf = BytesIO()

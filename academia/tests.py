@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .forms import AbonoForm, AdicionalSupletorioRapidoForm
 from .models import Abono, Curso, Estudiante, JornadaCurso, Matricula
@@ -98,6 +99,33 @@ class JornadaMatriculasAccessTests(TestCase):
         self.assertEqual(len(matriculas), 1)
         self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
         self.assertEqual(response.context['jornada_filtrada'], self.jornada_1)
+
+    def test_listas_muestran_ultimo_registro_primero_aunque_fecha_sea_anterior(self):
+        self.client.force_login(self.asesor)
+        vieja = Matricula.objects.get(estudiante=self.estudiante_1)
+        nueva = Matricula.objects.get(estudiante=self.estudiante_2)
+        ahora = timezone.now()
+        Matricula.objects.filter(pk=vieja.pk).update(
+            fecha_matricula=date(2026, 7, 6),
+            creado=ahora - timezone.timedelta(minutes=10),
+        )
+        Matricula.objects.filter(pk=nueva.pk).update(
+            fecha_matricula=date(2026, 7, 1),
+            creado=ahora,
+        )
+
+        matricula_response = self.client.get(
+            reverse('academia:matricula_lista', kwargs={'modalidad': 'presencial'})
+        )
+        pagos_response = self.client.get(reverse('academia:pagos_lista'))
+
+        self.assertEqual(matricula_response.status_code, 200)
+        self.assertEqual(pagos_response.status_code, 200)
+        self.assertEqual(
+            list(matricula_response.context['matriculas'])[0].estudiante,
+            self.estudiante_2,
+        )
+        self.assertEqual(pagos_response.context['matriculas'][0].estudiante, self.estudiante_2)
 
 
 class PagoInicialMatriculaTests(TestCase):

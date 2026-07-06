@@ -867,6 +867,8 @@ def matricula_lista(request, modalidad):
     User = get_user_model()
     registradores = User.objects.filter(is_active=True).order_by('first_name', 'username')
 
+    qs = qs.order_by('-creado', '-id')
+
     return render(request, 'matricula/lista.html', {
         'matriculas': qs,
         'cursos': cursos_filtro,
@@ -1571,7 +1573,7 @@ def _matriculas_filtradas_para_export(request, modalidad):
     if registrador_id.isdigit():
         qs = qs.filter(registrado_por_id=int(registrador_id))
 
-    return qs.order_by('-fecha_matricula', '-creado')
+    return qs.order_by('-creado', '-id')
 
 
 @matricula_requerida
