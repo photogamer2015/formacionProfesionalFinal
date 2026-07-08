@@ -523,8 +523,9 @@ def _registrar_pago_inicial(matricula, usuario, mat_form=None,
         n_mod = matricula.curso.get_numero_modulos(matricula.modalidad) if matricula.curso_id else 1
         n_mod = n_mod or 1
         k = min(modulos_k, n_mod)
+        reserva_base = Decimal('10.00') if matricula.tipo_matricula in ('reserva_abono', 'reserva_modulo_1') else Decimal('0.00')
         valor_modulo = (
-            (matricula.valor_neto / Decimal(n_mod)).quantize(Decimal('0.01'))
+            ((matricula.valor_neto - reserva_base) / Decimal(n_mod)).quantize(Decimal('0.01'))
             if n_mod > 0 else Decimal('0.00')
         )
         monto_restante = monto

@@ -74,7 +74,7 @@
         margin-top: 12px;
         border-radius: 6px;
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 12px;
         font-size: 13px;
     }
@@ -239,14 +239,6 @@
         <div>
             <div class="label">A Recaudar (Cuotas)</div>
             <div class="valor" style="color:#1a237e;">${{ hoja.total_cuotas|floatformat:2 }}</div>
-        </div>
-        <div>
-            <div class="label">Efectivo</div>
-            <div class="valor" style="color:#2e7d32;">${{ hoja.total_efectivo|floatformat:2 }}</div>
-        </div>
-        <div>
-            <div class="label">Transferencia</div>
-            <div class="valor" style="color:#0d47a1;">${{ hoja.total_transferencia|floatformat:2 }}</div>
         </div>
         <div>
             <div class="label">Total recaudado</div>

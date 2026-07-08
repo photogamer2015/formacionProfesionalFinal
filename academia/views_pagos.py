@@ -9,7 +9,7 @@ Diseño:
 
 from collections import defaultdict
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from io import BytesIO
 
 from django.contrib import messages
@@ -33,6 +33,9 @@ MESES_ES = [
     '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
+
+CENTAVO = Decimal('0.01')
+MEDIO_DOLAR = Decimal('0.50')
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -282,6 +285,33 @@ def _resumen_abonos(abonos):
         'metodos': list(metodos.values()),
         'total_movimientos': sum((x['count'] for x in tipos.values()), 0),
     }
+
+
+def _partes_pago_abono(abono):
+    """Devuelve las partes reales de un abono, separando pagos mixtos."""
+    monto = abono.monto or Decimal('0.00')
+    monto_2 = abono.monto_2 or Decimal('0.00')
+    monto_1 = monto - monto_2 if monto_2 > 0 else monto
+    partes = []
+    if monto_1 > 0:
+        partes.append({
+            'monto': monto_1,
+            'metodo': abono.metodo,
+            'metodo_display': abono.get_metodo_display(),
+            'banco': abono.banco,
+            'banco_display': abono.get_banco_display(),
+        })
+    if monto_2 > 0 and abono.metodo_2:
+        bancos_map = dict(Abono.BANCOS)
+        metodos_map = dict(Abono.METODOS)
+        partes.append({
+            'monto': monto_2,
+            'metodo': abono.metodo_2,
+            'metodo_display': metodos_map.get(abono.metodo_2, abono.metodo_2),
+            'banco': abono.banco_2,
+            'banco_display': bancos_map.get(abono.banco_2, abono.banco_2) if abono.banco_2 else '',
+        })
+    return partes
 
 
 def _adjuntar_resumen_abonos(matriculas):
@@ -1745,6 +1775,7 @@ def abono_recibo(request, abono_pk):
 # Tipos de matrícula que SÍ implican una reserva inicial (los únicos que
 # hacen sentido para el control de morosidad por módulo).
 TIPOS_CON_RESERVA = ('reserva_abono', 'reserva_modulo_1')
+MONTO_RESERVA_MATRICULA = Decimal('10.00')
 
 
 def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
@@ -2377,6 +2408,165 @@ def recuperacion_eliminar(request, recup_pk):
 DIAS_SEMANA_ES = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
 
 
+def _redondear_abajo_medio_dolar(monto):
+    """Redondea hacia abajo al múltiplo de $0.50 más cercano."""
+    monto = max(monto or Decimal('0.00'), Decimal('0.00'))
+    unidades = int(monto / MEDIO_DOLAR)
+    return (Decimal(unidades) * MEDIO_DOLAR).quantize(CENTAVO)
+
+
+def _redondear_arriba_medio_dolar(monto):
+    """Redondea hacia arriba al múltiplo de $0.50 más cercano."""
+    monto = max(monto or Decimal('0.00'), Decimal('0.00'))
+    unidades = (monto / MEDIO_DOLAR).to_integral_value(rounding=ROUND_CEILING)
+    return (unidades * MEDIO_DOLAR).quantize(CENTAVO)
+
+
+def _calcular_cuotas_recaudacion(saldo_pendiente, semanas_restantes, cuota_estandar):
+    """
+    Proyecta las cuotas futuras recalculando en cada semana.
+
+    La cuota sugerida respeta la cuota estándar salvo que el mínimo necesario
+    para terminar a tiempo sea mayor.
+    """
+    saldo = max(saldo_pendiente or Decimal('0.00'), Decimal('0.00')).quantize(
+        CENTAVO, rounding=ROUND_HALF_UP
+    )
+    semanas = max(int(semanas_restantes or 1), 1)
+    if saldo <= 0:
+        return [Decimal('0.00') for _ in range(semanas)]
+
+    cuota_estandar = max(cuota_estandar or Decimal('0.00'), Decimal('0.00'))
+    cuotas = []
+    saldo_actual = saldo
+    for restantes in range(semanas, 0, -1):
+        cuota_minima = _redondear_arriba_medio_dolar(
+            saldo_actual / Decimal(restantes)
+        )
+        cuota = max(cuota_estandar, cuota_minima)
+        cuota = min(cuota, saldo_actual).quantize(
+            CENTAVO, rounding=ROUND_HALF_UP
+        )
+        cuotas.append(cuota)
+        saldo_actual = (saldo_actual - cuota).quantize(
+            CENTAVO, rounding=ROUND_HALF_UP
+        )
+    return cuotas
+
+
+def _semanas_recaudacion_matricula(matricula):
+    if matricula.curso_id:
+        return max(int(matricula.curso.get_numero_modulos(matricula.modalidad) or 1), 1)
+    return 1
+
+
+def _reserva_plan_matricula(matricula):
+    if matricula.tipo_matricula not in TIPOS_CON_RESERVA:
+        return Decimal('0.00')
+    valor_neto = matricula.valor_neto or Decimal('0.00')
+    return min(MONTO_RESERVA_MATRICULA, valor_neto).quantize(
+        CENTAVO, rounding=ROUND_HALF_UP
+    )
+
+
+def _cuota_estandar_matricula(matricula, total_semanas):
+    valor_neto = (matricula.valor_neto or Decimal('0.00')).quantize(
+        CENTAVO, rounding=ROUND_HALF_UP
+    )
+    reserva = _reserva_plan_matricula(matricula)
+    saldo_financiado_inicial = max(valor_neto - reserva, Decimal('0.00'))
+    return (saldo_financiado_inicial / Decimal(total_semanas)).quantize(
+        CENTAVO, rounding=ROUND_HALF_UP
+    )
+
+
+def _semanas_por_monto(monto, cuota_estandar):
+    if cuota_estandar <= 0:
+        return 0
+    monto = max(monto or Decimal('0.00'), Decimal('0.00'))
+    return int(monto / cuota_estandar)
+
+
+def _pagado_en_matricula(matricula):
+    qs = matricula.abonos.filter(cuenta_para_saldo=True)
+    if matricula.fecha_matricula:
+        qs = qs.filter(fecha__lte=matricula.fecha_matricula)
+    total = sum((a.monto for a in qs), Decimal('0.00'))
+    if total <= 0:
+        total = matricula.valor_pagado or Decimal('0.00')
+    return total.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
+def _recaudaciones_posteriores(matricula):
+    qs = matricula.abonos.filter(cuenta_para_saldo=True)
+    if matricula.fecha_matricula:
+        qs = qs.filter(fecha__gt=matricula.fecha_matricula)
+
+    claves = set()
+    for abono in qs:
+        if abono.numero_modulo:
+            claves.add(('modulo', abono.numero_modulo))
+        else:
+            claves.add(('fecha', abono.fecha))
+    return len(claves)
+
+
+def _semanas_cubiertas_por_pagos(matricula, total_semanas, cuota_estandar):
+    reserva = _reserva_plan_matricula(matricula)
+    pagado_total_modulos = max(
+        (matricula.valor_pagado or Decimal('0.00')) - reserva,
+        Decimal('0.00'),
+    ).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+    pagado_matricula_modulos = max(
+        _pagado_en_matricula(matricula) - reserva,
+        Decimal('0.00'),
+    ).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+    semanas_por_monto = _semanas_por_monto(
+        pagado_total_modulos, cuota_estandar
+    )
+    semanas_por_recaudaciones = (
+        _semanas_por_monto(pagado_matricula_modulos, cuota_estandar)
+        + _recaudaciones_posteriores(matricula)
+    )
+    return min(max(semanas_por_monto, semanas_por_recaudaciones), total_semanas)
+
+
+def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None):
+    """
+    Calcula la cuota justa para la Hoja de Recaudación:
+    reparte el saldo real entre las semanas pendientes.
+    """
+    saldo_pendiente = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
+    saldo_pendiente = saldo_pendiente.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+    total_semanas = _semanas_recaudacion_matricula(matricula)
+    cuota_estandar = _cuota_estandar_matricula(matricula, total_semanas)
+    semanas_cubiertas = _semanas_cubiertas_por_pagos(
+        matricula, total_semanas, cuota_estandar
+    )
+    semanas_restantes = max(total_semanas - semanas_cubiertas, 1)
+    cuotas = _calcular_cuotas_recaudacion(
+        saldo_pendiente, semanas_restantes, cuota_estandar
+    )
+
+    if saldo_pendiente <= 0:
+        cuota_sugerida = Decimal('0.00')
+        modulo_actual = total_semanas
+        semanas_restantes = 0
+    else:
+        cuota_sugerida = cuotas[0] if cuotas else saldo_pendiente
+        modulo_actual = min(semanas_cubiertas + 1, total_semanas)
+
+    return {
+        'modulo': modulo_actual,
+        'saldo_pendiente': saldo_pendiente,
+        'cuota_sugerida': cuota_sugerida,
+        'cuotas_pendientes': semanas_restantes,
+        'cuotas': cuotas,
+        'cuota_estandar': cuota_estandar,
+    }
+
+
 @matricula_requerida
 def hoja_recaudacion(request):
     """
@@ -2440,34 +2630,36 @@ def hoja_recaudacion(request):
                 abonos_dia = m.abonos.filter(fecha=fecha_obj)
                 pagado_dia = sum((a.monto for a in abonos_dia), Decimal('0.00'))
 
+                partes_dia = [
+                    parte
+                    for abono in abonos_dia
+                    for parte in _partes_pago_abono(abono)
+                ]
+
                 # Forma de pago del día (concatenadas si hay varias)
-                metodos = sorted({a.get_metodo_display() for a in abonos_dia})
-                bancos = sorted({a.get_banco_display() for a in abonos_dia if a.banco})
+                metodos = sorted({p['metodo_display'] for p in partes_dia})
+                bancos = sorted({p['banco_display'] for p in partes_dia if p['banco']})
                 forma = ', '.join(metodos) if metodos else '—'
                 banco_str = ', '.join(bancos) if bancos else '—'
 
-                # Determinar el módulo "actual" (el más alto que tiene un abono o el siguiente pendiente)
-                pagos_mod = m.pagos_por_modulo()
-                modulo_actual = max(pagos_mod.keys()) if pagos_mod else 1
+                plan_recaudacion = _plan_recaudacion_matricula(m, fecha_obj)
+                modulo_actual = plan_recaudacion['modulo']
 
                 # Recuperaciones pendientes en este módulo
                 tiene_recup = m.recuperaciones_pendientes.filter(pagada=False).exists()
                 recup_str = '✱ Recuperar' if tiene_recup else ''
 
-                # ── LÓGICA DE CUOTAS ──
-                cuota_sugerida = m.valor_modulo
+                cuota_sugerida = plan_recaudacion['cuota_sugerida']
 
                 # Suma a totales por método
-                for a in abonos_dia:
-                    if a.metodo == 'efectivo':
-                        total_efectivo += a.monto
-                    elif a.metodo in ('transferencia', 'tarjeta'):
-                        total_transferencia += a.monto
+                for parte in partes_dia:
+                    if parte['metodo'] == 'efectivo':
+                        total_efectivo += parte['monto']
+                    elif parte['metodo'] in ('transferencia', 'tarjeta'):
+                        total_transferencia += parte['monto']
 
-                saldo_pendiente = m.saldo if m.saldo > 0 else Decimal('0.00')
-                if cuota_sugerida > saldo_pendiente:
-                    cuota_sugerida = saldo_pendiente
-                    
+                saldo_pendiente = plan_recaudacion['saldo_pendiente']
+
                 total_recaudar_esperado += saldo_pendiente
                 total_cuotas += cuota_sugerida
                 total_recaudado += pagado_dia
@@ -2863,30 +3055,33 @@ def _hojas_recaudacion_data(request):
             abonos_dia = m.abonos.filter(fecha=fecha_obj)
             pagado_dia = sum((a.monto for a in abonos_dia), Decimal('0.00'))
 
-            metodos = sorted({a.get_metodo_display() for a in abonos_dia})
-            bancos = sorted({a.get_banco_display() for a in abonos_dia if a.banco})
+            partes_dia = [
+                parte
+                for abono in abonos_dia
+                for parte in _partes_pago_abono(abono)
+            ]
+
+            metodos = sorted({p['metodo_display'] for p in partes_dia})
+            bancos = sorted({p['banco_display'] for p in partes_dia if p['banco']})
             forma = ', '.join(metodos) if metodos else '—'
             banco_str = ', '.join(bancos) if bancos else '—'
 
-            pagos_mod = m.pagos_por_modulo()
-            modulo_actual = max(pagos_mod.keys()) if pagos_mod else 1
+            plan_recaudacion = _plan_recaudacion_matricula(m, fecha_obj)
+            modulo_actual = plan_recaudacion['modulo']
 
             tiene_recup = m.recuperaciones_pendientes.filter(pagada=False).exists()
             recup_str = '✱ Recuperar' if tiene_recup else ''
 
-            # ── LÓGICA DE CUOTAS ──
-            cuota_sugerida = m.valor_modulo
+            cuota_sugerida = plan_recaudacion['cuota_sugerida']
 
-            for a in abonos_dia:
-                if a.metodo == 'efectivo':
-                    total_efectivo += a.monto
-                elif a.metodo in ('transferencia', 'tarjeta'):
-                    total_transferencia += a.monto
+            for parte in partes_dia:
+                if parte['metodo'] == 'efectivo':
+                    total_efectivo += parte['monto']
+                elif parte['metodo'] in ('transferencia', 'tarjeta'):
+                    total_transferencia += parte['monto']
 
-            saldo_pendiente = m.saldo if m.saldo > 0 else Decimal('0.00')
-            if cuota_sugerida > saldo_pendiente:
-                cuota_sugerida = saldo_pendiente
-                
+            saldo_pendiente = plan_recaudacion['saldo_pendiente']
+
             total_recaudar_esperado += saldo_pendiente
             total_cuotas += cuota_sugerida
             total_recaudado += pagado_dia
@@ -2952,7 +3147,7 @@ def hoja_recaudacion_export_excel(request):
         'Saldo Pend.', 'A Recaudar (Cuota)', 'Recaudado', 'Forma de pago', 'Banco', 'Recuperación', 'Talla',
     ]
     rows = []
-    total_recaudar = total_recaudado = 0.0
+    total_recaudar = total_cuotas = total_recaudado = 0.0
     for h in hojas:
         for idx, item in enumerate(h['items'], start=1):
             rows.append([
@@ -2975,10 +3170,12 @@ def hoja_recaudacion_export_excel(request):
                 item['talla'],
             ])
             total_recaudar += float(item['saldo_pendiente'] or 0)
+            total_cuotas += float(item['cuota_sugerida'] or 0)
             total_recaudado += float(item['recaudado'] or 0)
 
     totals = {
         9: round(total_recaudar, 2),
+        10: round(total_cuotas, 2),
         11: round(total_recaudado, 2),
     }
     filename = f'hoja_recaudacion_{filtros["fecha"]}.xlsx'
