@@ -443,7 +443,9 @@
     <div class="gm-body">
         <div class="gm-body-inner">
             <p class="gm-resumen">
-                Estudiantes que ya iniciaron clases y tienen un saldo por confirmar.
+                Estudiantes con un pago vencido según su modalidad: presencial paga al iniciar
+                la jornada y cada 7 días; online paga un día antes del inicio y el saldo
+                restante a los 13 días; ciclo corto online es un solo pago un día antes.
                 Coordina el pago o consulta su asistencia con un clic.
             </p>
 
@@ -458,8 +460,9 @@
                         {{ a.estudiante.cedula }} · {{ a.curso.nombre }} · {{ a.tipo_matricula_label }}
                     </div>
                     <div class="gm-estado">
-                        <span class="gm-chip modulo">📘 Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}</span>
+                        <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                         <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                        <span class="gm-chip pendiente">⏰ Venció: {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>
                         <span class="gm-chip jornada">📅 {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
                         {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
                     </div>
@@ -502,8 +505,9 @@
                             {{ a.estudiante.cedula }} · {{ a.curso.nombre }} · {{ a.tipo_matricula_label }}
                         </div>
                         <div class="gm-estado">
-                            <span class="gm-chip modulo">📘 Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}</span>
+                            <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                             <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                            <span class="gm-chip pendiente">⏰ Venció: {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>
                             <span class="gm-chip jornada">📅 {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
                             {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
                         </div>

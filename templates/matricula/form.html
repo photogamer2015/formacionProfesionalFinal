@@ -31,20 +31,24 @@
     lo conserve.
     {% endcomment %}
     {% if modo == 'editar' %}
-        <input type="hidden" name="reiniciar_pago" value="{% if reiniciar_pago %}1{% else %}0{% endif %}">
-        {% if reiniciar_pago %}
+        <input type="hidden" name="editar_pago" value="{% if editar_pago %}1{% else %}0{% endif %}">
+        {% if editar_pago %}
         <div class="flash flash-warning" style="margin-bottom:16px; background:#fff3cd; border:1px solid #ffe08a; color:#664d03; padding:12px 16px; border-radius:10px;">
-            <strong>⚠️ Modo: Editar y reiniciar pago.</strong>
-            Al guardar, el <strong>pago inicial de matrícula se borrará</strong> y
-            el "Valor pagado" quedará en <strong>$0</strong>. Los pagos posteriores
-            (hechos en "Gestionar Pagos") se conservan. Para registrar un nuevo
-            pago usa "Gestionar Pagos".
+            <strong>💰 Modo: Editar el pago inicial.</strong>
+            Corrige directamente el pago inicial de la matrícula
+            (actual: <strong>${{ monto_pago_inicial_actual|floatformat:2 }}</strong>):
+            monto, forma de pago, método, mixto o descuento. Al guardar, el pago
+            inicial anterior se <strong>reemplaza por el nuevo</strong>. Los pagos
+            posteriores (de "Gestionar Pagos") se conservan y el nuevo valor debe
+            cuadrar con ellos. <strong>Los demás campos están bloqueados</strong>.
         </div>
         {% else %}
         <div class="flash flash-info" style="margin-bottom:16px; background:#e7f1ff; border:1px solid #b6d4fe; color:#084298; padding:12px 16px; border-radius:10px;">
             <strong>✏️ Modo: Editar solo datos.</strong>
             Estás corrigiendo los datos de la matrícula. <strong>Los pagos NO se
             modifican</strong>; el valor pagado y el saldo quedan igual.
+            El <strong>curso no se puede cambiar</strong>: para eso elimina la
+            matrícula y regístrala de nuevo.
         </div>
         {% endif %}
     {% endif %}
@@ -140,10 +144,25 @@
                 Curso *
                 <span style="color:#888; font-weight:400; font-size:11px;">(elige modalidad y busca el curso)</span>
             </label>
+            {% if modo == 'editar' %}
+            {# ── Curso BLOQUEADO en edición ──
+               El curso nunca se cambia al editar: si se necesita otro curso,
+               la matrícula se elimina y se registra de nuevo. El hidden envía
+               el curso original y el servidor lo valida además. #}
+            <input type="hidden" name="mat-curso" value="{{ matricula.curso_id }}">
+            <input type="text" class="form-input" readonly tabindex="-1"
+                   value="{{ matricula.curso.nombre }}{% if matricula.curso.es_ciclo_corto %} (Ciclo Corto){% endif %}"
+                   style="background:#f1f3f5; color:#555; cursor:not-allowed;">
+            <small style="color:#b45309; font-size:11px; display:block; margin-top:4px;">
+                🔒 El curso no se puede cambiar al editar. Para cambiarlo,
+                elimina esta matrícula y regístrala de nuevo.
+            </small>
+            {% else %}
             <div class="native-course-select">
                 {{ mat_form.curso }}
             </div>
-            <div id="curso-selector-card" class="course-selector">
+            {% endif %}
+            <div id="curso-selector-card" class="course-selector"{% if modo == 'editar' %} style="display:none;"{% endif %}>
                 <div class="course-mode-tabs" role="tablist" aria-label="Modalidad del curso">
                     <button type="button" class="course-mode-tab" data-modalidad="presencial">🏫 Presencial</button>
                     <button type="button" class="course-mode-tab" data-modalidad="online">🟢 Online</button>
@@ -2166,4 +2185,39 @@
 
     })();
 </script>
+
+{% if modo == 'editar' and editar_pago %}
+<script>
+    (function () {
+        // ══ Modo "Editar el pago inicial" ══
+        // Solo los campos del pago pueden tocarse. Todo lo demás se bloquea
+        // visualmente aquí y, además, el servidor fuerza los valores
+        // originales de los campos que no son de pago (doble protección).
+        var PAGO_EXACTOS = [
+            'mat-tipo_matricula', 'mat-modulos_a_pagar', 'mat-forma_pago',
+            'mat-valor_pagado', 'mat-descuento', 'mat-tipo_cobro'
+        ];
+        function esCampoPago(name) {
+            if (!name) return false;
+            if (PAGO_EXACTOS.indexOf(name) !== -1) return true;
+            return name.indexOf('mat-metodo_pago') === 0
+                || name.indexOf('mat-banco') === 0
+                || name.indexOf('mat-monto_pago') === 0;
+        }
+        var form = document.querySelector('form.card-box');
+        if (!form) return;
+        form.querySelectorAll('input, select, textarea').forEach(function (el) {
+            if (el.type === 'hidden') return;                    // csrf, editar_pago, curso
+            if (el.type === 'submit' || el.type === 'button') return;
+            if (esCampoPago(el.name)) return;
+            el.disabled = true;
+            el.style.opacity = '0.55';
+            el.style.cursor = 'not-allowed';
+            el.title = 'Bloqueado: en este modo solo se edita el pago inicial';
+        });
+        var btn = document.getElementById('submit-btn');
+        if (btn) btn.textContent = '💰 Guardar nuevo pago inicial';
+    })();
+</script>
+{% endif %}
 {% endblock %}

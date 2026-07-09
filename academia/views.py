@@ -1,12 +1,13 @@
 import json
 import os
+from decimal import Decimal
 from django.utils import timezone
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
@@ -453,6 +454,23 @@ def matricula_menu(request, modalidad):
     })
 
 
+def _ids_abonos_pago_inicial(matricula):
+    """
+    Devuelve los IDs de los abonos que componen el PAGO INICIAL de la
+    matrícula: el bloque de abonos más antiguos (por orden de creación)
+    cuya fecha coincide con la fecha de matrícula. En cuanto aparece un
+    abono de otra fecha, se corta: lo posterior son pagos de
+    "Gestionar Pagos" y no se toca.
+    """
+    ids = []
+    for ab in matricula.abonos.order_by('creado', 'id'):
+        if ab.fecha == matricula.fecha_matricula:
+            ids.append(ab.id)
+        else:
+            break
+    return ids
+
+
 def _registrar_pago_inicial(matricula, usuario, mat_form=None,
                             monto_override=None, omitir_guarda_duplicado=False):
     """Crea el Abono inicial de una matrícula recién registrada según su
@@ -701,83 +719,208 @@ def matricula_editar(request, modalidad, pk):
 
     # ── Modo de edición ──────────────────────────────────────────────
     # Hay dos formas de editar una matrícula, elegidas por el usuario en la
-    # ventana de advertencia al pulsar "Editar":
+    # ventana de opciones al pulsar "Editar":
     #
-    #   1) SOLO DATOS  (reiniciar_pago = False): corrige nombre, correo,
-    #      curso, jornada, factura, etc. SIN tocar ningún pago. El
-    #      "Valor pagado" y el saldo quedan exactamente como estaban.
+    #   1) SOLO DATOS (editar_pago = False): corrige nombre, correo, jornada,
+    #      factura, etc. SIN tocar ningún pago. El "Valor pagado" y el saldo
+    #      quedan exactamente como estaban.
     #
-    #   2) REINICIAR PAGO (reiniciar_pago = True): edita los datos y además
-    #      elimina el pago inicial de matrícula, dejando el "Valor pagado"
-    #      en $0. Los pagos posteriores (hechos en "Gestionar Pagos") se
-    #      conservan intactos.
+    #   2) EDITAR EL PAGO INICIAL (editar_pago = True): permite corregir
+    #      directamente el pago inicial de la matrícula (monto, forma de
+    #      pago, tipo de matrícula, método, banco, mixto, descuento) sin
+    #      tener que borrarlo y registrarlo de nuevo a mano. Los demás
+    #      campos quedan BLOQUEADOS y el servidor los protege forzando los
+    #      valores originales. Los pagos posteriores ("Gestionar Pagos") se
+    #      conservan intactos y el nuevo pago inicial debe cuadrar con
+    #      ellos (inicial + posteriores ≤ valor neto).
     #
-    # En GET el modo llega por querystring (?reiniciar_pago=1). En POST llega
-    # por un campo oculto del formulario para no perderlo al enviar.
+    # REGLA GLOBAL: el CURSO nunca se puede cambiar al editar. Si se
+    # necesita otro curso, la matrícula debe eliminarse y registrarse de
+    # nuevo. Se valida en servidor además de bloquearse en el formulario.
+    #
+    # En GET el modo llega por querystring (?editar_pago=1; se acepta el
+    # antiguo ?reiniciar_pago=1 por compatibilidad). En POST llega por un
+    # campo oculto del formulario para no perderlo al enviar.
     if request.method == 'POST':
-        reiniciar_pago = request.POST.get('reiniciar_pago', '') == '1'
+        editar_pago = (
+            request.POST.get('editar_pago', '') == '1'
+            or request.POST.get('reiniciar_pago', '') == '1'
+        )
     else:
-        reiniciar_pago = request.GET.get('reiniciar_pago', '') == '1'
+        editar_pago = (
+            request.GET.get('editar_pago', '') == '1'
+            or request.GET.get('reiniciar_pago', '') == '1'
+        )
+
+    # Campos del formulario que SÍ pertenecen al pago inicial. Todo lo demás
+    # se fuerza al valor original en el modo "editar el pago".
+    CAMPOS_PAGO = {
+        'tipo_matricula', 'forma_pago', 'valor_pagado', 'descuento',
+    }
+
+    from .models import Abono
+    ids_pago_inicial = _ids_abonos_pago_inicial(matricula)
 
     if request.method == 'POST':
-        factura_si = request.POST.get('mat-factura_realizada', '') == 'si'
-        est_form = EstudianteForm(request.POST, prefix='est', instance=matricula.estudiante, factura_si=factura_si)
-        # captura_pago=False: en edición NO se cobra un pago inicial nuevo.
-        # El "Valor pagado" no es obligatorio ni se valida como cobro.
-        mat_form = MatriculaForm(
-            request.POST, prefix='mat', instance=matricula, modalidad=modalidad,
-            captura_pago=False,
-        )
+        curso_post = (request.POST.get('mat-curso', '') or '').strip()
+        curso_cambiado = bool(curso_post) and curso_post != str(matricula.curso_id)
+
+        if editar_pago:
+            # ── Blindaje de servidor: solo los campos de pago pueden cambiar.
+            # Se reconstruye el POST forzando los valores originales de todos
+            # los campos del modelo que no son de pago (incluido el curso),
+            # sin importar lo que haya enviado el cliente.
+            from django.forms.models import model_to_dict
+
+            data = request.POST.copy()
+            for campo, valor in model_to_dict(matricula).items():
+                if campo in CAMPOS_PAGO:
+                    continue
+                key = f'mat-{campo}'
+                if valor is None:
+                    data[key] = ''
+                elif hasattr(valor, 'isoformat'):
+                    data[key] = valor.isoformat()
+                else:
+                    data[key] = str(valor)
+
+            # El estudiante NO se toca en este modo.
+            est_form = EstudianteForm(prefix='est', instance=matricula.estudiante)
+            # captura_pago=True: el "Valor pagado" vuelve a ser obligatorio y
+            # se valida contra el valor neto, igual que al registrar.
+            mat_form = MatriculaForm(
+                data, prefix='mat', instance=matricula, modalidad=modalidad,
+                captura_pago=True,
+            )
+            # Los campos que NO son de pago llegan forzados con los valores
+            # originales de la matrícula, así que no tiene sentido validarlos
+            # como obligatorios: si una matrícula antigua tiene alguno vacío
+            # (ej. tipo_registro), eso no debe impedir corregir el pago.
+            _CAMPOS_PAGO_FORM = CAMPOS_PAGO | {
+                'tipo_cobro', 'metodo_pago', 'banco',
+                'monto_pago_1', 'metodo_pago_1', 'banco_1',
+                'monto_pago_2', 'metodo_pago_2', 'banco_2',
+                'modulos_a_pagar',
+            }
+            for _nombre, _campo in mat_form.fields.items():
+                if _nombre not in _CAMPOS_PAGO_FORM:
+                    _campo.required = False
+        else:
+            factura_si = request.POST.get('mat-factura_realizada', '') == 'si'
+            est_form = EstudianteForm(request.POST, prefix='est', instance=matricula.estudiante, factura_si=factura_si)
+            # captura_pago=False: en "solo datos" NO se cobra ni se toca el pago.
+            mat_form = MatriculaForm(
+                request.POST, prefix='mat', instance=matricula, modalidad=modalidad,
+                captura_pago=False,
+            )
 
         vendedora_id = request.POST.get('vendedora_id', '').strip()
         asesor = None
         if vendedora_id:
             asesor = User.objects.filter(id=vendedora_id).first()
+        if not asesor and editar_pago:
+            # En modo pago el selector de asesor está bloqueado: se conserva
+            # la vendedora actual de la matrícula.
+            asesor = matricula.vendedora
 
         if not asesor:
             error_vendedora = 'Debes seleccionar un asesor válido.'
 
-        if not error_vendedora and est_form.is_valid() and mat_form.is_valid():
-            est_form.save()
-            matricula_updated = mat_form.save(commit=False)
-            matricula_updated.vendedora = asesor
-            matricula_updated.save()
+        # ── Validación: el curso NO se puede cambiar al editar ──
+        if curso_cambiado:
+            messages.error(
+                request,
+                'El curso de una matrícula no se puede cambiar al editar. '
+                'Si el estudiante necesita otro curso, elimina esta matrícula '
+                'y regístrala de nuevo con el curso correcto.'
+            )
 
-            if reiniciar_pago:
-                # ── Reinicio del PAGO INICIAL de matrícula ──
-                # Elimina ÚNICAMENTE el pago inicial (el/los abono(s) creados
-                # al registrar la matrícula), dejando el "Valor pagado" en $0.
-                # Los pagos posteriores hechos en "Gestionar Pagos" quedan
-                # intactos. No se reconstruye ningún abono: si luego se quiere
-                # registrar un pago, se hace desde "Gestionar Pagos".
-                from .models import Abono
+        forms_ok = (not error_vendedora) and (not curso_cambiado)
+        if forms_ok:
+            if editar_pago:
+                forms_ok = mat_form.is_valid()
+            else:
+                forms_ok = est_form.is_valid() and mat_form.is_valid()
 
-                # El pago inicial es el bloque de abonos más antiguos (por
-                # orden de creación) cuya fecha == fecha_matrícula. En cuanto
-                # aparece un abono de otra fecha, cortamos: lo posterior no se
-                # toca.
-                ids_pago_inicial = []
-                for ab in matricula_updated.abonos.order_by('creado', 'id'):
-                    if ab.fecha == matricula_updated.fecha_matricula:
-                        ids_pago_inicial.append(ab.id)
-                    else:
-                        break
+        # ── Coherencia del pago inicial con los pagos posteriores ──
+        if forms_ok and editar_pago:
+            vp_nuevo = mat_form.cleaned_data.get('valor_pagado') or Decimal('0.00')
+            posteriores = (
+                matricula.abonos
+                .filter(cuenta_para_saldo=True)
+                .exclude(id__in=ids_pago_inicial)
+                .aggregate(s=Sum('monto'))['s'] or Decimal('0.00')
+            )
+            valor_curso_n = mat_form.cleaned_data.get('valor_curso') or Decimal('0.00')
+            desc_n = mat_form.cleaned_data.get('descuento') or Decimal('0.00')
+            neto_n = max(valor_curso_n - desc_n, Decimal('0.00'))
+            if vp_nuevo + posteriores > neto_n:
+                mat_form.add_error(
+                    'valor_pagado',
+                    f'No cuadra: el pago inicial (${vp_nuevo}) más los pagos '
+                    f'posteriores ya registrados (${posteriores}) suman '
+                    f'${vp_nuevo + posteriores}, que supera el valor a pagar '
+                    f'con descuento (${neto_n}).'
+                )
+                forms_ok = False
 
+        if forms_ok:
+            if editar_pago:
+                matricula_updated = mat_form.save(commit=False)
+                matricula_updated.vendedora = asesor
+                matricula_updated.save()
+
+                # ── Reemplazo del PAGO INICIAL ──
+                # 1) Conservamos el timestamp del bloque original para que el
+                #    pago recreado siga siendo "el más antiguo" y se pueda
+                #    volver a detectar/editar en el futuro.
+                creado_base = None
+                if ids_pago_inicial:
+                    primero = Abono.objects.filter(id__in=ids_pago_inicial).order_by('creado', 'id').first()
+                    if primero:
+                        creado_base = primero.creado
+                if creado_base is None:
+                    creado_base = matricula_updated.creado
+
+                # 2) Borramos el pago inicial anterior (los posteriores no se tocan).
                 if ids_pago_inicial:
                     Abono.objects.filter(id__in=ids_pago_inicial).delete()
 
-                # Recalcula el saldo con lo que haya quedado (solo pagos
-                # posteriores, si existían). Si no queda nada, el "Valor
-                # pagado" queda en $0 y el saldo vuelve al valor neto.
+                # 3) Recreamos el pago inicial con los nuevos valores del form.
+                ids_previos = set(matricula_updated.abonos.values_list('id', flat=True))
+                vp_nuevo = mat_form.cleaned_data.get('valor_pagado') or Decimal('0.00')
+                _registrar_pago_inicial(
+                    matricula_updated, request.user, mat_form,
+                    monto_override=vp_nuevo, omitir_guarda_duplicado=True,
+                )
+
+                # 4) Retrocedemos el "creado" de los abonos nuevos al timestamp
+                #    original, preservando su orden interno.
+                from datetime import timedelta as _td
+                nuevos = list(
+                    matricula_updated.abonos
+                    .exclude(id__in=ids_previos)
+                    .order_by('id')
+                )
+                for i, ab in enumerate(nuevos):
+                    Abono.objects.filter(id=ab.id).update(
+                        creado=creado_base + _td(microseconds=i)
+                    )
+
+                matricula_updated.refresh_from_db()
                 matricula_updated.recalcular_valor_pagado()
 
                 messages.success(
                     request,
-                    'Matrícula actualizada y pago inicial reiniciado a $0. '
-                    'Los pagos posteriores (si los había) se conservan. Para '
-                    'registrar un nuevo pago usa "Gestionar Pagos".'
+                    f'Pago inicial actualizado a ${vp_nuevo}. Los demás datos '
+                    'de la matrícula no se modificaron y los pagos posteriores '
+                    'se conservan.'
                 )
             else:
+                est_form.save()
+                matricula_updated = mat_form.save(commit=False)
+                matricula_updated.vendedora = asesor
+                matricula_updated.save()
                 # Solo datos: no se toca ningún pago. Reaseguramos que el
                 # valor_pagado siga reflejando los abonos existentes (por si
                 # el form trajo un valor distinto en su campo readonly).
@@ -794,13 +937,51 @@ def matricula_editar(request, modalidad, pk):
             )
     else:
         est_form = EstudianteForm(prefix='est', instance=matricula.estudiante)
-        # En edición el "Valor pagado" es informativo y no se vuelve a cobrar.
-        mat_form = MatriculaForm(
-            prefix='mat', instance=matricula, modalidad=modalidad,
-            captura_pago=False,
-        )
+        if editar_pago:
+            # Formulario centrado en el pago: el "Valor pagado" es editable y
+            # obligatorio, prellenado con el pago inicial actual.
+            mat_form = MatriculaForm(
+                prefix='mat', instance=matricula, modalidad=modalidad,
+                captura_pago=True,
+            )
+            abonos_ini = list(
+                Abono.objects.filter(id__in=ids_pago_inicial).order_by('creado', 'id')
+            )
+            monto_ini = sum((a.monto for a in abonos_ini), Decimal('0.00'))
+            mat_form.initial['valor_pagado'] = monto_ini if monto_ini > 0 else ''
+            if abonos_ini:
+                a0 = abonos_ini[0]
+                monto2 = getattr(a0, 'monto_2', None) or Decimal('0.00')
+                if monto2 > 0:
+                    mat_form.initial['tipo_cobro'] = 'mixto'
+                    mat_form.initial['monto_pago_1'] = a0.monto - monto2
+                    mat_form.initial['metodo_pago_1'] = a0.metodo
+                    mat_form.initial['banco_1'] = a0.banco
+                    mat_form.initial['monto_pago_2'] = monto2
+                    mat_form.initial['metodo_pago_2'] = getattr(a0, 'metodo_2', '') or 'efectivo'
+                    mat_form.initial['banco_2'] = getattr(a0, 'banco_2', '') or ''
+                else:
+                    mat_form.initial['tipo_cobro'] = 'un_solo_metodo'
+                    mat_form.initial['metodo_pago'] = a0.metodo
+                    mat_form.initial['banco'] = a0.banco
+                # Si el pago inicial cubría k módulos, preseleccionar k.
+                mods = [a.numero_modulo for a in abonos_ini if a.numero_modulo]
+                if matricula.tipo_matricula == 'reserva_modulo_1' and mods:
+                    mat_form.initial['modulos_a_pagar'] = max(mods)
+        else:
+            # En edición el "Valor pagado" es informativo y no se vuelve a cobrar.
+            mat_form = MatriculaForm(
+                prefix='mat', instance=matricula, modalidad=modalidad,
+                captura_pago=False,
+            )
 
     comprobante_existente = getattr(matricula, 'comprobante', None)
+
+    # Monto del pago inicial actual (para mostrarlo en el aviso del modo pago).
+    monto_pago_inicial_actual = (
+        Abono.objects.filter(id__in=ids_pago_inicial)
+        .aggregate(s=Sum('monto'))['s'] or Decimal('0.00')
+    )
 
     return render(request, 'matricula/form.html', {
         'est_form': est_form,
@@ -811,7 +992,8 @@ def matricula_editar(request, modalidad, pk):
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
         'modo': 'editar',
-        'reiniciar_pago': reiniciar_pago,
+        'editar_pago': editar_pago,
+        'monto_pago_inicial_actual': monto_pago_inicial_actual,
         'titulo': f'Editar Matrícula #{matricula.pk}',
         'asesores': asesores,
         'error_vendedora': error_vendedora,

@@ -3297,15 +3297,69 @@ def hoja_recaudacion_export_pdf(request):
 
 
 # ═════════════════════════════════════════════════════════════════
-# Alertas de pago pendiente (módulo 1 sin pagar tras inicio de jornada)
+# Alertas de pago pendiente (calendario según modalidad y tipo de curso)
 # ═════════════════════════════════════════════════════════════════
+
+def _calendario_vencimientos(matricula):
+    """
+    Construye el calendario de vencimiento de cada módulo según la modalidad
+    de la matrícula y si el curso es de ciclo corto.
+
+    Reglas de negocio:
+      • PRESENCIAL (normal de 4 semanas o ciclo corto de 2 semanas):
+        el módulo k vence al iniciar la semana k, es decir
+        inicio_jornada + (k-1)*7 días. Primer pago el mismo día de inicio,
+        el siguiente a los 7 días, y así sucesivamente. Los módulos ya
+        pagados al matricularse (ej. Reserva + Módulo 1, o + M1 y M2) no
+        generan alerta; la primera alerta aparece recién cuando vence el
+        primer módulo NO pagado.
+      • ONLINE normal (4 semanas): el módulo 1 vence UN DÍA ANTES del inicio
+        de la jornada (ej. inicia 10/07 → vence 09/07). El resto del valor
+        pendiente (saldo restante) vence a los 13 días del inicio (un día
+        antes de que arranque la segunda mitad del curso).
+      • ONLINE ciclo corto (2 semanas) o cursos online de 1 solo módulo:
+        UN SOLO PAGO por el total pendiente, un día antes del inicio.
+
+    Devuelve un dict {numero_modulo: (fecha_vencimiento, hito)} donde hito es:
+      - 'modulo'         → pago de módulo (semanal presencial / módulo 1 online)
+      - 'pago_unico'     → un solo pago por todo el curso (online ciclo corto)
+      - 'saldo_restante' → segundo pago online: todo el saldo que quede
+    """
+    from datetime import timedelta
+
+    inicio = matricula.jornada.fecha_inicio
+    n_mod = (matricula.curso.get_numero_modulos(matricula.modalidad) or 1)
+    es_corto = bool(getattr(matricula.curso, 'es_ciclo_corto', False))
+
+    calendario = {}
+    if matricula.modalidad == 'online':
+        if es_corto or n_mod == 1:
+            # Online ciclo corto: un solo pago, un día antes de la jornada.
+            for k in range(1, n_mod + 1):
+                calendario[k] = (inicio - timedelta(days=1), 'pago_unico')
+        else:
+            # Online normal: módulo 1 un día antes; saldo restante a los 13 días.
+            calendario[1] = (inicio - timedelta(days=1), 'modulo')
+            for k in range(2, n_mod + 1):
+                calendario[k] = (inicio + timedelta(days=13), 'saldo_restante')
+    else:
+        # Presencial (4 semanas o ciclo corto de 2): módulo k vence en
+        # inicio + (k-1)*7. El ciclo corto presencial queda cubierto de forma
+        # natural: pago 1 al inicio y pago 2 (restante) a los 7 días.
+        for k in range(1, n_mod + 1):
+            calendario[k] = (inicio + timedelta(days=(k - 1) * 7), 'modulo')
+
+    return calendario
+
 
 def _calcular_alertas_pago(usuario_actual=None):
     """
-    Devuelve la lista de alertas activas: matrículas con tipo "Reserva/Abono"
-    o "Reserva + Módulo 1" cuya jornada YA inició y cuyo módulo 1 sigue
-    sin pagar al día siguiente o más tarde.
+    Devuelve la lista de alertas activas: matrículas tipo "Reserva/Abono" o
+    "Reserva + Módulo 1" con saldo pendiente cuyo próximo hito de pago YA
+    venció según el calendario de la modalidad (ver _calendario_vencimientos).
 
+    La alerta se muestra para el PRIMER módulo vencido que sigue sin pagar:
+    tras pagarlo, en el siguiente vencimiento aparece la del módulo siguiente.
     Excluye las que ya fueron marcadas como "revisadas hoy".
     """
     from .models import AlertaPagoRevisada
@@ -3313,10 +3367,12 @@ def _calcular_alertas_pago(usuario_actual=None):
 
     hoy = date.today()
 
-    # Solo revisamos matrículas activas con tipo de matrícula que implica reserva
+    # Solo matrículas con tipo que implica reserva. El filtro de fecha incluye
+    # jornadas que inician mañana, porque las alertas ONLINE vencen un día
+    # antes del inicio de la jornada.
     qs = Matricula.objects.filter(
         tipo_matricula__in=TIPOS_CON_RESERVA,
-        jornada__fecha_inicio__lt=hoy,  # la jornada ya empezó (al menos hace 1 día)
+        jornada__fecha_inicio__lte=hoy + timedelta(days=1),
     ).exclude(estado='retiro_voluntario').select_related(
         'estudiante', 'curso', 'jornada'
     ).prefetch_related('abonos')
@@ -3329,42 +3385,73 @@ def _calcular_alertas_pago(usuario_actual=None):
 
     alertas = []
     for m in qs:
-        # ── Módulo vigente según las semanas transcurridas desde el inicio ──
-        # 1 módulo = 1 semana. En la semana 1 vence el módulo 1, en la semana 2
-        # el módulo 2, etc. La alerta se muestra para el PRIMER módulo que ya
-        # venció y sigue sin pagar (así, tras pagar el módulo 1, la semana
-        # siguiente aparece la del módulo 2, y así sucesivamente).
-        n_mod = m.curso.get_numero_modulos(m.modalidad) or 1
-        dias_desde_inicio = (hoy - m.jornada.fecha_inicio).days
-        semana_actual = (dias_desde_inicio // 7) + 1  # 1-based
-        modulos_vencidos = max(1, min(semana_actual, n_mod))
+        saldo_total = m.saldo
+        if saldo_total <= 0:
+            continue  # curso totalmente pagado: nunca alertar
 
+        n_mod = m.curso.get_numero_modulos(m.modalidad) or 1
         valor_modulo = (
             (m.valor_neto / Decimal(n_mod)).quantize(Decimal('0.01'))
             if n_mod > 0 else Decimal('0.00')
         )
-        desglose_alert = m.desglose_pagos_por_modulo()
 
-        # Buscar el primer módulo vencido que NO está pagado.
-        modulo_pendiente = None
-        for d in desglose_alert:
-            if d['numero'] > modulos_vencidos:
+        calendario = _calendario_vencimientos(m)
+
+        # ── Primer módulo NO cubierto según el PAGO ACUMULADO total ──
+        # El módulo k se considera cubierto cuando lo pagado (abonos libres,
+        # pagos por módulo, mixtos... todo lo que cuenta para el saldo)
+        # alcanza k × valor_modulo. Así, apenas el estudiante paga lo que
+        # cubre el módulo vigente, la alerta desaparece de inmediato y
+        # vuelve a aparecer recién cuando vence el siguiente módulo.
+        pagado_total = max(m.valor_neto - saldo_total, Decimal('0.00'))
+        tolerancia = Decimal('0.01')  # cubre diferencias de redondeo
+
+        numero_modulo = None
+        for k in range(1, n_mod + 1):
+            # El último módulo cierra contra el valor neto exacto para no
+            # arrastrar el centavo del redondeo de valor_modulo.
+            requerido = m.valor_neto if k == n_mod else valor_modulo * k
+            if pagado_total + tolerancia < requerido:
+                numero_modulo = k
                 break
-            if d['estado'] != 'Pagado':
-                modulo_pendiente = d
-                break
 
-        if modulo_pendiente is None:
-            continue  # está al día con los módulos que ya vencieron
+        if numero_modulo is None:
+            continue  # está al día
 
-        numero_modulo = modulo_pendiente['numero']
-        pagado_mod = modulo_pendiente['pagado']
+        fecha_venc, hito = calendario.get(
+            numero_modulo, (m.jornada.fecha_inicio, 'modulo')
+        )
+
+        if hoy < fecha_venc:
+            continue  # su próximo pago todavía no vence: no molestar
 
         if (m.pk, numero_modulo) in revisadas_hoy:
             continue  # ya revisada hoy para ese módulo
 
-        # Días de atraso respecto a cuándo venció ESE módulo.
-        dias_atraso = max(dias_desde_inicio - (numero_modulo - 1) * 7, 0)
+        # Lo aportado que corresponde a ESTE módulo (para calcular su faltante).
+        pagado_mod = min(
+            max(pagado_total - valor_modulo * (numero_modulo - 1), Decimal('0.00')),
+            valor_modulo,
+        )
+
+        # Días de seguimiento desde que venció ESE hito de pago.
+        dias_atraso = max((hoy - fecha_venc).days, 0)
+
+        # Monto que corresponde reclamar en este hito:
+        #  - pago único / saldo restante → todo el saldo pendiente
+        #  - módulo → lo que falta de ese módulo
+        if hito in ('pago_unico', 'saldo_restante'):
+            monto_hito = saldo_total
+        else:
+            monto_hito = max(valor_modulo - pagado_mod, Decimal('0.00'))
+
+        if hito == 'pago_unico':
+            hito_label = 'Pago único'
+        elif hito == 'saldo_restante':
+            hito_label = 'Saldo restante'
+        else:
+            hito_label = f'Módulo {numero_modulo}'
+
         celular = (m.estudiante.celular or '').strip()
         # Limpieza básica del celular para wa.me (solo dígitos, agregamos 593 si parece local)
         digitos = ''.join(c for c in celular if c.isdigit())
@@ -3381,14 +3468,17 @@ def _calcular_alertas_pago(usuario_actual=None):
             'curso': m.curso,
             'jornada': m.jornada,
             'fecha_inicio_jornada': m.jornada.fecha_inicio,
+            'fecha_vencimiento': fecha_venc,
+            'hito': hito,
+            'hito_label': hito_label,
             'dias_atraso': dias_atraso,
             'numero_modulo': numero_modulo,
             'total_modulos': n_mod,
             'tipo_matricula_label': m.get_tipo_matricula_display(),
             'pagado_m1': pagado_mod,
             'valor_m1': valor_modulo,
-            'saldo_m1': max(valor_modulo - pagado_mod, Decimal('0.00')),
-            'saldo_total': m.saldo,
+            'saldo_m1': monto_hito,
+            'saldo_total': saldo_total,
             'celular': celular,
             'celular_wa': celular_wa,
         })

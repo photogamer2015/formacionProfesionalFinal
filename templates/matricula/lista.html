@@ -239,7 +239,7 @@
      Modal de EDICIÓN con dos opciones.
      Al pulsar "Editar" el usuario elige qué quiere hacer:
        • Editar solo datos  → corrige nombre/curso/etc. sin tocar pagos.
-       • Editar y reiniciar pago → además borra el pago inicial (queda $0).
+       • Editar el pago inicial → corrige el pago directamente (?editar_pago=1).
      Cada opción lleva a la misma URL de edición con o sin ?reiniciar_pago=1.
      ══════════════════════════════════════════════════════════════════ -->
 <div id="modal-editar-overlay" style="
@@ -273,24 +273,25 @@
                     ✏️ Editar solo los datos
                 </div>
                 <div style="font-size:13px; color:#3d6db3; line-height:1.4;">
-                    Corrige el nombre, correo, curso, jornada, factura, etc.
+                    Corrige el nombre, correo, jornada, factura, etc.
                     <strong>Los pagos NO se tocan</strong> — el valor pagado y el
-                    saldo quedan igual.
+                    saldo quedan igual. El <strong>curso no se puede cambiar</strong>.
                 </div>
             </button>
 
-            <!-- Opción 2: editar y reiniciar pago -->
+            <!-- Opción 2: editar el pago inicial directamente -->
             <button type="button" id="btn-editar-pago" style="
                     padding:14px 16px; border-radius:12px; cursor:pointer;
                     border:2px solid #ffe08a; background:#fff3cd;
                     font-family:inherit; text-align:left; transition:all .15s;">
                 <div style="font-size:15px; font-weight:700; color:#664d03; margin-bottom:4px;">
-                    ⚠️ Editar y reiniciar el pago
+                    💰 Editar el pago inicial
                 </div>
                 <div style="font-size:13px; color:#8a6d1a; line-height:1.4;">
-                    Edita los datos y además <strong>borra el pago inicial de
-                    matrícula</strong>: el valor pagado queda en <strong>$0</strong>.
-                    Los pagos posteriores (de "Gestionar Pagos") se conservan.
+                    Corrige <strong>directamente</strong> el monto, la forma de pago,
+                    el método o el descuento del pago inicial — sin borrarlo ni
+                    registrarlo de nuevo a mano. Los demás campos quedan
+                    <strong>bloqueados</strong> y los pagos posteriores se conservan.
                 </div>
             </button>
         </div>
@@ -326,7 +327,7 @@
             // Preservamos cualquier querystring ya presente en la URL base.
             const sep = _editarUrlBase.indexOf('?') === -1 ? '?' : '&';
             const url = reiniciar
-                ? _editarUrlBase + sep + 'reiniciar_pago=1'
+                ? _editarUrlBase + sep + 'editar_pago=1'
                 : _editarUrlBase;
             window.location.href = url;
         }
