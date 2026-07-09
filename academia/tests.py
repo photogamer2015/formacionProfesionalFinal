@@ -101,6 +101,21 @@ class JornadaMatriculasAccessTests(TestCase):
         self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
         self.assertEqual(response.context['jornada_filtrada'], self.jornada_1)
 
+    def test_lista_matriculas_busqueda_ignora_tildes(self):
+        self.estudiante_1.nombres = 'Osmár Jornada Uno'
+        self.estudiante_1.save(update_fields=['nombres'])
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(
+            reverse('academia:matricula_lista', kwargs={'modalidad': 'presencial'}),
+            {'q': 'Osmar'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = list(response.context['matriculas'])
+        self.assertEqual(len(matriculas), 1)
+        self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
+
     def test_listas_muestran_ultimo_registro_primero_aunque_fecha_sea_anterior(self):
         self.client.force_login(self.asesor)
         vieja = Matricula.objects.get(estudiante=self.estudiante_1)

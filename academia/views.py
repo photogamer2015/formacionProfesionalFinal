@@ -1,5 +1,6 @@
 import json
 import os
+import unicodedata
 from decimal import Decimal
 from django.utils import timezone
 
@@ -31,6 +32,35 @@ from .permisos import (
     puede_editar_jornadas,
     puede_eliminar_jornadas,
 )
+
+
+def _normalizar_texto_busqueda(valor):
+    texto = str(valor or '').casefold()
+    texto = unicodedata.normalize('NFD', texto)
+    return ''.join(caracter for caracter in texto if unicodedata.category(caracter) != 'Mn')
+
+
+def _filtrar_matriculas_por_busqueda(qs, termino):
+    palabras = [p for p in _normalizar_texto_busqueda(termino).split() if p]
+    if not palabras:
+        return qs
+
+    ids = []
+    for matricula in qs:
+        estudiante = matricula.estudiante
+        curso = matricula.curso
+        texto = _normalizar_texto_busqueda(' '.join([
+            estudiante.cedula,
+            estudiante.nombres,
+            curso.nombre,
+            matricula.fact_cedula,
+        ]))
+        if all(palabra in texto for palabra in palabras):
+            ids.append(matricula.pk)
+
+    if not ids:
+        return qs.none()
+    return qs.filter(pk__in=ids)
 
 
 @login_required
@@ -1015,13 +1045,7 @@ def matricula_lista(request, modalidad):
           .select_related('estudiante', 'curso', 'jornada', 'registrado_por', 'comprobante'))
 
     if q:
-        qs = qs.filter(
-            Q(estudiante__cedula__icontains=q)
-           
-            | Q(estudiante__nombres__icontains=q)
-            | Q(curso__nombre__icontains=q)
-            | Q(fact_cedula__icontains=q)
-        )
+        qs = _filtrar_matriculas_por_busqueda(qs, q)
     if curso_id:
         qs = qs.filter(curso_id=curso_id)
     jornada_filtrada = None
@@ -1736,13 +1760,7 @@ def _matriculas_filtradas_para_export(request, modalidad):
           .select_related('estudiante', 'curso', 'jornada', 'registrado_por'))
 
     if q:
-        qs = qs.filter(
-            Q(estudiante__cedula__icontains=q)
-           
-            | Q(estudiante__nombres__icontains=q)
-            | Q(curso__nombre__icontains=q)
-            | Q(fact_cedula__icontains=q)
-        )
+        qs = _filtrar_matriculas_por_busqueda(qs, q)
     if curso_id:
         qs = qs.filter(curso_id=curso_id)
     if jornada_id.isdigit():
