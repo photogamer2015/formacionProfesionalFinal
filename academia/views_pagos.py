@@ -2422,148 +2422,132 @@ def _redondear_arriba_medio_dolar(monto):
     return (unidades * MEDIO_DOLAR).quantize(CENTAVO)
 
 
-def _calcular_cuotas_recaudacion(saldo_pendiente, semanas_restantes, cuota_estandar):
-    """
-    Proyecta las cuotas futuras recalculando en cada semana.
-
-    La cuota sugerida respeta la cuota estándar salvo que el mínimo necesario
-    para terminar a tiempo sea mayor.
-    """
-    saldo = max(saldo_pendiente or Decimal('0.00'), Decimal('0.00')).quantize(
-        CENTAVO, rounding=ROUND_HALF_UP
-    )
-    semanas = max(int(semanas_restantes or 1), 1)
-    if saldo <= 0:
-        return [Decimal('0.00') for _ in range(semanas)]
-
-    cuota_estandar = max(cuota_estandar or Decimal('0.00'), Decimal('0.00'))
-    cuotas = []
-    saldo_actual = saldo
-    for restantes in range(semanas, 0, -1):
-        cuota_minima = _redondear_arriba_medio_dolar(
-            saldo_actual / Decimal(restantes)
-        )
-        cuota = max(cuota_estandar, cuota_minima)
-        cuota = min(cuota, saldo_actual).quantize(
-            CENTAVO, rounding=ROUND_HALF_UP
-        )
-        cuotas.append(cuota)
-        saldo_actual = (saldo_actual - cuota).quantize(
-            CENTAVO, rounding=ROUND_HALF_UP
-        )
-    return cuotas
-
-
 def _semanas_recaudacion_matricula(matricula):
     if matricula.curso_id:
         return max(int(matricula.curso.get_numero_modulos(matricula.modalidad) or 1), 1)
     return 1
 
 
-def _reserva_plan_matricula(matricula):
-    if matricula.tipo_matricula not in TIPOS_CON_RESERVA:
-        return Decimal('0.00')
+def _semanas_cubiertas_por_pago(matricula, total_semanas):
+    """
+    Semanas (módulos) cubiertas según el PAGO ACUMULADO total, con la MISMA
+    regla del panel de alertas de pago: la semana k está cubierta cuando lo
+    pagado alcanza k × valor_modulo (la última cierra contra el valor neto
+    exacto para no arrastrar el centavo del redondeo). Cuenta todo lo pagado:
+    reserva, módulos pagados en la matrícula, abonos libres y pagos
+    posteriores. Así, si un estudiante pagó reserva + módulo 1 (o 1 y 2) al
+    matricularse, esas semanas ya NO se le vuelven a cobrar.
+    """
+    total_semanas = max(int(total_semanas or 1), 1)
     valor_neto = matricula.valor_neto or Decimal('0.00')
-    return min(MONTO_RESERVA_MATRICULA, valor_neto).quantize(
+    if valor_neto <= 0:
+        return total_semanas
+
+    saldo = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
+    pagado = max(valor_neto - saldo, Decimal('0.00'))
+    valor_modulo = (valor_neto / Decimal(total_semanas)).quantize(
         CENTAVO, rounding=ROUND_HALF_UP
     )
+    tolerancia = Decimal('0.01')  # cubre diferencias de redondeo
 
-
-def _cuota_estandar_matricula(matricula, total_semanas):
-    valor_neto = (matricula.valor_neto or Decimal('0.00')).quantize(
-        CENTAVO, rounding=ROUND_HALF_UP
-    )
-    reserva = _reserva_plan_matricula(matricula)
-    saldo_financiado_inicial = max(valor_neto - reserva, Decimal('0.00'))
-    return (saldo_financiado_inicial / Decimal(total_semanas)).quantize(
-        CENTAVO, rounding=ROUND_HALF_UP
-    )
-
-
-def _semanas_por_monto(monto, cuota_estandar):
-    if cuota_estandar <= 0:
-        return 0
-    monto = max(monto or Decimal('0.00'), Decimal('0.00'))
-    return int(monto / cuota_estandar)
-
-
-def _pagado_en_matricula(matricula):
-    qs = matricula.abonos.filter(cuenta_para_saldo=True)
-    if matricula.fecha_matricula:
-        qs = qs.filter(fecha__lte=matricula.fecha_matricula)
-    total = sum((a.monto for a in qs), Decimal('0.00'))
-    if total <= 0:
-        total = matricula.valor_pagado or Decimal('0.00')
-    return total.quantize(CENTAVO, rounding=ROUND_HALF_UP)
-
-
-def _recaudaciones_posteriores(matricula):
-    qs = matricula.abonos.filter(cuenta_para_saldo=True)
-    if matricula.fecha_matricula:
-        qs = qs.filter(fecha__gt=matricula.fecha_matricula)
-
-    claves = set()
-    for abono in qs:
-        if abono.numero_modulo:
-            claves.add(('modulo', abono.numero_modulo))
+    cubiertas = 0
+    for k in range(1, total_semanas + 1):
+        requerido = valor_neto if k == total_semanas else valor_modulo * k
+        if pagado + tolerancia >= requerido:
+            cubiertas = k
         else:
-            claves.add(('fecha', abono.fecha))
-    return len(claves)
+            break
+    return cubiertas
 
 
-def _semanas_cubiertas_por_pagos(matricula, total_semanas, cuota_estandar):
-    reserva = _reserva_plan_matricula(matricula)
-    pagado_total_modulos = max(
-        (matricula.valor_pagado or Decimal('0.00')) - reserva,
-        Decimal('0.00'),
-    ).quantize(CENTAVO, rounding=ROUND_HALF_UP)
-    pagado_matricula_modulos = max(
-        _pagado_en_matricula(matricula) - reserva,
-        Decimal('0.00'),
-    ).quantize(CENTAVO, rounding=ROUND_HALF_UP)
-
-    semanas_por_monto = _semanas_por_monto(
-        pagado_total_modulos, cuota_estandar
+def _semanas_calendario_restantes(matricula, fecha_recaudacion, total_semanas):
+    """
+    Semanas de pago que aún no vencieron según el calendario de la modalidad
+    (el mismo calendario del panel de alertas: presencial semanal desde el
+    inicio; online un día antes del inicio y saldo a los 13 días; ciclo corto
+    online pago único). Garantiza la regla invariable: el saldo llega a $0 en
+    la última semana del curso aunque el estudiante venga atrasado, porque lo
+    pendiente se reparte solo entre las semanas que de verdad quedan.
+    """
+    if not fecha_recaudacion or not matricula.jornada_id:
+        return total_semanas
+    if not getattr(matricula.jornada, 'fecha_inicio', None):
+        return total_semanas
+    try:
+        calendario = _calendario_vencimientos(matricula)
+    except Exception:
+        return total_semanas
+    return sum(
+        1 for (venc, _hito) in calendario.values() if venc >= fecha_recaudacion
     )
-    semanas_por_recaudaciones = (
-        _semanas_por_monto(pagado_matricula_modulos, cuota_estandar)
-        + _recaudaciones_posteriores(matricula)
-    )
-    return min(max(semanas_por_monto, semanas_por_recaudaciones), total_semanas)
 
 
 def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None):
     """
-    Calcula la cuota justa para la Hoja de Recaudación:
-    reparte el saldo real entre las semanas pendientes.
+    Cuota justa para la Hoja de Recaudación. Regla de negocio:
+
+        cuota_de_hoy = saldo_pendiente_actual ÷ semanas_restantes
+
+    donde semanas_restantes descuenta del total del curso tanto las semanas
+    YA CUBIERTAS POR PAGO (módulo pagado en matrícula o después) como las
+    semanas de calendario ya vencidas. La cuota se redondea hacia abajo al
+    múltiplo de $0.50 y la ÚLTIMA semana absorbe el residuo, de modo que la
+    suma de las cuotas es EXACTAMENTE el saldo pendiente y llega a $0 en la
+    última semana del curso.
+
+    La cuota NO es fija: se recalcula en cada generación de la hoja con el
+    saldo actual. Si el estudiante paga de más, sus cuotas futuras bajan;
+    si paga de menos, el faltante se reparte entre las semanas que quedan.
+
+    Ejemplo (curso $110, 4 semanas, pagó $40 en matrícula = reserva $10 +
+    módulo 1 $25 + abono $5): semana 1 cubierta → saldo $70 ÷ 3 = $23.33 →
+    cuotas $23.00 / $23.00 / $24.00. Si en la semana 2 paga $30, saldo $40 ÷
+    2 = $20.00 / $20.00.
     """
-    saldo_pendiente = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
-    saldo_pendiente = saldo_pendiente.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+    saldo = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
+    saldo = saldo.quantize(CENTAVO, rounding=ROUND_HALF_UP)
     total_semanas = _semanas_recaudacion_matricula(matricula)
-    cuota_estandar = _cuota_estandar_matricula(matricula, total_semanas)
-    semanas_cubiertas = _semanas_cubiertas_por_pagos(
-        matricula, total_semanas, cuota_estandar
+
+    cubiertas_pago = _semanas_cubiertas_por_pago(matricula, total_semanas)
+
+    if saldo <= 0:
+        return {
+            'modulo': total_semanas,
+            'saldo_pendiente': Decimal('0.00'),
+            'cuota_sugerida': Decimal('0.00'),
+            'cuotas_pendientes': 0,
+            'cuotas': [],
+            'cuota_estandar': Decimal('0.00'),
+        }
+
+    cal_restantes = _semanas_calendario_restantes(
+        matricula, fecha_recaudacion, total_semanas
     )
-    semanas_restantes = max(total_semanas - semanas_cubiertas, 1)
-    cuotas = _calcular_cuotas_recaudacion(
-        saldo_pendiente, semanas_restantes, cuota_estandar
+    semanas_restantes = max(
+        min(total_semanas - cubiertas_pago, cal_restantes), 1
     )
 
-    if saldo_pendiente <= 0:
-        cuota_sugerida = Decimal('0.00')
-        modulo_actual = total_semanas
-        semanas_restantes = 0
+    if semanas_restantes == 1:
+        # Última semana: la cuota es el saldo completo (absorbe el residuo).
+        cuotas = [saldo]
     else:
-        cuota_sugerida = cuotas[0] if cuotas else saldo_pendiente
-        modulo_actual = min(semanas_cubiertas + 1, total_semanas)
+        cuota = _redondear_abajo_medio_dolar(saldo / Decimal(semanas_restantes))
+        if cuota <= 0:
+            # Saldo minúsculo: se cobra todo de una vez.
+            cuotas = [saldo] + [Decimal('0.00')] * (semanas_restantes - 1)
+        else:
+            ultima = (saldo - cuota * (semanas_restantes - 1)).quantize(
+                CENTAVO, rounding=ROUND_HALF_UP
+            )
+            cuotas = [cuota] * (semanas_restantes - 1) + [ultima]
 
     return {
-        'modulo': modulo_actual,
-        'saldo_pendiente': saldo_pendiente,
-        'cuota_sugerida': cuota_sugerida,
+        'modulo': min(cubiertas_pago + 1, total_semanas),
+        'saldo_pendiente': saldo,
+        'cuota_sugerida': cuotas[0],
         'cuotas_pendientes': semanas_restantes,
         'cuotas': cuotas,
-        'cuota_estandar': cuota_estandar,
+        'cuota_estandar': cuotas[0],
     }
 
 

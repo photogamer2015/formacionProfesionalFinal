@@ -513,12 +513,16 @@ class PlanRecaudacionTests(TestCase):
         ], modulo_esperado=2)
 
     def test_curso_110_adelanto_40_cubre_una_semana_y_reparte_en_3(self):
+        # Caso Melanie: curso $110, pagó $40 en matrícula (reserva $10 +
+        # módulo 1 $25 + abono $5). Semana 1 cubierta → saldo $70 ÷ 3
+        # semanas restantes = $23.33 → redondeo abajo a $0.50 = $23.00;
+        # la última cuota absorbe el residuo ($24.00). Total exacto: $70.
         matricula = self._matricula_con_adelanto(
             Decimal('110.00'), Decimal('40.00'), 4
         )
 
         self._assert_plan(matricula, Decimal('70.00'), [
-            Decimal('25.00'), Decimal('25.00'), Decimal('20.00'),
+            Decimal('23.00'), Decimal('23.00'), Decimal('24.00'),
         ], modulo_esperado=2)
 
     def test_estudiante_que_paga_menos_sube_la_ultima_cuota(self):
@@ -545,9 +549,11 @@ class PlanRecaudacionTests(TestCase):
         )
         matricula.refresh_from_db()
 
+        # Pagó $80 en total: cubre 2 módulos ($27.50 c/u; el 3.º requiere
+        # $82.50 acumulados). Saldo $30 ÷ 2 semanas restantes = $15/$15.
         self._assert_plan(matricula, Decimal('30.00'), [
-            Decimal('30.00'),
-        ], modulo_esperado=4)
+            Decimal('15.00'), Decimal('15.00'),
+        ], modulo_esperado=3)
 
     def test_estudiante_que_paga_de_mas_deja_ultima_cuota_menor(self):
         matricula = self._matricula_con_adelanto(
@@ -561,8 +567,10 @@ class PlanRecaudacionTests(TestCase):
         )
         matricula.refresh_from_db()
 
+        # Pagó $50: cubre el módulo 1 ($27.50). Saldo $60 ÷ 3 semanas
+        # restantes = $20/$20/$20 — pagar de más BAJA las cuotas futuras.
         self._assert_plan(matricula, Decimal('60.00'), [
-            Decimal('25.00'), Decimal('25.00'), Decimal('10.00'),
+            Decimal('20.00'), Decimal('20.00'), Decimal('20.00'),
         ], modulo_esperado=2)
 
         for idx in range(2):
