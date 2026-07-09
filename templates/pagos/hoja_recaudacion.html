@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load l10n %}
 
 {% block title %}Hoja de Recaudación{% endblock %}
 
@@ -123,6 +124,38 @@
     {% endif %}
 </div>
 
+{% if hojas %}
+{% comment %}
+   Modo manual de recaudación: al activarlo, la columna "A Recaudar (Cuota)"
+   se vuelve editable por estudiante y los totales se recalculan al instante.
+   La lógica de cobranza se mantiene: la cuota manual nunca puede superar el
+   saldo pendiente del estudiante ni ser negativa. "Guardar cambios" persiste
+   los valores para ESTA fecha y desde entonces salen igual en la vista, la
+   impresión y los exports Excel/PDF. Dejar una cuota igual a la automática
+   la restaura al cálculo dinámico del sistema.
+{% endcomment %}
+<div class="card-box no-print" id="panel-cuota-manual"
+     style="margin-bottom:14px; padding:12px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; border-left:4px solid #1a237e;">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:#1a237e; font-size:13px; margin:0;">
+        <input type="checkbox" id="chk-cuota-manual" style="width:17px; height:17px; cursor:pointer;">
+        ✏️ Poner el recaudar manualmente
+    </label>
+    <span id="ayuda-cuota-manual" style="font-size:11.5px; color:#777; flex:1; min-width:260px;">
+        Activa esta opción para editar la columna "A Recaudar (Cuota)" de cada estudiante.
+        El total se recalcula solo y ninguna cuota puede superar su saldo pendiente.
+        Con <strong>Guardar cambios</strong> los valores quedan fijos para esta fecha
+        (también en el Excel y el PDF); una cuota igual a la automática vuelve al cálculo del sistema.
+    </span>
+    <button type="button" id="btn-guardar-cuotas" class="btn btn-success"
+            style="display:none; font-size:12.5px; padding:7px 14px;">
+        💾 Guardar cambios
+    </button>
+    <span id="estado-guardado-cuotas" style="font-size:11.5px; font-weight:600;"></span>
+    {% csrf_token %}
+    <span id="fecha-hoja-recaudacion" data-fecha="{{ filtros.fecha }}" hidden></span>
+</div>
+{% endif %}
+
 {# ─── Filtros ───────────────────────────────── #}
 <div class="card-box no-print" style="margin-bottom:18px; padding:16px;">
     <form method="get" style="display:grid; grid-template-columns: 1fr 1fr 1fr 2fr auto; gap:10px; align-items:end;">
@@ -218,7 +251,11 @@
                 </td>
                 <td style="text-align:center; font-weight:700;">{{ item.modulo }}</td>
                 <td style="text-align:right;">${{ item.saldo_pendiente|floatformat:2 }}</td>
-                <td style="text-align:right; font-weight:600; color:#1a237e;">${{ item.cuota_sugerida|floatformat:2 }}</td>
+                <td class="celda-cuota" style="text-align:right; font-weight:600; color:#1a237e;"
+                    data-matricula="{{ item.matricula_id }}"
+                    data-auto="{{ item.cuota_sugerida|unlocalize }}"
+                    data-saldo="{{ item.saldo_pendiente|unlocalize }}"
+                    data-manual="{% if item.cuota_manual %}1{% else %}0{% endif %}">{% if item.cuota_manual %}<span class="marca-manual" title="Cuota fijada manualmente para esta fecha">✏️</span> {% endif %}${{ item.cuota_sugerida|floatformat:2 }}</td>
                 <td style="text-align:right; font-weight:700; color:{% if item.recaudado > 0 %}#2e7d32{% else %}#999{% endif %};">
                     ${{ item.recaudado|floatformat:2 }}
                 </td>
@@ -238,7 +275,8 @@
         </div>
         <div>
             <div class="label">A Recaudar (Cuotas)</div>
-            <div class="valor" style="color:#1a237e;">${{ hoja.total_cuotas|floatformat:2 }}</div>
+            <div class="valor total-cuotas" style="color:#1a237e;"
+                 data-auto="{{ hoja.total_cuotas|unlocalize }}">${{ hoja.total_cuotas|floatformat:2 }}</div>
         </div>
         <div>
             <div class="label">Total recaudado</div>
@@ -248,5 +286,185 @@
 </div>
 {% endfor %}
 
+{% endif %}
+
+{% if hojas %}
+<style>
+    /* Input de cuota manual: mismo aspecto que la celda, editable */
+    .cuota-input {
+        width: 78px;
+        text-align: right;
+        font-weight: 600;
+        color: #1a237e;
+        border: 1.5px solid #1a237e;
+        border-radius: 6px;
+        padding: 3px 6px;
+        font-size: 12px;
+        background: #f5f7ff;
+    }
+    .cuota-input:focus { outline: 2px solid #3949ab; background: #fff; }
+    .cuota-input.cuota-invalida { border-color: #c62828; background: #fff3f3; color: #c62828; }
+    .marca-manual { font-size: 10px; }
+    /* En impresión el input se ve como texto normal de la hoja */
+    @media print {
+        .cuota-input {
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .cuota-input::-webkit-outer-spin-button,
+        .cuota-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    }
+</style>
+<script>
+(function () {
+    'use strict';
+
+    // ══ Modo manual de "A Recaudar (Cuota)" con guardado persistente ══
+    // Reglas de cobranza que se mantienen SIEMPRE:
+    //   • 0 ≤ cuota manual ≤ saldo pendiente del estudiante
+    //   • el total "A Recaudar (Cuotas)" de cada hoja = suma de sus cuotas
+    //   • "Guardar cambios" persiste los valores para ESTA fecha y desde
+    //     entonces salen igual en la vista, la impresión y Excel/PDF
+    //   • una cuota igual a la automática se restaura al cálculo dinámico
+    var chk = document.getElementById('chk-cuota-manual');
+    if (!chk) return;
+    var btnGuardar = document.getElementById('btn-guardar-cuotas');
+    var estado = document.getElementById('estado-guardado-cuotas');
+    var fechaEl = document.getElementById('fecha-hoja-recaudacion');
+    var panel = document.getElementById('panel-cuota-manual');
+    var csrf = panel ? panel.querySelector('input[name="csrfmiddlewaretoken"]') : null;
+
+    function fmt(v) {
+        // Mismo formato de la página (coma decimal): $22,50
+        return '$' + v.toFixed(2).replace('.', ',');
+    }
+
+    function leerNumero(input) {
+        var v = parseFloat(String(input.value).replace(',', '.'));
+        return isNaN(v) ? 0 : v;
+    }
+
+    function recalcularHoja(hoja) {
+        var total = 0;
+        hoja.querySelectorAll('.cuota-input').forEach(function (inp) {
+            var saldo = parseFloat(inp.dataset.saldo) || 0;
+            var v = leerNumero(inp);
+            // Lógica de cobranza: nunca negativa, nunca mayor al saldo pendiente.
+            var valida = v >= 0 && v <= saldo + 0.005;
+            inp.classList.toggle('cuota-invalida', !valida);
+            inp.title = valida ? '' :
+                'La cuota debe estar entre $0 y el saldo pendiente (' + fmt(saldo) + ')';
+            total += Math.min(Math.max(v, 0), saldo);
+        });
+        var tot = hoja.querySelector('.total-cuotas');
+        if (tot) tot.textContent = fmt(Math.round(total * 100) / 100);
+    }
+
+    function activarManual() {
+        document.querySelectorAll('.hoja-recaudacion').forEach(function (hoja) {
+            hoja.querySelectorAll('.celda-cuota').forEach(function (td) {
+                if (td.querySelector('.cuota-input')) return;  // ya activo
+                // data-auto trae el valor vigente (manual guardado o automático)
+                var actual = parseFloat(td.dataset.auto) || 0;
+                var saldo = parseFloat(td.dataset.saldo) || 0;
+                var inp = document.createElement('input');
+                inp.type = 'number';
+                inp.step = '0.50';
+                inp.min = '0';
+                inp.max = saldo.toFixed(2);
+                inp.value = actual.toFixed(2);
+                inp.className = 'cuota-input';
+                inp.dataset.saldo = saldo.toFixed(2);
+                inp.dataset.matricula = td.dataset.matricula;
+                inp.addEventListener('input', function () { recalcularHoja(hoja); });
+                inp.addEventListener('blur', function () {
+                    // Al salir del campo se aplica el tope de cobranza.
+                    var v = Math.min(Math.max(leerNumero(inp), 0), saldo);
+                    inp.value = v.toFixed(2);
+                    recalcularHoja(hoja);
+                });
+                td.textContent = '';
+                td.appendChild(inp);
+            });
+            recalcularHoja(hoja);
+        });
+        if (btnGuardar) btnGuardar.style.display = 'inline-block';
+    }
+
+    function desactivarManual() {
+        document.querySelectorAll('.hoja-recaudacion').forEach(function (hoja) {
+            hoja.querySelectorAll('.celda-cuota').forEach(function (td) {
+                var actual = parseFloat(td.dataset.auto) || 0;
+                var marca = td.dataset.manual === '1'
+                    ? '<span class="marca-manual" title="Cuota fijada manualmente para esta fecha">✏️</span> '
+                    : '';
+                td.innerHTML = marca + fmt(actual);
+            });
+            var tot = hoja.querySelector('.total-cuotas');
+            if (tot) tot.textContent = fmt(parseFloat(tot.dataset.auto) || 0);
+        });
+        if (btnGuardar) btnGuardar.style.display = 'none';
+        if (estado) estado.textContent = '';
+    }
+
+    function guardarCuotas() {
+        if (!fechaEl || !fechaEl.dataset.fecha || !csrf) return;
+        var cuotas = [];
+        var invalidas = 0;
+        document.querySelectorAll('.cuota-input').forEach(function (inp) {
+            if (inp.classList.contains('cuota-invalida')) invalidas++;
+            var saldo = parseFloat(inp.dataset.saldo) || 0;
+            var v = Math.min(Math.max(leerNumero(inp), 0), saldo);
+            cuotas.push({ matricula_id: inp.dataset.matricula, monto: v.toFixed(2) });
+        });
+        if (invalidas > 0) {
+            estado.style.color = '#c62828';
+            estado.textContent = 'Corrige las cuotas en rojo antes de guardar.';
+            return;
+        }
+        btnGuardar.disabled = true;
+        estado.style.color = '#555';
+        estado.textContent = 'Guardando…';
+
+        fetch("{% url 'academia:hoja_recaudacion_guardar_cuotas' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrf.value,
+            },
+            body: JSON.stringify({ fecha: fechaEl.dataset.fecha, cuotas: cuotas }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.ok) {
+                estado.style.color = '#2e7d32';
+                estado.textContent = '✔ Guardado. Actualizando…';
+                // Recargar para mostrar el estado persistido (marcas ✏️ y
+                // totales calculados por el servidor, iguales a Excel/PDF).
+                setTimeout(function () { window.location.reload(); }, 600);
+            } else {
+                throw new Error(data.error || 'Error al guardar');
+            }
+        })
+        .catch(function () {
+            btnGuardar.disabled = false;
+            estado.style.color = '#c62828';
+            estado.textContent = 'No se pudo guardar. Intenta de nuevo.';
+        });
+    }
+
+    chk.addEventListener('change', function () {
+        if (chk.checked) {
+            activarManual();
+        } else {
+            desactivarManual();
+        }
+    });
+    if (btnGuardar) btnGuardar.addEventListener('click', guardarCuotas);
+})();
+</script>
 {% endif %}
 {% endblock %}

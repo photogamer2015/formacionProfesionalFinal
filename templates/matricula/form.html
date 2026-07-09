@@ -145,10 +145,12 @@
                 <span style="color:#888; font-weight:400; font-size:11px;">(elige modalidad y busca el curso)</span>
             </label>
             {% if modo == 'editar' %}
-            {# ── Curso BLOQUEADO en edición ──
-               El curso nunca se cambia al editar: si se necesita otro curso,
-               la matrícula se elimina y se registra de nuevo. El hidden envía
-               el curso original y el servidor lo valida además. #}
+            {% comment %}
+               Curso BLOQUEADO en edición: el curso nunca se cambia al editar;
+               si se necesita otro curso, la matrícula se elimina y se registra
+               de nuevo. El hidden envía el curso original y el servidor lo
+               valida además.
+            {% endcomment %}
             <input type="hidden" name="mat-curso" value="{{ matricula.curso_id }}">
             <input type="text" class="form-input" readonly tabindex="-1"
                    value="{{ matricula.curso.nombre }}{% if matricula.curso.es_ciclo_corto %} (Ciclo Corto){% endif %}"

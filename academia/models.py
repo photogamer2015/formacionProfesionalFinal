@@ -2529,3 +2529,37 @@ class Recordatorio(models.Model):
             leido=False,
             fecha_vencimiento__gte=_tz.localdate(),
         ).select_related('creado_por').order_by('-fecha', '-creado')
+
+
+class CuotaManualRecaudacion(models.Model):
+    """
+    Valor manual de "A Recaudar (Cuota)" fijado por el usuario en la Hoja de
+    Recaudación para UNA matrícula en UNA fecha concreta.
+
+    Cuando existe un registro para (matrícula, fecha), la hoja de esa fecha
+    (HTML, Excel y PDF) muestra este monto en lugar de la cuota automática.
+    La lógica de cobranza se respeta al guardar y al mostrar: el monto queda
+    siempre entre $0 y el saldo pendiente del estudiante. Si el usuario
+    vuelve a dejar el valor igual a la cuota automática, el registro se
+    elimina y esa fila regresa al cálculo dinámico del sistema.
+    """
+    matricula = models.ForeignKey(
+        'Matricula', on_delete=models.CASCADE, related_name='cuotas_manuales',
+    )
+    fecha = models.DateField(
+        help_text='Fecha de la hoja de recaudación a la que aplica el monto.'
+    )
+    monto = models.DecimalField(max_digits=8, decimal_places=2)
+    registrado_por = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cuotas_manuales_registradas',
+    )
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('matricula', 'fecha')
+        verbose_name = 'Cuota manual de recaudación'
+        verbose_name_plural = 'Cuotas manuales de recaudación'
+
+    def __str__(self):
+        return f'{self.matricula_id} · {self.fecha} · ${self.monto}'

@@ -392,6 +392,9 @@
     <a href="{% url 'academia:pagos_lista' %}" class="btn btn-secondary">‹ Volver a Pagos</a>
     <a href="{% url 'academia:matricula_editar' modalidad=matricula.modalidad pk=matricula.pk %}"
         class="btn btn-secondary">Editar matrícula</a>
+    {# PDF con el resumen completo de la matrícula (mismos datos de "Confirmar matrícula") #}
+    <a href="{% url 'academia:matricula_comprobante_pdf' pk=matricula.pk %}"
+        class="btn btn-secondary" title="Descargar PDF con el resumen de esta matrícula">📄 Descargar PDF</a>
 </div>
 
 

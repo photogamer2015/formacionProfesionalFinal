@@ -2422,7 +2422,39 @@ def _redondear_arriba_medio_dolar(monto):
     return (unidades * MEDIO_DOLAR).quantize(CENTAVO)
 
 
+# ─────────────────────────────────────────────────────────────────
+# ALGORITMO ÚNICO DE CUOTA DE RECAUDACIÓN
+#
+#   cuota_de_hoy = saldo_pendiente_actual ÷ semanas_restantes
+#
+# Un curso tiene N módulos y cada módulo ES una semana de clase. La cuota
+# NO es fija: se recalcula en CADA generación de la hoja con el saldo real
+# del momento. Así el sistema absorbe solo la excepción del estudiante que
+# paga de más (o de menos): lo que falte siempre se reparte entre las
+# semanas que de verdad quedan.
+#
+# semanas_restantes = min(
+#       N − semanas_cubiertas_por_pago,      # lo que ya pagó no se recobra
+#       semanas_de_calendario_no_vencidas    # lo que queda del curso
+#   )
+#
+# Redondeo: cuota hacia abajo al múltiplo de $0.50; la ÚLTIMA cuota absorbe
+# el residuo. Invariante: sum(cuotas) == saldo_pendiente, y el saldo llega a
+# $0 EXACTAMENTE en la última semana del curso.
+#
+# Ejemplos reales:
+#   • Asistente Contable $100, 4 sem, pagó $70 → cubrió sem 1 y 2 (módulo
+#     $25 c/u; la 3.ª pide $75 acumulados). Está en el módulo 3 y quedan 2
+#     semanas → $30 ÷ 2 = $15.00 / $15.00.   (antes daba $22.50 / $7.50)
+#   • Melanie $110, 4 sem, pagó $40 → cubrió sem 1 → $70 ÷ 3 = $23.33 →
+#     $23.00 / $23.00 / $24.00.
+#   • Si en la semana 2 paga $30 (más que su cuota), su saldo baja a $40 y
+#     quedan 2 semanas → las cuotas futuras BAJAN a $20.00 / $20.00.
+# ─────────────────────────────────────────────────────────────────
+
+
 def _semanas_recaudacion_matricula(matricula):
+    """Número de módulos del curso = número de semanas de pago."""
     if matricula.curso_id:
         return max(int(matricula.curso.get_numero_modulos(matricula.modalidad) or 1), 1)
     return 1
@@ -2430,13 +2462,15 @@ def _semanas_recaudacion_matricula(matricula):
 
 def _semanas_cubiertas_por_pago(matricula, total_semanas):
     """
-    Semanas (módulos) cubiertas según el PAGO ACUMULADO total, con la MISMA
-    regla del panel de alertas de pago: la semana k está cubierta cuando lo
-    pagado alcanza k × valor_modulo (la última cierra contra el valor neto
-    exacto para no arrastrar el centavo del redondeo). Cuenta todo lo pagado:
-    reserva, módulos pagados en la matrícula, abonos libres y pagos
-    posteriores. Así, si un estudiante pagó reserva + módulo 1 (o 1 y 2) al
-    matricularse, esas semanas ya NO se le vuelven a cobrar.
+    Semanas ya cubiertas según el PAGO ACUMULADO total, con la MISMA regla
+    del panel de alertas: la semana k está cubierta cuando lo pagado alcanza
+    k × valor_modulo (la última cierra contra el valor neto exacto, para no
+    arrastrar el centavo del redondeo).
+
+    Cuenta TODO lo que entró: reserva, módulos pagados en la matrícula,
+    abonos libres y recaudaciones posteriores. Por eso el estudiante que
+    pagó "reserva + módulo 1" (o "+ módulo 1 y 2") desde la matrícula no
+    vuelve a ser cobrado por esas semanas.
     """
     total_semanas = max(int(total_semanas or 1), 1)
     valor_neto = matricula.valor_neto or Decimal('0.00')
@@ -2448,7 +2482,7 @@ def _semanas_cubiertas_por_pago(matricula, total_semanas):
     valor_modulo = (valor_neto / Decimal(total_semanas)).quantize(
         CENTAVO, rounding=ROUND_HALF_UP
     )
-    tolerancia = Decimal('0.01')  # cubre diferencias de redondeo
+    tolerancia = Decimal('0.01')  # absorbe diferencias de redondeo
 
     cubiertas = 0
     for k in range(1, total_semanas + 1):
@@ -2462,12 +2496,14 @@ def _semanas_cubiertas_por_pago(matricula, total_semanas):
 
 def _semanas_calendario_restantes(matricula, fecha_recaudacion, total_semanas):
     """
-    Semanas de pago que aún no vencieron según el calendario de la modalidad
-    (el mismo calendario del panel de alertas: presencial semanal desde el
-    inicio; online un día antes del inicio y saldo a los 13 días; ciclo corto
-    online pago único). Garantiza la regla invariable: el saldo llega a $0 en
-    la última semana del curso aunque el estudiante venga atrasado, porque lo
-    pendiente se reparte solo entre las semanas que de verdad quedan.
+    Semanas de pago que aún NO vencieron a la fecha de la hoja, según el
+    calendario de la modalidad (el mismo del panel de alertas: presencial
+    semanal desde el inicio de jornada; online un día antes del inicio y el
+    saldo a los 13 días; ciclo corto online, pago único).
+
+    Esto sostiene la regla invariable: aunque el estudiante venga atrasado,
+    su saldo se reparte solo entre las semanas que realmente quedan, de modo
+    que llega a $0 en la última semana del curso.
     """
     if not fecha_recaudacion or not matricula.jornada_id:
         return total_semanas
@@ -2477,39 +2513,43 @@ def _semanas_calendario_restantes(matricula, fecha_recaudacion, total_semanas):
         calendario = _calendario_vencimientos(matricula)
     except Exception:
         return total_semanas
-    return sum(
-        1 for (venc, _hito) in calendario.values() if venc >= fecha_recaudacion
-    )
+
+    # Se cuentan FECHAS DISTINTAS, no módulos: varios módulos pueden vencer
+    # el mismo día y entonces son UN solo cobro. Es lo que ocurre con el
+    # ciclo corto online (pago único un día antes del inicio) y con el
+    # segundo cobro del online normal (todo el saldo restante a los 13 días).
+    fechas = {
+        venc for (venc, _hito) in calendario.values()
+        if venc >= fecha_recaudacion
+    }
+    return len(fechas)
 
 
-def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None):
+def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None,
+                                aplicar_manual=True):
     """
-    Cuota justa para la Hoja de Recaudación. Regla de negocio:
+    Calcula el plan de cuotas de la Hoja de Recaudación para una matrícula.
 
-        cuota_de_hoy = saldo_pendiente_actual ÷ semanas_restantes
+    Devuelve dict con:
+      modulo            → módulo/semana en curso (el primero no cubierto)
+      saldo_pendiente   → saldo real de hoy
+      cuota_sugerida    → cuánto cobrarle HOY (= cuotas[0])
+      cuotas_pendientes → cuántas semanas quedan por cobrar
+      cuotas            → proyección; su suma es EXACTAMENTE el saldo
+      cuota_manual      → True si la cuota de hoy fue fijada a mano por el
+                          usuario para esta fecha (ver CuotaManualRecaudacion)
 
-    donde semanas_restantes descuenta del total del curso tanto las semanas
-    YA CUBIERTAS POR PAGO (módulo pagado en matrícula o después) como las
-    semanas de calendario ya vencidas. La cuota se redondea hacia abajo al
-    múltiplo de $0.50 y la ÚLTIMA semana absorbe el residuo, de modo que la
-    suma de las cuotas es EXACTAMENTE el saldo pendiente y llega a $0 en la
-    última semana del curso.
-
-    La cuota NO es fija: se recalcula en cada generación de la hoja con el
-    saldo actual. Si el estudiante paga de más, sus cuotas futuras bajan;
-    si paga de menos, el faltante se reparte entre las semanas que quedan.
-
-    Ejemplo (curso $110, 4 semanas, pagó $40 en matrícula = reserva $10 +
-    módulo 1 $25 + abono $5): semana 1 cubierta → saldo $70 ÷ 3 = $23.33 →
-    cuotas $23.00 / $23.00 / $24.00. Si en la semana 2 paga $30, saldo $40 ÷
-    2 = $20.00 / $20.00.
+    Si existe una cuota manual guardada para (matrícula, fecha) y
+    aplicar_manual=True, esa cuota reemplaza a la automática en
+    cuota_sugerida (acotada a [0, saldo]). HTML, Excel y PDF pasan por esta
+    misma función, así que el valor manual sale igual en los tres.
     """
     saldo = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
     saldo = saldo.quantize(CENTAVO, rounding=ROUND_HALF_UP)
     total_semanas = _semanas_recaudacion_matricula(matricula)
-
     cubiertas_pago = _semanas_cubiertas_por_pago(matricula, total_semanas)
 
+    # Sin saldo no hay nada que recaudar.
     if saldo <= 0:
         return {
             'modulo': total_semanas,
@@ -2518,22 +2558,21 @@ def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None):
             'cuotas_pendientes': 0,
             'cuotas': [],
             'cuota_estandar': Decimal('0.00'),
+            'cuota_manual': False,
         }
 
     cal_restantes = _semanas_calendario_restantes(
         matricula, fecha_recaudacion, total_semanas
     )
-    semanas_restantes = max(
-        min(total_semanas - cubiertas_pago, cal_restantes), 1
-    )
+    semanas_restantes = max(min(total_semanas - cubiertas_pago, cal_restantes), 1)
 
     if semanas_restantes == 1:
-        # Última semana: la cuota es el saldo completo (absorbe el residuo).
+        # Última semana: se cobra todo el saldo (absorbe cualquier residuo).
         cuotas = [saldo]
     else:
         cuota = _redondear_abajo_medio_dolar(saldo / Decimal(semanas_restantes))
         if cuota <= 0:
-            # Saldo minúsculo: se cobra todo de una vez.
+            # Saldo minúsculo (< $0.50 por semana): se cobra de una sola vez.
             cuotas = [saldo] + [Decimal('0.00')] * (semanas_restantes - 1)
         else:
             ultima = (saldo - cuota * (semanas_restantes - 1)).quantize(
@@ -2541,14 +2580,236 @@ def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None):
             )
             cuotas = [cuota] * (semanas_restantes - 1) + [ultima]
 
+    # ── Cuota manual guardada para esta fecha (si existe) ──
+    cuota_sugerida = cuotas[0]
+    cuota_manual = False
+    if aplicar_manual and fecha_recaudacion is not None:
+        from .models import CuotaManualRecaudacion
+        override = CuotaManualRecaudacion.objects.filter(
+            matricula=matricula, fecha=fecha_recaudacion,
+        ).only('monto').first()
+        if override is not None:
+            # Lógica de cobranza: la cuota manual nunca sale del rango
+            # [0, saldo pendiente], aunque el saldo haya cambiado después
+            # de guardarla (por ejemplo, si el estudiante abonó luego).
+            cuota_sugerida = max(
+                min(override.monto, saldo), Decimal('0.00')
+            ).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+            cuota_manual = True
+
     return {
         'modulo': min(cubiertas_pago + 1, total_semanas),
         'saldo_pendiente': saldo,
-        'cuota_sugerida': cuotas[0],
+        'cuota_sugerida': cuota_sugerida,
         'cuotas_pendientes': semanas_restantes,
         'cuotas': cuotas,
         'cuota_estandar': cuotas[0],
+        'cuota_manual': cuota_manual,
     }
+
+
+@matricula_requerida
+def matricula_comprobante_pdf(request, pk):
+    """
+    PDF con el resumen completo de una matrícula: los mismos datos de la
+    pantalla "Confirmar matrícula" (Estudiante, Matrícula, Pago inicial y
+    Comprobante). Solo lee datos, no modifica nada.
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import (
+            SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+        )
+    except ImportError:
+        return HttpResponse(
+            'Para exportar a PDF instala reportlab: pip install reportlab',
+            status=500, content_type='text/plain; charset=utf-8',
+        )
+
+    from .views import _ids_abonos_pago_inicial
+
+    matricula = get_object_or_404(
+        Matricula.objects.select_related(
+            'estudiante', 'curso', 'jornada', 'vendedora', 'registrado_por',
+        ),
+        pk=pk,
+    )
+    est = matricula.estudiante
+
+    AZUL = colors.HexColor('#1A237E')
+    GRIS = colors.HexColor('#666666')
+    LINEA = colors.HexColor('#E3E6EF')
+    FONDO = colors.HexColor('#FAFBFF')
+
+    def _t(valor):
+        """
+        Texto seguro para la celda: '—' cuando no hay dato.
+        Se eliminan los emojis (🏫, 💻, ...) porque las fuentes base de
+        ReportLab no los tienen y se dibujarían como un cuadrito negro.
+        """
+        if valor is None:
+            return '—'
+        texto = str(valor).strip()
+        if not texto:
+            return '—'
+        limpio = ''.join(ch for ch in texto if ord(ch) < 0x2190)
+        limpio = ' '.join(limpio.split())  # normaliza espacios sobrantes
+        return limpio if limpio else '—'
+
+    def _money(valor):
+        return f'${(valor or Decimal("0.00")):.2f}'
+
+    # ── Pago inicial: los abonos del bloque de la matrícula ──
+    ids_ini = _ids_abonos_pago_inicial(matricula)
+    abonos_ini = list(
+        Abono.objects.filter(id__in=ids_ini).order_by('creado', 'id')
+    )
+    monto_inicial = sum((a.monto for a in abonos_ini), Decimal('0.00'))
+
+    filas_pago = [
+        ('Valor curso', _money(matricula.valor_curso)),
+        ('Descuento', _money(matricula.descuento)),
+        ('Valor a pagar', _money(matricula.valor_neto)),
+        ('Valor pagado (inicial)', _money(monto_inicial)),
+        ('Forma pago', _t(matricula.get_forma_pago_display() if matricula.forma_pago else '')),
+    ]
+    if abonos_ini:
+        a0 = abonos_ini[0]
+        monto2 = getattr(a0, 'monto_2', None) or Decimal('0.00')
+        if monto2 > 0:
+            filas_pago.append(('Distribución', 'Pago Mixto'))
+            filas_pago.append(('Monto 1', _money(a0.monto - monto2)))
+            filas_pago.append(('Método 1', _t(a0.get_metodo_display())))
+            if a0.banco:
+                filas_pago.append(('Banco 1', _t(a0.get_banco_display())))
+            filas_pago.append(('Monto 2', _money(monto2)))
+            filas_pago.append(('Método 2', _t(a0.get_metodo_2_display() if hasattr(a0, 'get_metodo_2_display') else a0.metodo_2)))
+            if getattr(a0, 'banco_2', ''):
+                filas_pago.append(('Banco 2', _t(a0.get_banco_2_display())))
+        else:
+            filas_pago.append(('Distribución', 'Un solo método'))
+            filas_pago.append(('Método', _t(a0.get_metodo_display())))
+            if a0.banco:
+                filas_pago.append(('Banco', _t(a0.get_banco_display())))
+    filas_pago.append(('Saldo pendiente', _money(matricula.saldo)))
+
+    filas_est = [
+        ('Cédula/RUC', _t(est.cedula)),
+        ('Nombres', _t(est.nombre_completo)),
+        ('Celular', _t(est.celular)),
+        ('Correo', _t(est.correo)),
+        ('Ciudad', _t(est.ciudad)),
+    ]
+
+    filas_mat = [
+        ('Estado', _t(matricula.get_estado_display())),
+        ('Curso', _t(matricula.curso.nombre if matricula.curso_id else '')),
+        ('Modalidad', _t(matricula.get_modalidad_display())),
+        ('Tipo', _t(matricula.get_tipo_matricula_display())),
+        ('Fecha', matricula.fecha_matricula.strftime('%d/%m/%Y') if matricula.fecha_matricula else '—'),
+        ('Jornada', _t(matricula.jornada.etiqueta if matricula.jornada_id else '')),
+    ]
+
+    filas_comp = [
+        ('Tipo registro', _t(matricula.get_tipo_registro_display() if matricula.tipo_registro else '')),
+        ('Asesor', _t(matricula.vendedora.get_full_name() or matricula.vendedora.username if matricula.vendedora_id else '')),
+        ('Factura', 'Sí' if matricula.factura_realizada == 'si' else 'No'),
+    ]
+    if matricula.factura_realizada == 'si':
+        filas_comp.append(('Titular factura', _t(matricula.fact_nombres)))
+        filas_comp.append(('Cédula/RUC factura', _t(matricula.fact_cedula)))
+        filas_comp.append(('Correo factura', _t(matricula.fact_correo)))
+
+    # ── Construcción del documento ──
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=1.6*cm, rightMargin=1.6*cm, topMargin=1.5*cm, bottomMargin=1.4*cm,
+        title=f'Matrícula #{matricula.pk} — {est.nombre_completo}',
+    )
+    styles = getSampleStyleSheet()
+    st_titulo = ParagraphStyle('t', parent=styles['Title'], textColor=AZUL,
+                               fontSize=17, alignment=0, spaceAfter=2)
+    st_sub = ParagraphStyle('s', parent=styles['Normal'], textColor=GRIS,
+                            fontSize=9, spaceAfter=10)
+    st_pie = ParagraphStyle('p', parent=styles['Normal'], textColor=GRIS,
+                            fontSize=7.5, alignment=1)
+
+    def bloque(titulo, filas):
+        """Tabla de una sección (título + filas etiqueta/valor)."""
+        st_lbl = ParagraphStyle('l', parent=styles['Normal'], fontSize=8.5,
+                                textColor=colors.HexColor('#555555'))
+        st_val = ParagraphStyle('v', parent=styles['Normal'], fontSize=8.5,
+                                fontName='Helvetica-Bold')
+        # Valores largos (correos, jornadas): fuente menor para que no se
+        # corten a mitad de palabra dentro de la celda.
+        st_val_sm = ParagraphStyle('vs', parent=st_val, fontSize=7,
+                                   leading=8.6)
+        st_tit = ParagraphStyle('bt', parent=styles['Normal'], fontSize=9,
+                                textColor=AZUL, fontName='Helvetica-Bold')
+        data = [[Paragraph(titulo.upper(), st_tit), '']]
+        for etiqueta, valor in filas:
+            estilo_valor = st_val_sm if len(valor) > 20 else st_val
+            data.append([Paragraph(etiqueta, st_lbl), Paragraph(valor, estilo_valor)])
+        tabla = Table(data, colWidths=[3.3*cm, 4.7*cm])
+        estilo = [
+            ('SPAN', (0, 0), (1, 0)),
+            ('BACKGROUND', (0, 0), (-1, -1), FONDO),
+            ('BOX', (0, 0), (-1, -1), 0.6, LINEA),
+            ('LINEBELOW', (0, 1), (-1, -2), 0.4, LINEA),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 3.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
+        ]
+        tabla.setStyle(TableStyle(estilo))
+        return tabla
+
+    elementos = [
+        Paragraph('Resumen de Matrícula', st_titulo),
+        Paragraph(
+            f'Matrícula #{matricula.pk} · {est.nombre_completo} · '
+            f'Generado el {date.today().strftime("%d/%m/%Y")}',
+            st_sub,
+        ),
+    ]
+
+    # Dos columnas: (Estudiante | Matrícula) y (Pago inicial | Comprobante)
+    for izq, der in (
+        (bloque('Estudiante', filas_est), bloque('Matrícula', filas_mat)),
+        (bloque('Pago inicial', filas_pago), bloque('Comprobante', filas_comp)),
+    ):
+        grid = Table([[izq, der]], colWidths=[8.6*cm, 8.6*cm])
+        grid.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elementos.append(grid)
+
+    if matricula.observaciones:
+        st_obs = ParagraphStyle('o', parent=styles['Normal'], fontSize=8.5)
+        elementos.append(Spacer(1, 2))
+        elementos.append(bloque('Observaciones', [('Detalle', _t(matricula.observaciones))]))
+
+    elementos.append(Spacer(1, 14))
+    elementos.append(Paragraph(
+        'Formación Técnica Profesional · Documento informativo generado por el sistema.',
+        st_pie,
+    ))
+
+    doc.build(elementos)
+    buf.seek(0)
+
+    nombre_archivo = f'matricula_{matricula.pk}_{est.cedula or "sin_cedula"}.pdf'
+    resp = HttpResponse(buf.getvalue(), content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{nombre_archivo}"'
+    return resp
 
 
 @matricula_requerida
@@ -2650,9 +2911,11 @@ def hoja_recaudacion(request):
 
                 items.append({
                     'estudiante': m.estudiante,
+                    'matricula_id': m.pk,
                     'modulo': modulo_actual,
                     'saldo_pendiente': saldo_pendiente,
                     'cuota_sugerida': cuota_sugerida,
+                    'cuota_manual': plan_recaudacion.get('cuota_manual', False),
                     'recaudado': pagado_dia,
                     'forma_pago': forma,
                     'banco': banco_str,
@@ -3072,9 +3335,11 @@ def _hojas_recaudacion_data(request):
 
             items.append({
                 'estudiante': m.estudiante,
+                'matricula_id': m.pk,
                 'modulo': modulo_actual,
                 'saldo_pendiente': saldo_pendiente,
                 'cuota_sugerida': cuota_sugerida,
+                'cuota_manual': plan_recaudacion.get('cuota_manual', False),
                 'recaudado': pagado_dia,
                 'forma_pago': forma,
                 'banco': banco_str,
@@ -3112,6 +3377,74 @@ def _hojas_recaudacion_data(request):
         })
 
     return hojas, {'fecha': fecha_str, 'ciudad': ciudad, 'curso': curso_id, 'modalidad': modalidad}
+
+
+@matricula_requerida
+@require_POST
+def hoja_recaudacion_guardar_cuotas(request):
+    """
+    Guarda las cuotas manuales de la Hoja de Recaudación para UNA fecha.
+
+    Recibe JSON: {"fecha": "YYYY-MM-DD",
+                  "cuotas": [{"matricula_id": 1, "monto": "15.00"}, ...]}
+
+    Reglas:
+      • Cada monto se acota a [0, saldo pendiente] de su matrícula.
+      • Si el monto queda IGUAL a la cuota automática del sistema, el
+        registro manual se elimina: esa fila vuelve al cálculo dinámico.
+      • Si difiere, se guarda/actualiza como CuotaManualRecaudacion y a
+        partir de ahí la hoja de esa fecha (HTML, Excel y PDF) lo usa.
+    """
+    import json as _json
+    from datetime import datetime as _dt
+    from .models import CuotaManualRecaudacion
+
+    try:
+        payload = _json.loads(request.body.decode('utf-8'))
+        fecha = _dt.strptime(str(payload.get('fecha', '')), '%Y-%m-%d').date()
+        cuotas = payload.get('cuotas', [])
+        assert isinstance(cuotas, list)
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Datos inválidos.'}, status=400)
+
+    guardadas, restauradas, sin_cambio = 0, 0, 0
+    for fila in cuotas:
+        try:
+            matricula = Matricula.objects.get(pk=int(fila.get('matricula_id')))
+            monto = Decimal(str(fila.get('monto'))).quantize(
+                CENTAVO, rounding=ROUND_HALF_UP
+            )
+        except Exception:
+            continue
+
+        saldo = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
+        monto = max(min(monto, saldo), Decimal('0.00'))
+
+        # Cuota automática (sin overrides) para saber si hay diferencia real.
+        plan_auto = _plan_recaudacion_matricula(
+            matricula, fecha, aplicar_manual=False
+        )
+        if abs(monto - plan_auto['cuota_sugerida']) < Decimal('0.005'):
+            borradas, _ = CuotaManualRecaudacion.objects.filter(
+                matricula=matricula, fecha=fecha,
+            ).delete()
+            if borradas:
+                restauradas += 1
+            else:
+                sin_cambio += 1
+        else:
+            CuotaManualRecaudacion.objects.update_or_create(
+                matricula=matricula, fecha=fecha,
+                defaults={'monto': monto, 'registrado_por': request.user},
+            )
+            guardadas += 1
+
+    return JsonResponse({
+        'ok': True,
+        'guardadas': guardadas,
+        'restauradas': restauradas,
+        'sin_cambio': sin_cambio,
+    })
 
 
 @matricula_requerida

@@ -62,6 +62,8 @@ urlpatterns = [
 
     # ── Hoja de Recaudación imprimible ─────────────────────────
     path('pagos/hoja-recaudacion/', views_pagos.hoja_recaudacion, name='hoja_recaudacion'),
+    path('pagos/hoja-recaudacion/guardar-cuotas/',
+         views_pagos.hoja_recaudacion_guardar_cuotas, name='hoja_recaudacion_guardar_cuotas'),
     path('pagos/hoja-recaudacion/exportar/excel/',
          views_pagos.hoja_recaudacion_export_excel, name='hoja_recaudacion_export_excel'),
     path('pagos/hoja-recaudacion/exportar/pdf/',
@@ -110,6 +112,8 @@ urlpatterns = [
     path('estudiantes/exportar/', views_pagos.estudiantes_export, name='estudiantes_export'),
     path('estudiantes/<int:pk>/', views_pagos.estudiante_detalle, name='estudiante_detalle'),
     path('estudiantes/<int:pk>/exportar/', views_pagos.estudiante_export, name='estudiante_export'),
+    path('matricula/<int:pk>/comprobante-pdf/',
+         views_pagos.matricula_comprobante_pdf, name='matricula_comprobante_pdf'),
 
     # ── Comprobantes de Venta ─────────────────────────────────
     path('comprobantes/', views_comprobantes.comprobante_menu, name='comprobante_menu'),

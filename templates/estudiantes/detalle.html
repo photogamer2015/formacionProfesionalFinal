@@ -96,8 +96,14 @@
                             {% endif %}
                         </td>
                         <td style="padding:10px 14px;">
-                            <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}"
-                               class="btn btn-warning btn-sm">Editar</a>
+                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}"
+                                   class="btn btn-warning btn-sm">Editar</a>
+                                {# PDF con el resumen completo de la matrícula (mismos datos de "Confirmar matrícula") #}
+                                <a href="{% url 'academia:matricula_comprobante_pdf' pk=m.pk %}"
+                                   class="btn btn-secondary btn-sm"
+                                   title="Descargar PDF con el resumen de esta matrícula">📄 PDF</a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
