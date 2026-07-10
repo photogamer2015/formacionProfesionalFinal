@@ -22,6 +22,7 @@ from django.views.decorators.http import require_POST
 from .forms import ComprobanteForm
 from .models import Comprobante, Curso, Matricula
 from .permisos import matricula_requerida, admin_requerido, es_admin
+from .busqueda import filtrar_queryset_busqueda
 
 
 User = get_user_model()
@@ -182,14 +183,14 @@ def comprobante_lista(request):
     )
 
     if q:
-        qs = qs.filter(
-            Q(nombre_persona__icontains=q)
-            | Q(celular__icontains=q)
-            | Q(fact_cedula__icontains=q)
-            | Q(fact_nombres__icontains=q)
-            | Q(fact_correo__icontains=q)
-            | Q(curso__nombre__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'nombre_persona',
+            'celular',
+            'fact_cedula',
+            'fact_nombres',
+            'fact_correo',
+            'curso__nombre',
+        ])
     if curso_id.isdigit():
         qs = qs.filter(curso_id=int(curso_id))
     if modalidad in ('virtual', 'presencial'):

@@ -25,6 +25,7 @@ from .models import (
     Abono, Curso, Estudiante, JornadaCurso, Matricula, RecuperacionPendiente,
 )
 from .permisos import matricula_requerida, admin_requerido
+from .busqueda import filtrar_queryset_busqueda
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -190,11 +191,15 @@ def _filtrar_matriculas(request):
     if mes.isdigit() and 1 <= int(mes) <= 12:
         qs = qs.filter(fecha_matricula__month=int(mes))
     if q:
-        qs = qs.filter(
-            Q(estudiante__cedula__icontains=q)
-            | Q(estudiante__nombres__icontains=q)
-            | Q(curso__nombre__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'estudiante__cedula',
+            'estudiante__nombres',
+            'estudiante__correo',
+            'estudiante__celular',
+            'curso__nombre',
+            'fact_cedula',
+            'fact_nombres',
+        ])
         
     if descuento_str == 'si':
         qs = qs.filter(tiene_descuento=True)
@@ -356,6 +361,18 @@ def pagos_lista(request):
         qs_sin_estado = qs_sin_estado.filter(modalidad=filtros['modalidad'])
     if filtros['anio'].isdigit():
         qs_sin_estado = qs_sin_estado.filter(fecha_matricula__year=int(filtros['anio']))
+    if filtros['mes'].isdigit() and 1 <= int(filtros['mes']) <= 12:
+        qs_sin_estado = qs_sin_estado.filter(fecha_matricula__month=int(filtros['mes']))
+    if filtros['q']:
+        qs_sin_estado = filtrar_queryset_busqueda(qs_sin_estado.select_related('estudiante', 'curso'), filtros['q'], [
+            'estudiante__cedula',
+            'estudiante__nombres',
+            'estudiante__correo',
+            'estudiante__celular',
+            'curso__nombre',
+            'fact_cedula',
+            'fact_nombres',
+        ])
 
     totales = {
         'total_matriculas': qs_sin_estado.count(),
@@ -783,11 +800,15 @@ def historial_lista(request):
     if filtros['mes'].isdigit() and 1 <= int(filtros['mes']) <= 12:
         arch_qs = arch_qs.filter(fecha_matricula__month=int(filtros['mes']))
     if filtros['q']:
-        arch_qs = arch_qs.filter(
-            Q(cedula__icontains=filtros['q'])
-            | Q(nombres__icontains=filtros['q'])
-            | Q(curso_nombre__icontains=filtros['q'])
-        )
+        arch_qs = filtrar_queryset_busqueda(arch_qs, filtros['q'], [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'curso_nombre',
+            'fact_cedula',
+            'fact_nombres',
+        ])
     if filtros['estado'] in ('Pagado', 'Parcial', 'Pendiente', 'Retiro'):
         arch_qs = arch_qs.filter(estado_pago=filtros['estado'])
 
@@ -883,11 +904,15 @@ def historial_export(request):
     if filtros['mes'].isdigit() and 1 <= int(filtros['mes']) <= 12:
         arch_qs = arch_qs.filter(fecha_matricula__month=int(filtros['mes']))
     if filtros['q']:
-        arch_qs = arch_qs.filter(
-            Q(cedula__icontains=filtros['q'])
-            | Q(nombres__icontains=filtros['q'])
-            | Q(curso_nombre__icontains=filtros['q'])
-        )
+        arch_qs = filtrar_queryset_busqueda(arch_qs, filtros['q'], [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'curso_nombre',
+            'fact_cedula',
+            'fact_nombres',
+        ])
     if filtros['estado'] in ('Pagado', 'Parcial', 'Pendiente', 'Retiro'):
         arch_qs = arch_qs.filter(estado_pago=filtros['estado'])
 
@@ -1089,12 +1114,13 @@ def estudiantes_lista(request):
     ).order_by('nombres')
 
     if q:
-        qs = qs.filter(
-            Q(cedula__icontains=q)
-            | Q(nombres__icontains=q)
-            | Q(correo__icontains=q)
-            | Q(celular__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'ciudad',
+        ])
 
     # Construir, por estudiante, el resumen de jornada(s) y sede(s) de sus matrículas.
     estudiantes = list(qs)
@@ -1236,6 +1262,14 @@ def estudiantes_export(request):
             )
             if modalidad in ('presencial', 'online'):
                 mat_qs = mat_qs.filter(modalidad=modalidad)
+            if q:
+                mat_qs = filtrar_queryset_busqueda(mat_qs, q, [
+                    'estudiante__cedula',
+                    'estudiante__nombres',
+                    'estudiante__correo',
+                    'estudiante__celular',
+                    'curso__nombre',
+                ])
 
             if not mat_qs.exists():
                 continue
@@ -1318,10 +1352,13 @@ def estudiantes_export(request):
     ).order_by('nombres')
 
     if q:
-        estudiantes_qs = estudiantes_qs.filter(
-            Q(cedula__icontains=q)
-            | Q(nombres__icontains=q)
-        )
+        estudiantes_qs = filtrar_queryset_busqueda(estudiantes_qs, q, [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'ciudad',
+        ])
 
     headers = [
         'Cédula', 'Apellidos', 'Nombres', 'Edad',
@@ -2083,10 +2120,11 @@ def _filtrar_recuperaciones(request):
         qs = qs.filter(matricula__curso_id=int(curso_id))
 
     if q:
-        qs = qs.filter(
-            Q(matricula__estudiante__cedula__icontains=q)
-            | Q(matricula__estudiante__nombres__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'matricula__estudiante__cedula',
+            'matricula__estudiante__nombres',
+            'matricula__curso__nombre',
+        ])
 
     return qs.order_by('pagada', '-fecha_marcada', '-creado'), {
         'curso': curso_id,

@@ -8,7 +8,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .forms import AbonoForm, AdicionalSupletorioRapidoForm
-from .models import Abono, Comprobante, Curso, Estudiante, JornadaCurso, Matricula
+from .models import (
+    Abono, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
+    Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
+    MatriculaArchivada, PersonaExterna,
+)
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
 from .views_pagos import _hojas_recaudacion_data, _plan_recaudacion_matricula
@@ -142,6 +146,272 @@ class JornadaMatriculasAccessTests(TestCase):
             self.estudiante_2,
         )
         self.assertEqual(pagos_response.context['matriculas'][0].estudiante, self.estudiante_2)
+
+
+class BusquedaSinTildesTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(username='asesor_busqueda')
+        grupo = Group.objects.create(name='Asesores')
+        self.usuario.groups.add(grupo)
+        self.client.force_login(self.usuario)
+
+        self.curso = Curso.objects.create(
+            nombre='Técnico Contable',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('100.00'),
+        )
+        self.estudiante = Estudiante.objects.create(
+            cedula='1207342716',
+            nombres='Osmár Dahmér',
+            correo='osmar@example.com',
+            celular='0999999999',
+        )
+        self.matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 7, 10),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('20.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        self.persona_externa = PersonaExterna.objects.create(
+            cedula='0912345678',
+            nombres='Jeffrey Dahmér',
+        )
+        self.adicional = Adicional.objects.create(
+            tipo_adicional='cert_antiguo',
+            persona_externa=self.persona_externa,
+            curso=self.curso,
+            modalidad='presencial',
+            fecha=date(2026, 7, 10),
+            valor=Decimal('10.00'),
+        )
+        self.cierre = CierreCurso.objects.create(
+            curso=self.curso,
+            curso_nombre='Técnico Contable',
+            jornada_modalidad='presencial',
+            alcance='curso',
+            total_matriculas=1,
+        )
+        self.estudiante_archivado = EstudianteArchivado.objects.create(
+            cierre=self.cierre,
+            estudiante_original_id=self.estudiante.pk,
+            cedula='1207342717',
+            nombres='Jazzyel Kleinér',
+            correo='jazzy@example.com',
+            celular='0888888888',
+        )
+        self.adicional_archivado = AdicionalArchivado.objects.create(
+            cierre=self.cierre,
+            tipo_adicional='cert_antiguo',
+            tipo_adicional_label='Certificado antiguo',
+            persona_nombre='Jazzyel Kleinér',
+            persona_cedula='1207342717',
+            curso_nombre='Técnico Contable',
+            fecha=date(2026, 7, 10),
+            valor=Decimal('10.00'),
+            metodo_pago='efectivo',
+        )
+
+    def test_estudiantes_filtra_nombre_sin_tildes(self):
+        response = self.client.get(reverse('academia:estudiantes_lista'), {'q': 'Osmar Dahmer'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['estudiantes']), [self.estudiante])
+
+    def test_pagos_filtra_curso_sin_tildes(self):
+        response = self.client.get(reverse('academia:pagos_lista'), {'q': 'Tecnico'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['matriculas'][0].pk, self.matricula.pk)
+
+    def test_historial_filtra_nombre_sin_tildes(self):
+        response = self.client.get(reverse('academia:historial_lista'), {'q': 'Osmar'})
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = response.context['estructura'][0]['meses'][0]['matriculas']
+        self.assertEqual([m.pk for m in matriculas], [self.matricula.pk])
+
+    def test_estudiantes_archivados_filtra_nombre_sin_tildes(self):
+        response = self.client.get(reverse('academia:estudiantes_archivados_lista'), {'q': 'Kleiner'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['estudiantes']), [self.estudiante_archivado])
+
+    def test_adicional_filtra_persona_externa_sin_tildes(self):
+        response = self.client.get(reverse('academia:adicional_lista'), {'q': 'Jeffrey Dahmer'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['adicionales']), [self.adicional])
+
+    def test_adicional_archivado_filtra_nombre_sin_tildes(self):
+        response = self.client.get(reverse('academia:adicionales_archivados_lista'), {'q': 'Kleiner'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['adicionales']), [self.adicional_archivado])
+
+
+class CierreCursoManualTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username='admin_cierre',
+            email='admin@example.com',
+            password='clave-admin-123',
+        )
+        self.client.force_login(self.admin)
+        self.curso = Curso.objects.create(
+            nombre='Asistente Contable Cierre Manual Test',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('100.00'),
+        )
+        self.jornada_1 = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='lun_mie_vie',
+            fecha_inicio=date(2026, 8, 1),
+            ciudad='Guayaquil',
+        )
+        self.jornada_2 = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_jue',
+            fecha_inicio=date(2026, 8, 2),
+            ciudad='Guayaquil',
+        )
+        self.estudiante_1 = Estudiante.objects.create(
+            cedula='000001',
+            nombres='Osmár Manual',
+            celular='0991111111',
+        )
+        self.estudiante_2 = Estudiante.objects.create(
+            cedula='000002',
+            nombres='Estudiante Otra Jornada',
+            celular='0992222222',
+        )
+        self.matricula_1 = Matricula.objects.create(
+            estudiante=self.estudiante_1,
+            curso=self.curso,
+            jornada=self.jornada_1,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 8, 10),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('30.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.admin,
+        )
+        self.matricula_2 = Matricula.objects.create(
+            estudiante=self.estudiante_2,
+            curso=self.curso,
+            jornada=self.jornada_2,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 8, 10),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('100.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.admin,
+        )
+
+    def test_preview_busca_matricula_manual_por_nombre_sin_tilde(self):
+        response = self.client.get(
+            reverse('academia:cierre_preview', kwargs={'curso_pk': self.curso.pk}),
+            {'archivo_mes': '8', 'archivo_anio': '2026', 'manual_q': 'Osmar'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Cierre manual por estudiante')
+        self.assertEqual(list(response.context['manual_matriculas']), [self.matricula_1])
+
+    def test_cierre_por_jornada_no_archiva_otras_jornadas(self):
+        response = self.client.post(
+            reverse('academia:cierre_ejecutar', kwargs={'curso_pk': self.curso.pk}),
+            {
+                'jornada_id': str(self.jornada_1.pk),
+                'archivo_mes': '8',
+                'archivo_anio': '2026',
+                'admin_password': 'clave-admin-123',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Matricula.objects.filter(pk=self.matricula_1.pk).exists())
+        self.assertTrue(Matricula.objects.filter(pk=self.matricula_2.pk).exists())
+
+        cierre = CierreCurso.objects.get()
+        self.assertEqual(cierre.alcance, 'jornada')
+        self.assertEqual(cierre.jornada, self.jornada_1)
+        self.assertEqual(cierre.total_matriculas, 1)
+        self.assertEqual(cierre.matriculas_archivadas.count(), 1)
+
+    def test_cierre_manual_estudiante_archiva_solo_esa_matricula(self):
+        Abono.objects.create(
+            matricula=self.matricula_1,
+            fecha=date(2026, 8, 10),
+            monto=Decimal('30.00'),
+            tipo_pago='abono',
+            metodo='efectivo',
+            registrado_por=self.admin,
+        )
+
+        response = self.client.post(
+            reverse(
+                'academia:cierre_manual_estudiante_ejecutar',
+                kwargs={'curso_pk': self.curso.pk, 'matricula_pk': self.matricula_1.pk},
+            ),
+            {
+                'archivo_mes': '8',
+                'archivo_anio': '2026',
+                'admin_password': 'clave-admin-123',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Matricula.objects.filter(pk=self.matricula_1.pk).exists())
+        self.assertTrue(Matricula.objects.filter(pk=self.matricula_2.pk).exists())
+
+        cierre = CierreCurso.objects.get()
+        self.assertEqual(cierre.alcance, 'manual')
+        self.assertEqual(cierre.total_matriculas, 1)
+        self.assertEqual(cierre.total_estudiantes_archivados, 1)
+        self.assertFalse(cierre.limpio_directorio)
+
+        archivada = MatriculaArchivada.objects.get(cierre=cierre)
+        self.assertEqual(archivada.matricula_original_id, self.matricula_1.pk)
+        self.assertEqual(archivada.nombre_completo, 'Osmár Manual')
+        self.assertEqual(archivada.abonos_archivados.count(), 1)
+
+        estudiante_archivado = EstudianteArchivado.objects.get(cierre=cierre)
+        self.assertEqual(estudiante_archivado.estudiante_original_id, self.estudiante_1.pk)
+        self.assertEqual(estudiante_archivado.nombre_completo, 'Osmár Manual')
+        self.assertTrue(Estudiante.objects.filter(pk=self.estudiante_1.pk).exists())
+
+    def test_cierre_manual_con_limpieza_quita_estudiante_sin_matriculas_vivas(self):
+        response = self.client.post(
+            reverse(
+                'academia:cierre_manual_estudiante_ejecutar',
+                kwargs={'curso_pk': self.curso.pk, 'matricula_pk': self.matricula_1.pk},
+            ),
+            {
+                'archivo_mes': '8',
+                'archivo_anio': '2026',
+                'admin_password': 'clave-admin-123',
+                'limpiar_directorio': 'on',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Matricula.objects.filter(pk=self.matricula_1.pk).exists())
+        self.assertFalse(Estudiante.objects.filter(pk=self.estudiante_1.pk).exists())
+        self.assertTrue(Matricula.objects.filter(pk=self.matricula_2.pk).exists())
+
+        cierre = CierreCurso.objects.get()
+        self.assertEqual(cierre.alcance, 'manual')
+        self.assertEqual(cierre.total_estudiantes_archivados, 1)
+        self.assertTrue(cierre.limpio_directorio)
+
+        estudiante_archivado = EstudianteArchivado.objects.get(cierre=cierre)
+        self.assertEqual(estudiante_archivado.nombre_completo, 'Osmár Manual')
 
 
 class PagoInicialMatriculaTests(TestCase):

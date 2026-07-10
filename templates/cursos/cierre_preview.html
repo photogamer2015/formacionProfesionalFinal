@@ -45,19 +45,31 @@
 <div class="card-box" style="margin-bottom:20px;">
     <h3 style="color:#1a237e; font-size:15px; margin-bottom:12px;">📋 ¿Qué quieres cerrar?</h3>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
-        <a href="{% url 'academia:cierre_preview' curso.pk %}"
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+        <a href="{% url 'academia:cierre_preview' curso.pk %}?archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}"
            class="btn {% if not jornada %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
-            🌐 Todo el curso ({{ curso.jornadas_presencial_count|add:curso.jornadas_online_count }} jornada(s))
+            🌐 Cerrar todo el curso ({{ total_curso_periodo }} matrícula{{ total_curso_periodo|pluralize }})
         </a>
-        {% for j in jornadas_todas %}
-        <a href="{% url 'academia:cierre_preview' curso.pk %}?jornada={{ j.id }}"
-           class="btn {% if jornada and jornada.pk == j.pk %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
-            {% if j.modalidad == 'online' %}🟢{% else %}🏫{% endif %}
-            {{ j.descripcion_legible }}
-            {% if j.fecha_inicio %} · {{ j.fecha_inicio|date:"d/m" }}{% endif %}
-            {% if j.ciudad %} · {{ j.ciudad }}{% endif %}
-        </a>
+    </div>
+
+    <div style="font-size:12px; color:#555; font-weight:700; margin-bottom:8px;">
+        Cerrar por jornada de este curso
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+        {% for item in jornadas_opciones %}
+            {% with j=item.jornada %}
+            <a href="{% url 'academia:cierre_preview' curso.pk %}?jornada={{ j.id }}&archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}"
+               class="btn {% if jornada and jornada.pk == j.pk %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
+                {% if j.modalidad == 'online' %}🟢{% else %}🏫{% endif %}
+                Cerrar jornada:
+                {{ j.descripcion_legible }}
+                {% if j.fecha_inicio %} · {{ j.fecha_inicio|date:"d/m" }}{% endif %}
+                {% if j.ciudad %} · {{ j.ciudad }}{% endif %}
+                · {{ item.total_matriculas }} matrícula{{ item.total_matriculas|pluralize }}
+            </a>
+            {% endwith %}
+        {% empty %}
+            <span style="font-size:13px; color:#888;">Este curso todavía no tiene jornadas configuradas.</span>
         {% endfor %}
     </div>
 </div>
@@ -71,6 +83,7 @@
     </p>
     <form method="get" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
         {% if jornada %}<input type="hidden" name="jornada" value="{{ jornada.id }}">{% endif %}
+        {% if manual_q %}<input type="hidden" name="manual_q" value="{{ manual_q }}">{% endif %}
         <div>
             <label class="form-label" style="font-size:11px;">Mes</label>
             <select name="archivo_mes" class="form-input" onchange="this.form.submit()">
@@ -93,6 +106,103 @@
         Cerrando matrículas de: <strong>{{ periodo_nombre }} {{ periodo_anio }}</strong>
         · {{ totales.total_matriculas }} matrícula{{ totales.total_matriculas|pluralize }}
     </div>
+</div>
+
+{# ─── Cierre manual por estudiante ─────────────────────── #}
+<div class="card-box" style="margin-bottom:20px; border-left:4px solid #0d47a1;">
+    <h3 style="color:#1a237e; font-size:15px; margin-bottom:6px;">👤 Cierre manual por estudiante</h3>
+    <p style="font-size:12px; color:#666; margin:0 0 12px;">
+        Busca una matrícula de este curso por nombre, cédula o celular. Al cerrar desde aquí solo se archivará esa matrícula, sus pagos y el registro del estudiante para consultarlo en Estudiantes archivados.
+    </p>
+    <form method="get" style="display:grid; grid-template-columns:minmax(260px, 1fr) auto auto; gap:10px; align-items:end;">
+        {% if jornada %}<input type="hidden" name="jornada" value="{{ jornada.id }}">{% endif %}
+        <input type="hidden" name="archivo_mes" value="{{ periodo_mes }}">
+        <input type="hidden" name="archivo_anio" value="{{ periodo_anio }}">
+        <div>
+            <label class="form-label" style="font-size:11px;">Buscar estudiante</label>
+            <input type="text" name="manual_q" value="{{ manual_q }}" class="form-input"
+                   placeholder="Nombre, cédula o celular...">
+        </div>
+        <button type="submit" class="btn btn-primary">Buscar</button>
+        {% if manual_q %}
+        <a href="{% url 'academia:cierre_preview' curso.pk %}{% if jornada %}?jornada={{ jornada.id }}&archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}{% else %}?archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}{% endif %}"
+           class="btn btn-secondary">Limpiar</a>
+        {% endif %}
+    </form>
+
+    {% if manual_q %}
+        <div style="margin-top:14px;">
+            {% if manual_matriculas %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Estudiante</th>
+                                <th>Cédula</th>
+                                <th>Celular</th>
+                                <th>Jornada</th>
+                                <th>Estado</th>
+                                <th style="min-width:280px;">Cierre manual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in manual_matriculas %}
+                            <tr>
+                                <td><strong>{{ m.estudiante.nombres }}</strong></td>
+                                <td>{{ m.estudiante.cedula }}</td>
+                                <td>{{ m.estudiante.celular|default:"—" }}</td>
+                                <td>
+                                    {% if m.jornada %}
+                                        {{ m.jornada.descripcion_legible }}
+                                        {% if m.jornada.fecha_inicio %}<br><small style="color:#888;">Inicio {{ m.jornada.fecha_inicio|date:"d/m/Y" }}</small>{% endif %}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if m.estado_pago == 'Pagado' %}
+                                        <span class="badge badge-pagado">Pagado</span>
+                                    {% elif m.estado_pago == 'Parcial' %}
+                                        <span class="badge badge-parcial">Parcial</span>
+                                    {% elif m.estado_pago == 'Retiro' %}
+                                        <span class="badge" style="background:#ececec; color:#555;">Retiro</span>
+                                    {% else %}
+                                        <span class="badge badge-pendiente">Pendiente</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="post"
+                                          action="{% url 'academia:cierre_manual_estudiante_ejecutar' curso.pk m.pk %}"
+                                          onsubmit="return confirm('¿Cerrar manualmente solo la matrícula de {{ m.estudiante.nombres|escapejs }}?');"
+                                          style="display:grid; gap:8px;">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="archivo_mes" value="{{ periodo_mes }}">
+                                        <input type="hidden" name="archivo_anio" value="{{ periodo_anio }}">
+                                        <input type="text" name="ciclo_etiqueta" class="form-input"
+                                               placeholder="Etiqueta opcional" maxlength="80">
+                                        <input type="password" name="admin_password" class="form-input" required
+                                               placeholder="Contraseña admin">
+                                        <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#555;">
+                                            <input type="checkbox" name="limpiar_directorio">
+                                            Quitar del directorio vivo si queda sin matrículas
+                                        </label>
+                                        <button type="submit" class="btn btn-danger btn-sm">
+                                            Cerrar solo esta matrícula
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-state" style="background:#f8f9fb; border-radius:10px; padding:16px;">
+                    <p style="font-size:13px;">No encontré matrículas de este curso en {{ periodo_nombre }} {{ periodo_anio }} con esa búsqueda.</p>
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
 </div>
 
 {# ─── Resumen de lo que se archivará ─────────────────────── #}

@@ -14,7 +14,7 @@
     <div>
         <h2 class="page-title">🗄️ Estudiantes archivados</h2>
         <p class="page-subtitle">
-            Estudiantes que se movieron al historial cuando se ejecutó un cierre con "Limpiar directorio".
+            Estudiantes guardados en el historial desde cierres de curso, cierres manuales o limpieza de directorio.
             Total: {{ total }} estudiante{{ total|pluralize }}.
         </p>
     </div>
@@ -118,8 +118,8 @@
     <div class="empty-state">
         <p style="font-size:15px;">No hay estudiantes archivados todavía.</p>
         <p style="font-size:13px; color:#aaa;">
-            Cuando ejecutes un cierre de curso con la opción <strong>"Limpiar directorio"</strong>,
-            los estudiantes sin matrículas vivas aparecerán aquí.
+            Cuando ejecutes un cierre manual o un cierre con limpieza de directorio,
+            los estudiantes guardados aparecerán aquí.
         </p>
     </div>
     {% endif %}

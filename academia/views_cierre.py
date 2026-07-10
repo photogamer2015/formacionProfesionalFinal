@@ -19,7 +19,7 @@ from io import BytesIO
 
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -30,6 +30,7 @@ from .models import (
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
 )
 from .permisos import admin_requerido, matricula_requerida
+from .busqueda import filtrar_queryset_busqueda
 
 
 MESES_ES = [
@@ -372,17 +373,43 @@ def cierre_preview(request, curso_pk):
         jornada = get_object_or_404(JornadaCurso, pk=int(jornada_id), curso=curso)
 
     anio_sel, mes_sel = _periodo_desde_request(request)
+    total_curso_periodo = _matriculas_a_cerrar(
+        curso, None, anio=anio_sel, mes=mes_sel
+    ).count()
     matriculas = list(_matriculas_a_cerrar(curso, jornada, anio=anio_sel, mes=mes_sel))
     totales = _calcular_totales(matriculas)
     total_abonos = sum(m.abonos.count() for m in matriculas)
 
     # Todas las jornadas del curso (para que pueda escoger otra desde la vista previa)
     jornadas_todas = curso.jornadas.all().order_by('modalidad', 'fecha_inicio')
+    jornadas_opciones = []
+    for j in jornadas_todas:
+        jornadas_opciones.append({
+            'jornada': j,
+            'total_matriculas': _matriculas_a_cerrar(
+                curso, j, anio=anio_sel, mes=mes_sel
+            ).count(),
+        })
+
+    manual_q = request.GET.get('manual_q', '').strip()
+    manual_matriculas = []
+    if manual_q:
+        manual_qs = _matriculas_a_cerrar(curso, None, anio=anio_sel, mes=mes_sel)
+        manual_qs = filtrar_queryset_busqueda(manual_qs, manual_q, [
+            'estudiante__cedula',
+            'estudiante__nombres',
+            'estudiante__celular',
+            'estudiante__correo',
+            'curso__nombre',
+        ])
+        manual_matriculas = list(manual_qs[:20])
 
     return render(request, 'cursos/cierre_preview.html', {
         'curso': curso,
         'jornada': jornada,
         'jornadas_todas': jornadas_todas,
+        'jornadas_opciones': jornadas_opciones,
+        'total_curso_periodo': total_curso_periodo,
         'matriculas': matriculas,
         'totales': totales,
         'total_abonos': total_abonos,
@@ -391,6 +418,8 @@ def cierre_preview(request, curso_pk):
         'periodo_mes': mes_sel,
         'periodo_anio': anio_sel,
         'periodo_nombre': MESES_ES[mes_sel],
+        'manual_q': manual_q,
+        'manual_matriculas': manual_matriculas,
     })
 
 
@@ -535,6 +564,124 @@ def cierre_ejecutar(request, curso_pk):
             f'Puedes consultarlas en Historial de cursos cerrados.'
         )
 
+    return redirect('academia:cierre_detalle', cierre_pk=cierre.pk)
+
+
+@admin_requerido
+@require_POST
+def cierre_manual_estudiante_ejecutar(request, curso_pk, matricula_pk):
+    """
+    Cierre manual de una sola matrícula del curso.
+    Archiva únicamente esa matrícula y sus pagos; no toca otras jornadas,
+    otros estudiantes ni adicionales generales del curso.
+    """
+    curso = get_object_or_404(Curso, pk=curso_pk)
+    matricula = get_object_or_404(
+        Matricula.objects.select_related(
+            'estudiante', 'curso', 'curso__categoria', 'jornada', 'registrado_por'
+        ),
+        pk=matricula_pk,
+        curso=curso,
+    )
+
+    fecha_archivo = _fecha_archivo_desde_request(request)
+    anio_sel, mes_sel = _periodo_desde_request(request)
+    admin_password = request.POST.get('admin_password', '')
+    ciclo_etiqueta = (request.POST.get('ciclo_etiqueta', '').strip())[:80]
+    observaciones = request.POST.get('observaciones', '').strip()
+    limpiar_directorio = request.POST.get('limpiar_directorio') == 'on'
+    nombre_estudiante = matricula.estudiante.nombre_completo if matricula.estudiante_id else ''
+
+    if not request.user.check_password(admin_password):
+        messages.error(request, 'Contraseña de administrador incorrecta. Cierre manual abortado por seguridad.')
+        return redirect('academia:cierre_preview', curso_pk=curso.pk)
+
+    if (
+        matricula.fecha_matricula.year != anio_sel
+        or matricula.fecha_matricula.month != mes_sel
+    ):
+        messages.warning(
+            request,
+            f'La matrícula de {matricula.estudiante.nombre_completo} no pertenece a '
+            f'{MESES_ES[mes_sel]} {anio_sel}. No se hizo ningún cambio.'
+        )
+        return redirect('academia:cierre_preview', curso_pk=curso.pk)
+
+    estudiante_id = matricula.estudiante_id
+    jornada = matricula.jornada
+    totales = _calcular_totales([matricula])
+
+    try:
+        with transaction.atomic():
+            cierre = CierreCurso.objects.create(
+                curso=curso,
+                curso_nombre=curso.nombre,
+                curso_categoria=(curso.categoria.nombre if curso.categoria else ''),
+                jornada=jornada,
+                jornada_descripcion=(jornada.descripcion_legible if jornada else ''),
+                jornada_modalidad=(jornada.modalidad if jornada else matricula.modalidad),
+                jornada_fecha_inicio=(jornada.fecha_inicio if jornada else None),
+                jornada_sede=(jornada.ciudad if jornada else matricula.sede),
+                alcance='manual',
+                ciclo_etiqueta=ciclo_etiqueta or 'Cierre manual por estudiante',
+                observaciones=observaciones,
+                cerrado_por=request.user if request.user.is_authenticated else None,
+                total_matriculas=totales['total_matriculas'],
+                total_facturado=totales['total_facturado'],
+                total_cobrado=totales['total_cobrado'],
+                total_pendiente=totales['total_pendiente'],
+                conteo_pagado=totales['conteo_pagado'],
+                conteo_parcial=totales['conteo_parcial'],
+                conteo_pendiente=totales['conteo_pendiente'],
+                conteo_retiro=totales['conteo_retiro'],
+            )
+            _fijar_fecha(cierre, 'fecha_cierre', fecha_archivo)
+
+            _snapshot_matricula(matricula, cierre, fecha_archivo)
+            matricula.delete()
+
+            estudiantes_archivados = 0
+            estudiante_eliminado = False
+            if estudiante_id:
+                estudiante = Estudiante.objects.filter(pk=estudiante_id).first()
+                if estudiante:
+                    _snapshot_estudiante(estudiante, cierre, fecha_archivo)
+                    estudiantes_archivados = 1
+
+                    if limpiar_directorio and not estudiante.matriculas.exists():
+                        for ad in estudiante.adicionales.all():
+                            _snapshot_adicional(ad, cierre, fecha_archivo)
+                            ad.delete()
+                        estudiante.delete()
+                        estudiante_eliminado = True
+
+            cierre.limpio_directorio = limpiar_directorio and estudiante_eliminado
+            cierre.total_estudiantes_archivados = estudiantes_archivados
+            cierre.save(update_fields=['limpio_directorio', 'total_estudiantes_archivados'])
+
+    except Exception as e:
+        messages.error(
+            request,
+            f'Ocurrió un error durante el cierre manual. No se modificó nada. Detalle: {e}'
+        )
+        return redirect('academia:cierre_preview', curso_pk=curso.pk)
+
+    extra_msg = ''
+    if estudiantes_archivados:
+        extra_msg = (
+            ' Además el estudiante quedó guardado en Estudiantes archivados.'
+        )
+        if limpiar_directorio and estudiante_eliminado:
+            extra_msg += ' También se quitó del directorio vivo porque no conserva matrículas activas.'
+        elif limpiar_directorio:
+            extra_msg += ' Sigue en el directorio vivo porque conserva otras matrículas activas.'
+
+    messages.success(
+        request,
+        f'✅ Cierre manual realizado. Se archivó la matrícula de '
+        f'{nombre_estudiante} en "{curso.nombre}".'
+        f'{extra_msg}'
+    )
     return redirect('academia:cierre_detalle', cierre_pk=cierre.pk)
 
 
@@ -1138,12 +1285,12 @@ def cierre_historial(request):
     if mes.isdigit() and 1 <= int(mes) <= 12:
         qs = qs.filter(fecha_cierre__month=int(mes))
     if q:
-        qs = qs.filter(
-            Q(curso_nombre__icontains=q)
-            | Q(jornada_descripcion__icontains=q)
-            | Q(ciclo_etiqueta__icontains=q)
-            | Q(jornada_sede__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'curso_nombre',
+            'jornada_descripcion',
+            'ciclo_etiqueta',
+            'jornada_sede',
+        ])
 
     # Agrupar por curso (string para tolerar cursos eliminados)
     grupos_dict = defaultdict(list)
@@ -1211,13 +1358,15 @@ def cierre_detalle(request, cierre_pk):
     if sede:
         matriculas_qs = matriculas_qs.filter(sede__iexact=sede)
     if q:
-        matriculas_qs = matriculas_qs.filter(
-            Q(cedula__icontains=q)
-            | Q(nombres__icontains=q)
-            | Q(correo__icontains=q)
-            | Q(celular__icontains=q)
-            | Q(jornada_descripcion__icontains=q)
-        )
+        matriculas_qs = filtrar_queryset_busqueda(matriculas_qs, q, [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'jornada_descripcion',
+            'fact_cedula',
+            'fact_nombres',
+        ])
 
     matriculas = list(matriculas_qs.order_by('nombres'))
 
@@ -1286,10 +1435,15 @@ def cierre_export(request, cierre_pk):
     if sede:
         matriculas_qs = matriculas_qs.filter(sede__iexact=sede)
     if q:
-        matriculas_qs = matriculas_qs.filter(
-            Q(cedula__icontains=q)
-            | Q(nombres__icontains=q)
-        )
+        matriculas_qs = filtrar_queryset_busqueda(matriculas_qs, q, [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'jornada_descripcion',
+            'fact_cedula',
+            'fact_nombres',
+        ])
 
     matriculas = list(matriculas_qs.order_by('nombres'))
 
@@ -1479,12 +1633,13 @@ def estudiantes_archivados_lista(request):
     qs = EstudianteArchivado.objects.select_related('cierre').order_by('nombres')
 
     if q:
-        qs = qs.filter(
-            Q(cedula__icontains=q)
-            | Q(nombres__icontains=q)
-            | Q(correo__icontains=q)
-            | Q(celular__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'ciudad',
+        ])
     if cierre_id.isdigit():
         qs = qs.filter(cierre_id=int(cierre_id))
     if anio.isdigit():
@@ -1524,10 +1679,13 @@ def estudiantes_archivados_export(request):
 
     qs = EstudianteArchivado.objects.select_related('cierre').order_by('nombres')
     if q:
-        qs = qs.filter(
-            Q(cedula__icontains=q) |  Q(nombres__icontains=q)
-            | Q(correo__icontains=q) | Q(celular__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+            'ciudad',
+        ])
     if cierre_id.isdigit():
         qs = qs.filter(cierre_id=int(cierre_id))
     if anio.isdigit():
@@ -1621,12 +1779,12 @@ def adicionales_archivados_lista(request):
     qs = AdicionalArchivado.objects.select_related('cierre').order_by('-archivado_en', '-fecha')
 
     if q:
-        qs = qs.filter(
-            Q(persona_cedula__icontains=q)
-            | Q(persona_nombre__icontains=q)
-            | Q(numero_recibo__icontains=q)
-            | Q(curso_nombre__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'persona_cedula',
+            'persona_nombre',
+            'numero_recibo',
+            'curso_nombre',
+        ])
     if cierre_id.isdigit():
         qs = qs.filter(cierre_id=int(cierre_id))
     if anio.isdigit():

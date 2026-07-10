@@ -1759,6 +1759,7 @@ class CierreCurso(models.Model):
         ('jornada', 'Una jornada específica'),
         ('curso', 'Todo el curso (todas las jornadas)'),
         ('global', 'Cierre global (todos los cursos)'),
+        ('manual', 'Manual por estudiante'),
     ]
 
     # ── Identidad del cierre ──

@@ -18,7 +18,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q, Sum, Count
+from django.db.models import Sum, Count
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -32,6 +32,7 @@ from .models import (
     PersonaExterna,
 )
 from .permisos import matricula_requerida, admin_requerido
+from .busqueda import filtrar_queryset_busqueda
 
 
 def _buscar_estudiante_archivado(cedula):
@@ -115,15 +116,14 @@ def adicional_lista(request):
     if hasta:
         qs = qs.filter(fecha__lte=hasta)
     if q:
-        qs = qs.filter(
-            Q(estudiante__cedula__icontains=q) |
-            
-            Q(estudiante__nombres__icontains=q) |
-            Q(persona_externa__cedula__icontains=q) |
-            
-            Q(persona_externa__nombres__icontains=q) |
-            Q(curso__nombre__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'estudiante__cedula',
+            'estudiante__nombres',
+            'persona_externa__cedula',
+            'persona_externa__nombres',
+            'curso__nombre',
+            'numero_recibo',
+        ])
 
     qs = qs.order_by('-fecha', '-creado')
 
@@ -368,13 +368,12 @@ def personas_externas_lista(request):
 
     q = (request.GET.get('q') or '').strip()
     if q:
-        qs = qs.filter(
-            Q(cedula__icontains=q) |
-            
-            Q(nombres__icontains=q) |
-            Q(correo__icontains=q) |
-            Q(celular__icontains=q)
-        )
+        qs = filtrar_queryset_busqueda(qs, q, [
+            'cedula',
+            'nombres',
+            'correo',
+            'celular',
+        ])
 
     return render(request, 'adicional/personas_externas.html', {
         'personas': qs[:300],

@@ -1,6 +1,5 @@
 import json
 import os
-import unicodedata
 from decimal import Decimal
 from django.utils import timezone
 
@@ -32,35 +31,23 @@ from .permisos import (
     puede_editar_jornadas,
     puede_eliminar_jornadas,
 )
+from .busqueda import filtrar_queryset_busqueda, normalizar_texto_busqueda
 
 
 def _normalizar_texto_busqueda(valor):
-    texto = str(valor or '').casefold()
-    texto = unicodedata.normalize('NFD', texto)
-    return ''.join(caracter for caracter in texto if unicodedata.category(caracter) != 'Mn')
+    return normalizar_texto_busqueda(valor)
 
 
 def _filtrar_matriculas_por_busqueda(qs, termino):
-    palabras = [p for p in _normalizar_texto_busqueda(termino).split() if p]
-    if not palabras:
-        return qs
-
-    ids = []
-    for matricula in qs:
-        estudiante = matricula.estudiante
-        curso = matricula.curso
-        texto = _normalizar_texto_busqueda(' '.join([
-            estudiante.cedula,
-            estudiante.nombres,
-            curso.nombre,
-            matricula.fact_cedula,
-        ]))
-        if all(palabra in texto for palabra in palabras):
-            ids.append(matricula.pk)
-
-    if not ids:
-        return qs.none()
-    return qs.filter(pk__in=ids)
+    return filtrar_queryset_busqueda(qs, termino, [
+        'estudiante__cedula',
+        'estudiante__nombres',
+        'estudiante__correo',
+        'estudiante__celular',
+        'curso__nombre',
+        'fact_cedula',
+        'fact_nombres',
+    ])
 
 
 @login_required

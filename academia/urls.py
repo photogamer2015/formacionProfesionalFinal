@@ -237,6 +237,9 @@ urlpatterns = [
           views_cierre.cierre_preview, name='cierre_preview'),
      path('cursos/<int:curso_pk>/cierre/ejecutar/',
           views_cierre.cierre_ejecutar, name='cierre_ejecutar'),
+     path('cursos/<int:curso_pk>/cierre/manual/<int:matricula_pk>/ejecutar/',
+          views_cierre.cierre_manual_estudiante_ejecutar,
+          name='cierre_manual_estudiante_ejecutar'),
 
      # ── Cierre GLOBAL (todos los cursos de una modalidad) ──
      path('cursos/cierre-global/<str:modalidad>/',

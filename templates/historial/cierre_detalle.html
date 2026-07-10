@@ -120,10 +120,11 @@
             </div>
             {% endif %}
 
-            {% if cierre.limpio_directorio %}
+            {% if cierre.limpio_directorio or cierre.total_estudiantes_archivados %}
             <div style="font-size:12px; background:rgba(255,215,0,0.15); padding:8px 12px; border-radius:8px; margin-top:10px; max-width:600px; border-left:3px solid #FFD700;">
-                🧹 <strong>En este cierre se limpió el directorio:</strong>
+                🗄️ <strong>Estudiantes archivados en este cierre:</strong>
                 {{ cierre.total_estudiantes_archivados }} estudiante(s) archivado(s).
+                {% if cierre.limpio_directorio %}<span> También se limpió el directorio vivo.</span>{% endif %}
                 <a href="{% url 'academia:estudiantes_archivados_lista' %}?cierre={{ cierre.pk }}"
                    style="color:#FFD700; text-decoration:underline; font-weight:600;">
                     Ver estudiantes archivados →
