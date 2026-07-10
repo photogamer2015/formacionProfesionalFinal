@@ -512,8 +512,8 @@ class MatriculaForm(forms.ModelForm):
         # Required flags
         self.fields['jornada'].required = False
         self.fields['talla_camiseta'].required = False
-        self.fields['tipo_matricula'].required = True
-        self.fields['forma_pago'].required = True
+        self.fields['tipo_matricula'].required = captura_pago
+        self.fields['forma_pago'].required = captura_pago
         self.fields['tipo_registro'].required = True
         self.fields['factura_realizada'].required = True
 

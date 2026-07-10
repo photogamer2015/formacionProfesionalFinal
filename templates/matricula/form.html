@@ -216,6 +216,15 @@
                 <div id="curso-duplicado-detalle" style="font-size:12px; color:#6D4C41; margin-top:4px;"></div>
             </div>
         </div>
+        {% if modo == 'editar' and not editar_pago %}
+            {{ mat_form.tipo_matricula.as_hidden }}
+            {{ mat_form.modulos_a_pagar.as_hidden }}
+            {{ mat_form.valor_curso.as_hidden }}
+            {{ mat_form.descuento.as_hidden }}
+            {{ mat_form.forma_pago.as_hidden }}
+            {{ mat_form.valor_pagado.as_hidden }}
+        {% endif %}
+        {% if modo != 'editar' or editar_pago %}
         <div>
             <label class="form-label" for="id_tipo_matricula">
                 Matrícula *
@@ -230,10 +239,12 @@
             </label>
             {{ mat_form.modulos_a_pagar }}{{ mat_form.modulos_a_pagar.errors }}
         </div>
+        {% endif %}
         <div>
             <label class="form-label" for="{{ mat_form.fecha_matricula.id_for_label }}">Fecha de matrícula *</label>
             {{ mat_form.fecha_matricula }}{{ mat_form.fecha_matricula.errors }}
         </div>
+        {% if modo != 'editar' or editar_pago %}
         <div>
             <label class="form-label" for="id_valor_curso">Valor del curso (USD) *</label>
             {{ mat_form.valor_curso }}{{ mat_form.valor_curso.errors }}
@@ -334,6 +345,7 @@
                 ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Valor pagado (USD)".
             </small>
         </div>
+        {% endif %}
     </div>
 
     <!-- Jornada -->
@@ -399,7 +411,7 @@
                 <select name="vendedora_id" id="vendedora_id" class="form-input" required>
                     <option value="">— Selecciona un asesor —</option>
                     {% for asr in asesores %}
-                        <option value="{{ asr.id }}" {% if comprobante_existente and comprobante_existente.vendedora_id == asr.id or vendedora_id_selected == asr.id|stringformat:"s" %}selected{% endif %}>
+                        <option value="{{ asr.id }}" {% if vendedora_id_selected == asr.id|stringformat:"s" %}selected{% endif %}>
                             {{ asr.first_name|default:asr.username }} {{ asr.last_name }}
                         </option>
                     {% endfor %}
@@ -806,6 +818,7 @@
         // ── Aplicar la forma de pago al "Valor pagado" ──
         // Pago completo → valor neto · Módulo → valor de un módulo · Abono → libre.
         function aplicarFormaPago(forzar = false) {
+            if (typeof SOLO_DATOS !== 'undefined' && SOLO_DATOS) return;
             if (!valorPagadoInput) return;
 
             const forma = formaPagoSelect ? formaPagoSelect.value : '';
@@ -873,6 +886,7 @@
         }
 
         function actualizarModulosAPagar(forzar = false) {
+            if (typeof SOLO_DATOS !== 'undefined' && SOLO_DATOS) return;
             if (!modulosWrap || !modulosSelect) return;
             const esReservaModulo = tipoMatriculaSelect && tipoMatriculaSelect.value === 'reserva_modulo_1';
             if (!esReservaModulo) {
@@ -905,6 +919,7 @@
         }
 
         function actualizarValorNeto() {
+            if (typeof SOLO_DATOS !== 'undefined' && SOLO_DATOS) return;
             if (!valorNetoDisplay) { aplicarFormaPago(); return; }
             const valor = parseFloat((valorCursoInput && valorCursoInput.value) || '0') || 0;
             const desc = parseFloat((descuentoInput && descuentoInput.value) || '0') || 0;
@@ -985,6 +1000,8 @@
         const MODALIDAD_URL = "{{ modalidad }}";
         let modalidadCursoActual = MODALIDAD_URL;
         const MODO = "{{ modo }}";
+        const EDITAR_PAGO = {% if editar_pago %}true{% else %}false{% endif %};
+        const SOLO_DATOS = MODO === 'editar' && !EDITAR_PAGO;
         const jornadaPreseleccionada = "{{ mat_form.jornada.value|default_if_none:'' }}";
 
         // ── Campos obligatorios (nombres base) ──────────────
@@ -1001,6 +1018,13 @@
             { name: 'tipo_registro', label: 'Tipo de registro' },
             { name: 'factura_realizada', label: '¿Factura realizada?' },
         ];
+        if (SOLO_DATOS) {
+            for (let i = CAMPOS_REQUERIDOS.length - 1; i >= 0; i--) {
+                if (['tipo_matricula', 'forma_pago', 'valor_curso'].includes(CAMPOS_REQUERIDOS[i].name)) {
+                    CAMPOS_REQUERIDOS.splice(i, 1);
+                }
+            }
+        }
 
         // Función auxiliar para encontrar el campo con o sin prefijo
         function obtenerElementoCampo(name) {
@@ -1756,12 +1780,12 @@
             try {
                 const respCurso = await fetch(`/api/curso/${cursoId}/?modalidad=${modalidadCursoActual}`);
                 dataCurso = await respCurso.json();
-                if (dataCurso.ok && valorCursoInput) {
+                if (dataCurso.ok) {
                     cursoNumModulos = {
                         presencial: dataCurso.curso.numero_modulos || 1,
                         online: dataCurso.curso.numero_modulos_online || 1,
                     };
-                    if (!valorCursoInput.value || valorCursoInput.dataset.fromCurso === '1') {
+                    if (!SOLO_DATOS && valorCursoInput && (!valorCursoInput.value || valorCursoInput.dataset.fromCurso === '1')) {
                         valorCursoInput.value = dataCurso.curso.valor;
                         valorCursoInput.dataset.fromCurso = '1';
                     }
@@ -1781,7 +1805,8 @@
             } catch (err) { console.error(err); }
 
             try {
-                const respJor = await fetch(`/api/curso/${cursoId}/jornadas/?modalidad=${modalidadCursoActual}`);
+                const modalidadJornadas = SOLO_DATOS ? 'all' : modalidadCursoActual;
+                const respJor = await fetch(`/api/curso/${cursoId}/jornadas/?modalidad=${modalidadJornadas}`);
                 const dataJor = await respJor.json();
                 const jornadasFiltradas = dataJor.jornadas;
 
@@ -1817,7 +1842,7 @@
                     radio.addEventListener('change', function () {
                         const mod = this.dataset.modalidad;
                         modalidadPagoActual = (mod === 'online') ? 'online' : 'presencial';
-                        if (dataCurso && dataCurso.ok && valorCursoInput && valorCursoInput.dataset.fromCurso === '1') {
+                        if (!SOLO_DATOS && dataCurso && dataCurso.ok && valorCursoInput && valorCursoInput.dataset.fromCurso === '1') {
                             valorCursoInput.value = mod === 'online' ? dataCurso.curso.valor_online : dataCurso.curso.valor_presencial;
                         }
                         actualizarValorNeto();

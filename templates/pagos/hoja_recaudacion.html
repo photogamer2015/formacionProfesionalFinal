@@ -107,13 +107,13 @@
     <div>
         <h2 class="page-title">🖨️ Hoja de Recaudación</h2>
         <p class="page-subtitle">
-            Genera una hoja por curso para una fecha y ciudad determinadas. Replica el formato físico
+            Genera hojas por curso y jornada para una fecha y ciudad determinadas. Replica el formato físico
             de las recaudaciones diarias.
         </p>
     </div>
     {% if hojas %}
     <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        {% with qs="?fecha="|add:filtros.fecha|add:"&ciudad="|add:filtros.ciudad|add:"&curso="|add:filtros.curso|add:"&modalidad="|add:filtros.modalidad %}
+        {% with qs="?fecha="|add:filtros.fecha|add:"&ciudad="|add:filtros.ciudad|add:"&curso="|add:filtros.curso|add:"&jornada="|add:filtros.jornada|add:"&modalidad="|add:filtros.modalidad %}
         <a href="{% url 'academia:hoja_recaudacion_export_excel' %}{{ qs }}"
            class="btn btn-secondary" title="Exportar a Excel">📊 Excel</a>
         <a href="{% url 'academia:hoja_recaudacion_export_pdf' %}{{ qs }}"
@@ -158,14 +158,14 @@
 
 {# ─── Filtros ───────────────────────────────── #}
 <div class="card-box no-print" style="margin-bottom:18px; padding:16px;">
-    <form method="get" style="display:grid; grid-template-columns: 1fr 1fr 1fr 2fr auto; gap:10px; align-items:end;">
+    <form method="get" style="display:grid; grid-template-columns: 1fr 1fr 1fr 2fr 2fr auto; gap:10px; align-items:end;">
         <div>
             <label class="form-label" style="font-size:11px;">Fecha *</label>
             <input type="date" name="fecha" value="{{ filtros.fecha }}" class="form-input" required>
         </div>
         <div>
             <label class="form-label" style="font-size:11px;">Modalidad</label>
-            <select name="modalidad" class="form-input">
+            <select name="modalidad" class="form-input" id="id-modalidad-recaudacion">
                 <option value="">— Todas —</option>
                 <option value="presencial" {% if filtros.modalidad == 'presencial' %}selected{% endif %}>🏫 Presencial</option>
                 <option value="online" {% if filtros.modalidad == 'online' %}selected{% endif %}>🟢 Online</option>
@@ -173,18 +173,33 @@
         </div>
         <div>
             <label class="form-label" style="font-size:11px;">Ciudad</label>
-            <select name="ciudad" class="form-input">
+            <select name="ciudad" class="form-input" id="id-ciudad-recaudacion">
                 <option value="">— Todas —</option>
                 <option value="Guayaquil" {% if filtros.ciudad == 'Guayaquil' %}selected{% endif %}>Guayaquil</option>
                 <option value="Quito" {% if filtros.ciudad == 'Quito' %}selected{% endif %}>Quito</option>
             </select>
         </div>
         <div>
-            <label class="form-label" style="font-size:11px;">Curso (opcional)</label>
-            <select name="curso" class="form-input">
-                <option value="">— Todos los cursos del día —</option>
+            <label class="form-label" style="font-size:11px;">Curso *</label>
+            <select name="curso" class="form-input" id="id-curso-recaudacion" required>
+                <option value="">— Selecciona un curso —</option>
                 {% for c in cursos_disponibles %}
                 <option value="{{ c.pk }}" {% if filtros.curso == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label" style="font-size:11px;">Jornada del curso</label>
+            <select name="jornada" class="form-input" id="id-jornada-recaudacion">
+                <option value="">— Todas las jornadas del curso (separadas) —</option>
+                {% for j in jornadas_todas %}
+                <option value="{{ j.pk }}"
+                        data-course="{{ j.curso_id }}"
+                        data-modalidad="{{ j.modalidad }}"
+                        data-ciudad="{{ j.ciudad|default:'' }}"
+                        {% if filtros.jornada == j.pk|stringformat:"s" %}selected{% endif %}>
+                    {{ j.etiqueta }}
+                </option>
                 {% endfor %}
             </select>
         </div>
@@ -192,15 +207,79 @@
     </form>
 </div>
 
-{# ─── Hojas por curso ─────────────────────── #}
+<script>
+(function () {
+    'use strict';
+
+    var curso = document.getElementById('id-curso-recaudacion');
+    var jornada = document.getElementById('id-jornada-recaudacion');
+    var modalidad = document.getElementById('id-modalidad-recaudacion');
+    var ciudad = document.getElementById('id-ciudad-recaudacion');
+    if (!curso || !jornada) return;
+
+    var opciones = Array.prototype.slice.call(
+        jornada.querySelectorAll('option[data-course]')
+    );
+    var placeholder = jornada.querySelector('option[value=""]');
+
+    function sincronizarJornadas() {
+        var cursoId = curso.value;
+        var modalidadValor = modalidad ? modalidad.value : '';
+        var ciudadValor = ciudad ? ciudad.value.toLowerCase() : '';
+        var visibles = 0;
+
+        opciones.forEach(function (opt) {
+            var coincide = !!cursoId && opt.dataset.course === cursoId;
+            if (coincide && modalidadValor) {
+                coincide = opt.dataset.modalidad === modalidadValor;
+            }
+            if (coincide && ciudadValor) {
+                coincide = (opt.dataset.ciudad || '').toLowerCase() === ciudadValor;
+            }
+
+            opt.hidden = !coincide;
+            opt.disabled = !coincide;
+            if (coincide) visibles += 1;
+        });
+
+        if (!cursoId) {
+            jornada.value = '';
+            jornada.disabled = true;
+            if (placeholder) placeholder.textContent = '— Primero selecciona un curso —';
+            return;
+        }
+
+        jornada.disabled = false;
+        if (placeholder) {
+            placeholder.textContent = visibles
+                ? '— Todas las jornadas del curso (separadas) —'
+                : '— No hay jornadas para este curso/filtro —';
+        }
+        if (jornada.selectedOptions.length && jornada.selectedOptions[0].disabled) {
+            jornada.value = '';
+        }
+    }
+
+    curso.addEventListener('change', sincronizarJornadas);
+    if (modalidad) modalidad.addEventListener('change', sincronizarJornadas);
+    if (ciudad) ciudad.addEventListener('change', sincronizarJornadas);
+    sincronizarJornadas();
+})();
+</script>
+
+{# ─── Hojas por jornada ─────────────────────── #}
 {% if not filtros.fecha %}
 <div class="card-box" style="padding:30px; text-align:center; background:#f5f7ff;">
     <p style="font-size:15px; color:#666;">📅 Selecciona una fecha para generar las hojas de recaudación.</p>
 </div>
+{% elif not filtros.curso %}
+<div class="card-box" style="padding:30px; text-align:center; background:#f5f7ff;">
+    <p style="font-size:15px; color:#666;">👆 Selecciona un curso para ver sus jornadas de forma ordenada.</p>
+</div>
 {% elif not hojas %}
 <div class="card-box" style="padding:30px; text-align:center;">
     <p style="font-size:15px; color:#666;">
-        No se encontraron matrículas con los filtros aplicados.
+        No se encontraron matrículas para el curso y la jornada seleccionados.
     </p>
 </div>
 {% else %}
@@ -212,14 +291,15 @@
         {% if hoja.curso.es_ciclo_corto %}
         <span style="color: #FFD700; font-weight: bold;">(CICLO CORTO)</span> 
         {% endif %}
+        — {{ hoja.jornada_label }}
         — Recordar que si el estudiante falta a clases igual debe cumplir con el plan de financiamiento
     </div>
 
     <div class="hoja-meta">
         <div><strong>FECHA:</strong> {{ hoja.dia_semana }} {{ hoja.fecha|date:"d \d\e F \d\e Y" }}</div>
         <div><strong>CIUDAD:</strong> {{ hoja.ciudad }}</div>
-        <div><strong>RESPONSABLE:</strong> {{ hoja.responsable }}</div>
-        <div><strong>ESTUDIANTES:</strong> {{ hoja.items|length }}</div>
+        <div><strong>JORNADA:</strong> {{ hoja.jornada_label }}</div>
+        <div><strong>RESPONSABLE:</strong> {{ hoja.responsable }} · <strong>ESTUDIANTES:</strong> {{ hoja.items|length }}</div>
     </div>
 
     <table class="hoja-tabla">

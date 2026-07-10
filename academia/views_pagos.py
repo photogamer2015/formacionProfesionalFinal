@@ -21,7 +21,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .forms import AbonoForm, RecuperacionPendienteForm
-from .models import Abono, Curso, Estudiante, Matricula, RecuperacionPendiente
+from .models import (
+    Abono, Curso, Estudiante, JornadaCurso, Matricula, RecuperacionPendiente,
+)
 from .permisos import matricula_requerida, admin_requerido
 
 
@@ -2408,6 +2410,178 @@ def recuperacion_eliminar(request, recup_pk):
 DIAS_SEMANA_ES = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
 
 
+def _jornadas_recaudacion_queryset(curso_id, ciudad='', modalidad=''):
+    """Jornadas disponibles para el selector de la hoja de recaudación."""
+    if not (curso_id and str(curso_id).isdigit()):
+        return JornadaCurso.objects.none()
+
+    qs = JornadaCurso.objects.filter(curso_id=int(curso_id)).select_related(
+        'curso', 'sede',
+    ).order_by('fecha_inicio', 'modalidad', 'hora_inicio', 'id')
+    if ciudad:
+        qs = qs.filter(ciudad__iexact=ciudad)
+    if modalidad in ('presencial', 'online'):
+        qs = qs.filter(modalidad=modalidad)
+    return qs
+
+
+def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada=None):
+    """Construye una hoja ya separada por jornada."""
+    items = []
+    total_efectivo = Decimal('0.00')
+    total_transferencia = Decimal('0.00')
+    total_recaudar_esperado = Decimal('0.00')
+    total_recaudado = Decimal('0.00')
+    total_cuotas = Decimal('0.00')
+
+    for m in matriculas:
+        # Abonos del estudiante registrados ese día (todos los métodos)
+        abonos_dia = list(m.abonos.filter(fecha=fecha_obj))
+        pagado_dia = sum((a.monto for a in abonos_dia), Decimal('0.00'))
+
+        partes_dia = [
+            parte
+            for abono in abonos_dia
+            for parte in _partes_pago_abono(abono)
+        ]
+
+        # Forma de pago del día (concatenadas si hay varias)
+        metodos = sorted({p['metodo_display'] for p in partes_dia})
+        bancos = sorted({p['banco_display'] for p in partes_dia if p['banco']})
+        forma = ', '.join(metodos) if metodos else '—'
+        banco_str = ', '.join(bancos) if bancos else '—'
+
+        plan_recaudacion = _plan_recaudacion_matricula(m, fecha_obj)
+        modulo_actual = plan_recaudacion['modulo']
+
+        # Recuperaciones pendientes en este módulo
+        tiene_recup = m.recuperaciones_pendientes.filter(pagada=False).exists()
+        recup_str = '✱ Recuperar' if tiene_recup else ''
+
+        cuota_sugerida = plan_recaudacion['cuota_sugerida']
+
+        # Suma a totales por método
+        for parte in partes_dia:
+            if parte['metodo'] == 'efectivo':
+                total_efectivo += parte['monto']
+            elif parte['metodo'] in ('transferencia', 'tarjeta'):
+                total_transferencia += parte['monto']
+
+        saldo_pendiente = plan_recaudacion['saldo_pendiente']
+
+        total_recaudar_esperado += saldo_pendiente
+        total_cuotas += cuota_sugerida
+        total_recaudado += pagado_dia
+
+        items.append({
+            'estudiante': m.estudiante,
+            'matricula_id': m.pk,
+            'modulo': modulo_actual,
+            'saldo_pendiente': saldo_pendiente,
+            'cuota_sugerida': cuota_sugerida,
+            'cuota_manual': plan_recaudacion.get('cuota_manual', False),
+            'recaudado': pagado_dia,
+            'forma_pago': forma,
+            'banco': banco_str,
+            'asistencia': '—',  # no tenemos campo asistencia, queda manual
+            'recuperacion': recup_str,
+            'talla': m.talla_camiseta or '',
+            'jornada_inicio': (
+                m.jornada.fecha_inicio
+                if (m.jornada and m.jornada.fecha_inicio)
+                else None
+            ),
+            'jornada_descripcion': (
+                m.jornada.descripcion_legible if m.jornada else '—'
+            ),
+        })
+
+    # Responsable: usuario que más matrículas registró en esta jornada.
+    responsables = {}
+    for m in matriculas:
+        if m.registrado_por_id:
+            nombre = (
+                f'{m.registrado_por.first_name} {m.registrado_por.last_name}'.strip()
+                or m.registrado_por.username
+            )
+            responsables[nombre] = responsables.get(nombre, 0) + 1
+    responsable = max(responsables.items(), key=lambda x: x[1])[0] if responsables else '—'
+
+    dia_semana = DIAS_SEMANA_ES[fecha_obj.weekday()]
+    ciudad_hoja = (
+        jornada.ciudad if jornada and jornada.ciudad else ciudad or '—'
+    )
+
+    return {
+        'curso': curso,
+        'jornada': jornada,
+        'jornada_id': jornada.pk if jornada else '',
+        'jornada_label': jornada.etiqueta if jornada else 'Sin jornada asignada',
+        'jornada_inicio': jornada.fecha_inicio if jornada else None,
+        'jornada_modalidad': jornada.get_modalidad_display() if jornada else '—',
+        'fecha': fecha_obj,
+        'dia_semana': dia_semana,
+        'ciudad': ciudad_hoja,
+        'responsable': responsable,
+        'items': items,
+        'total_efectivo': total_efectivo,
+        'total_transferencia': total_transferencia,
+        'total_recaudar_esperado': total_recaudar_esperado,
+        'total_cuotas': total_cuotas,
+        'total_recaudado': total_recaudado,
+    }
+
+
+def _construir_hojas_recaudacion(fecha_obj, curso_id, ciudad='',
+                                 modalidad='', jornada_id=''):
+    """
+    Construye hojas de recaudación desde los filtros.
+    Requiere curso; si no hay jornada específica, separa una hoja por jornada.
+    """
+    if not fecha_obj or not (curso_id and str(curso_id).isdigit()):
+        return []
+
+    curso = Curso.objects.filter(activo=True, pk=int(curso_id)).first()
+    if not curso:
+        return []
+
+    mat_qs = Matricula.objects.filter(curso=curso).exclude(
+        estado='retiro_voluntario',
+    ).select_related(
+        'estudiante', 'jornada', 'jornada__sede', 'registrado_por',
+    ).order_by(
+        'jornada__fecha_inicio', 'jornada__modalidad', 'jornada__hora_inicio',
+        'jornada__id', 'estudiante__nombres', 'id',
+    )
+    if ciudad:
+        mat_qs = mat_qs.filter(jornada__ciudad__iexact=ciudad)
+    if modalidad in ('presencial', 'online'):
+        mat_qs = mat_qs.filter(jornada__modalidad=modalidad)
+    if jornada_id and str(jornada_id).isdigit():
+        mat_qs = mat_qs.filter(jornada_id=int(jornada_id))
+
+    grupos = {}
+    for matricula in mat_qs:
+        key = matricula.jornada_id or 0
+        if key not in grupos:
+            grupos[key] = {
+                'jornada': matricula.jornada if matricula.jornada_id else None,
+                'matriculas': [],
+            }
+        grupos[key]['matriculas'].append(matricula)
+
+    hojas = []
+    for grupo in grupos.values():
+        hojas.append(_construir_hoja_recaudacion(
+            curso=curso,
+            matriculas=grupo['matriculas'],
+            fecha_obj=fecha_obj,
+            ciudad=ciudad,
+            jornada=grupo['jornada'],
+        ))
+    return hojas
+
+
 def _redondear_abajo_medio_dolar(monto):
     """Redondea hacia abajo al múltiplo de $0.50 más cercano."""
     monto = max(monto or Decimal('0.00'), Decimal('0.00'))
@@ -2815,18 +2989,19 @@ def matricula_comprobante_pdf(request, pk):
 @matricula_requerida
 def hoja_recaudacion(request):
     """
-    Vista imprimible: una hoja por curso para una fecha y ciudad dadas.
+    Vista imprimible: una hoja por jornada para una fecha y curso dados.
     Replica el formato de las hojas físicas (Recaudaciones GYE/QUITO).
 
-    Filtros: fecha (obligatoria), ciudad (opcional), curso (opcional).
-    Si no se filtra por curso, genera UNA HOJA POR CADA CURSO con
-    matrículas activas en esa fecha/ciudad.
+    Filtros: fecha y curso obligatorios; ciudad, modalidad y jornada opcionales.
+    Si no se filtra una jornada específica, genera hojas separadas por jornada
+    del curso para evitar mezclar inicios distintos en la misma tabla.
     """
     from datetime import datetime as _dt
 
     fecha_str = request.GET.get('fecha', '').strip()
     ciudad = request.GET.get('ciudad', '').strip()
     curso_id = request.GET.get('curso', '').strip()
+    jornada_id = request.GET.get('jornada', '').strip()
     modalidad = request.GET.get('modalidad', '').strip().lower()
     if modalidad not in ('presencial', 'online'):
         modalidad = ''  # vacío = todas las modalidades
@@ -2839,126 +3014,29 @@ def hoja_recaudacion(request):
             fecha_obj = None
 
     cursos_disponibles = Curso.objects.filter(activo=True).order_by('nombre')
-
-    hojas = []  # lista de dicts: {curso, fecha, ciudad, responsable, items[], totales}
-
-    if fecha_obj:
-        # Determinar qué cursos incluir
-        cursos_qs = Curso.objects.filter(activo=True).order_by('nombre')
-        if curso_id and curso_id.isdigit():
-            cursos_qs = cursos_qs.filter(pk=int(curso_id))
-
-        for curso in cursos_qs:
-            # Matrículas activas de este curso (no retiradas) en la ciudad indicada
-            mat_qs = Matricula.objects.filter(
-                curso=curso,
-            ).exclude(estado='retiro_voluntario').select_related(
-                'estudiante', 'jornada', 'registrado_por',
-            )
-            if ciudad:
-                mat_qs = mat_qs.filter(jornada__ciudad__iexact=ciudad)
-            if modalidad:
-                mat_qs = mat_qs.filter(jornada__modalidad=modalidad)
-
-            if not mat_qs.exists():
-                continue
-
-            items = []
-            total_efectivo = Decimal('0.00')
-            total_transferencia = Decimal('0.00')
-            total_recaudar_esperado = Decimal('0.00')
-            total_recaudado = Decimal('0.00')
-            total_cuotas = Decimal('0.00')
-
-            for m in mat_qs:
-                # Abonos del estudiante registrados ese día (todos los métodos)
-                abonos_dia = m.abonos.filter(fecha=fecha_obj)
-                pagado_dia = sum((a.monto for a in abonos_dia), Decimal('0.00'))
-
-                partes_dia = [
-                    parte
-                    for abono in abonos_dia
-                    for parte in _partes_pago_abono(abono)
-                ]
-
-                # Forma de pago del día (concatenadas si hay varias)
-                metodos = sorted({p['metodo_display'] for p in partes_dia})
-                bancos = sorted({p['banco_display'] for p in partes_dia if p['banco']})
-                forma = ', '.join(metodos) if metodos else '—'
-                banco_str = ', '.join(bancos) if bancos else '—'
-
-                plan_recaudacion = _plan_recaudacion_matricula(m, fecha_obj)
-                modulo_actual = plan_recaudacion['modulo']
-
-                # Recuperaciones pendientes en este módulo
-                tiene_recup = m.recuperaciones_pendientes.filter(pagada=False).exists()
-                recup_str = '✱ Recuperar' if tiene_recup else ''
-
-                cuota_sugerida = plan_recaudacion['cuota_sugerida']
-
-                # Suma a totales por método
-                for parte in partes_dia:
-                    if parte['metodo'] == 'efectivo':
-                        total_efectivo += parte['monto']
-                    elif parte['metodo'] in ('transferencia', 'tarjeta'):
-                        total_transferencia += parte['monto']
-
-                saldo_pendiente = plan_recaudacion['saldo_pendiente']
-
-                total_recaudar_esperado += saldo_pendiente
-                total_cuotas += cuota_sugerida
-                total_recaudado += pagado_dia
-
-                items.append({
-                    'estudiante': m.estudiante,
-                    'matricula_id': m.pk,
-                    'modulo': modulo_actual,
-                    'saldo_pendiente': saldo_pendiente,
-                    'cuota_sugerida': cuota_sugerida,
-                    'cuota_manual': plan_recaudacion.get('cuota_manual', False),
-                    'recaudado': pagado_dia,
-                    'forma_pago': forma,
-                    'banco': banco_str,
-                    'asistencia': '—',  # no tenemos campo asistencia, queda manual
-                    'recuperacion': recup_str,
-                    'talla': m.talla_camiseta or '',
-                    'jornada_inicio': m.jornada.fecha_inicio if (m.jornada and m.jornada.fecha_inicio) else None,
-                })
-
-            # Responsable: usuario que más matrículas registró en ese curso
-            responsables = {}
-            for m in mat_qs:
-                if m.registrado_por_id:
-                    nombre = (
-                        f'{m.registrado_por.first_name} {m.registrado_por.last_name}'.strip()
-                        or m.registrado_por.username
-                    )
-                    responsables[nombre] = responsables.get(nombre, 0) + 1
-            responsable = max(responsables.items(), key=lambda x: x[1])[0] if responsables else '—'
-
-            dia_semana = DIAS_SEMANA_ES[fecha_obj.weekday()]
-
-            hojas.append({
-                'curso': curso,
-                'fecha': fecha_obj,
-                'dia_semana': dia_semana,
-                'ciudad': ciudad or '—',
-                'responsable': responsable,
-                'items': items,
-                'total_efectivo': total_efectivo,
-                'total_transferencia': total_transferencia,
-                'total_recaudar_esperado': total_recaudar_esperado,
-                'total_cuotas': total_cuotas,
-                'total_recaudado': total_recaudado,
-            })
+    jornadas_disponibles = _jornadas_recaudacion_queryset(
+        curso_id, ciudad=ciudad, modalidad=modalidad
+    )
+    jornadas_todas = JornadaCurso.objects.filter(
+        curso__activo=True,
+    ).select_related('curso', 'sede').order_by(
+        'curso__nombre', 'fecha_inicio', 'modalidad', 'hora_inicio', 'id',
+    )
+    hojas = _construir_hojas_recaudacion(
+        fecha_obj, curso_id, ciudad=ciudad,
+        modalidad=modalidad, jornada_id=jornada_id,
+    )
 
     return render(request, 'pagos/hoja_recaudacion.html', {
         'cursos_disponibles': cursos_disponibles,
+        'jornadas_disponibles': jornadas_disponibles,
+        'jornadas_todas': jornadas_todas,
         'hojas': hojas,
         'filtros': {
             'fecha': fecha_str,
             'ciudad': ciudad,
             'curso': curso_id,
+            'jornada': jornada_id,
             'modalidad': modalidad,
         },
     })
@@ -3258,6 +3336,7 @@ def _hojas_recaudacion_data(request):
     fecha_str = request.GET.get('fecha', '').strip()
     ciudad = request.GET.get('ciudad', '').strip()
     curso_id = request.GET.get('curso', '').strip()
+    jornada_id = request.GET.get('jornada', '').strip()
     modalidad = request.GET.get('modalidad', '').strip().lower()
     if modalidad not in ('presencial', 'online'):
         modalidad = ''
@@ -3269,114 +3348,17 @@ def _hojas_recaudacion_data(request):
         except ValueError:
             fecha_obj = None
 
-    hojas = []
-    if not fecha_obj:
-        return hojas, {
-            'fecha': fecha_str, 'ciudad': ciudad,
-            'curso': curso_id, 'modalidad': modalidad,
-        }
-
-    cursos_qs = Curso.objects.filter(activo=True).order_by('nombre')
-    if curso_id and curso_id.isdigit():
-        cursos_qs = cursos_qs.filter(pk=int(curso_id))
-
-    for curso in cursos_qs:
-        mat_qs = Matricula.objects.filter(curso=curso).exclude(
-            estado='retiro_voluntario'
-        ).select_related('estudiante', 'jornada', 'registrado_por')
-        if ciudad:
-            mat_qs = mat_qs.filter(jornada__ciudad__iexact=ciudad)
-        if modalidad:
-            mat_qs = mat_qs.filter(jornada__modalidad=modalidad)
-        if not mat_qs.exists():
-            continue
-
-        items = []
-        total_efectivo = Decimal('0.00')
-        total_transferencia = Decimal('0.00')
-        total_recaudar_esperado = Decimal('0.00')
-        total_recaudado = Decimal('0.00')
-        total_cuotas = Decimal('0.00')
-
-        for m in mat_qs:
-            abonos_dia = m.abonos.filter(fecha=fecha_obj)
-            pagado_dia = sum((a.monto for a in abonos_dia), Decimal('0.00'))
-
-            partes_dia = [
-                parte
-                for abono in abonos_dia
-                for parte in _partes_pago_abono(abono)
-            ]
-
-            metodos = sorted({p['metodo_display'] for p in partes_dia})
-            bancos = sorted({p['banco_display'] for p in partes_dia if p['banco']})
-            forma = ', '.join(metodos) if metodos else '—'
-            banco_str = ', '.join(bancos) if bancos else '—'
-
-            plan_recaudacion = _plan_recaudacion_matricula(m, fecha_obj)
-            modulo_actual = plan_recaudacion['modulo']
-
-            tiene_recup = m.recuperaciones_pendientes.filter(pagada=False).exists()
-            recup_str = '✱ Recuperar' if tiene_recup else ''
-
-            cuota_sugerida = plan_recaudacion['cuota_sugerida']
-
-            for parte in partes_dia:
-                if parte['metodo'] == 'efectivo':
-                    total_efectivo += parte['monto']
-                elif parte['metodo'] in ('transferencia', 'tarjeta'):
-                    total_transferencia += parte['monto']
-
-            saldo_pendiente = plan_recaudacion['saldo_pendiente']
-
-            total_recaudar_esperado += saldo_pendiente
-            total_cuotas += cuota_sugerida
-            total_recaudado += pagado_dia
-
-            items.append({
-                'estudiante': m.estudiante,
-                'matricula_id': m.pk,
-                'modulo': modulo_actual,
-                'saldo_pendiente': saldo_pendiente,
-                'cuota_sugerida': cuota_sugerida,
-                'cuota_manual': plan_recaudacion.get('cuota_manual', False),
-                'recaudado': pagado_dia,
-                'forma_pago': forma,
-                'banco': banco_str,
-                'asistencia': '—',
-                'recuperacion': recup_str,
-                'talla': m.talla_camiseta or '',
-                'jornada_inicio': m.jornada.fecha_inicio if (m.jornada and m.jornada.fecha_inicio) else None,
-                'jornada_descripcion': m.jornada.descripcion_legible if m.jornada else '—',
-            })
-
-        responsables = {}
-        for m in mat_qs:
-            if m.registrado_por_id:
-                nombre = (
-                    f'{m.registrado_por.first_name} {m.registrado_por.last_name}'.strip()
-                    or m.registrado_por.username
-                )
-                responsables[nombre] = responsables.get(nombre, 0) + 1
-        responsable = max(responsables.items(), key=lambda x: x[1])[0] if responsables else '—'
-
-        dia_semana = DIAS_SEMANA_ES[fecha_obj.weekday()]
-
-        hojas.append({
-            'curso': curso,
-            'fecha': fecha_obj,
-            'dia_semana': dia_semana,
-            'ciudad': ciudad or '—',
-            'responsable': responsable,
-            'items': items,
-            'total_efectivo': total_efectivo,
-            'total_transferencia': total_transferencia,
-            'total_recaudar_esperado': total_recaudar_esperado,
-            'total_cuotas': total_cuotas,
-            'total_recaudado': total_recaudado,
-        })
-
-    return hojas, {'fecha': fecha_str, 'ciudad': ciudad, 'curso': curso_id, 'modalidad': modalidad}
+    hojas = _construir_hojas_recaudacion(
+        fecha_obj, curso_id, ciudad=ciudad,
+        modalidad=modalidad, jornada_id=jornada_id,
+    )
+    return hojas, {
+        'fecha': fecha_str,
+        'ciudad': ciudad,
+        'curso': curso_id,
+        'jornada': jornada_id,
+        'modalidad': modalidad,
+    }
 
 
 @matricula_requerida
@@ -3459,7 +3441,7 @@ def hoja_recaudacion_export_excel(request):
         return redirect('academia:hoja_recaudacion')
 
     headers = [
-        'Curso', 'Fecha', 'Día', 'Ciudad', 'Responsable', '#',
+        'Curso', 'Jornada', 'Fecha', 'Día', 'Ciudad', 'Responsable', '#',
         'Estudiante', 'Inicio jornada', 'Mód.',
         'Saldo Pend.', 'A Recaudar (Cuota)', 'Recaudado', 'Forma de pago', 'Banco', 'Recuperación', 'Talla',
     ]
@@ -3469,6 +3451,7 @@ def hoja_recaudacion_export_excel(request):
         for idx, item in enumerate(h['items'], start=1):
             rows.append([
                 h['curso'].nombre,
+                h.get('jornada_label') or '—',
                 h['fecha'].strftime('%d/%m/%Y'),
                 h['dia_semana'],
                 h['ciudad'],
@@ -3491,9 +3474,9 @@ def hoja_recaudacion_export_excel(request):
             total_recaudado += float(item['recaudado'] or 0)
 
     totals = {
-        9: round(total_recaudar, 2),
-        10: round(total_cuotas, 2),
-        11: round(total_recaudado, 2),
+        10: round(total_recaudar, 2),
+        11: round(total_cuotas, 2),
+        12: round(total_recaudado, 2),
     }
     filename = f'hoja_recaudacion_{filtros["fecha"]}.xlsx'
     sheet_name = f'Recaudación {filtros["fecha"]}'[:31]
@@ -3544,10 +3527,15 @@ def hoja_recaudacion_export_pdf(request):
     elementos = []
 
     for idx_hoja, h in enumerate(hojas):
-        elementos.append(Paragraph(f'Recaudación — {h["curso"].nombre}', titulo_st))
+        elementos.append(Paragraph(
+            f'Recaudación — {h["curso"].nombre} — {h.get("jornada_label") or "—"}',
+            titulo_st,
+        ))
         elementos.append(Paragraph(
             f'<b>Fecha:</b> {h["dia_semana"]} {h["fecha"].strftime("%d/%m/%Y")} · '
-            f'<b>Ciudad:</b> {h["ciudad"]} · <b>Responsable:</b> {h["responsable"]} · '
+            f'<b>Ciudad:</b> {h["ciudad"]} · '
+            f'<b>Jornada:</b> {h.get("jornada_label") or "—"} · '
+            f'<b>Responsable:</b> {h["responsable"]} · '
             f'<b>Estudiantes:</b> {len(h["items"])}',
             meta_st,
         ))

@@ -1006,6 +1006,14 @@ def matricula_editar(request, modalidad, pk):
             )
 
     comprobante_existente = getattr(matricula, 'comprobante', None)
+    if request.method == 'POST':
+        vendedora_id_selected = request.POST.get('vendedora_id', '')
+    else:
+        vendedora_id_selected = str(
+            matricula.vendedora_id
+            or (comprobante_existente.vendedora_id if comprobante_existente else '')
+            or ''
+        )
 
     # Monto del pago inicial actual (para mostrarlo en el aviso del modo pago).
     monto_pago_inicial_actual = (
@@ -1027,6 +1035,7 @@ def matricula_editar(request, modalidad, pk):
         'titulo': f'Editar Matrícula #{matricula.pk}',
         'asesores': asesores,
         'error_vendedora': error_vendedora,
+        'vendedora_id_selected': vendedora_id_selected,
     })
 
 

@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .forms import AbonoForm, AdicionalSupletorioRapidoForm
-from .models import Abono, Curso, Estudiante, JornadaCurso, Matricula
+from .models import Abono, Comprobante, Curso, Estudiante, JornadaCurso, Matricula
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
 from .views_pagos import _hojas_recaudacion_data, _plan_recaudacion_matricula
@@ -292,6 +292,186 @@ class PagoInicialMatriculaTests(TestCase):
 
         self.assertEqual(hojas[0]['total_efectivo'], Decimal('20.00'))
         self.assertEqual(hojas[0]['total_transferencia'], Decimal('20.00'))
+
+    def test_hoja_recaudacion_separa_jornadas_del_mismo_curso(self):
+        segunda_jornada = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_jue',
+            fecha_inicio=date(2026, 8, 15),
+        )
+        segundo_estudiante = Estudiante.objects.create(
+            cedula='1207342799',
+            nombres='Estudiante Segunda Jornada',
+        )
+        Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        Matricula.objects.create(
+            estudiante=segundo_estudiante,
+            curso=self.curso,
+            jornada=segunda_jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+
+        request = RequestFactory().get('/pagos/hoja-recaudacion/', {
+            'fecha': '2026-07-10',
+            'curso': str(self.curso.id),
+        })
+        hojas, _filtros = _hojas_recaudacion_data(request)
+
+        self.assertEqual(len(hojas), 2)
+        self.assertEqual([h['jornada_id'] for h in hojas], [
+            self.jornada.pk,
+            segunda_jornada.pk,
+        ])
+        self.assertEqual([len(h['items']) for h in hojas], [1, 1])
+
+        request_jornada = RequestFactory().get('/pagos/hoja-recaudacion/', {
+            'fecha': '2026-07-10',
+            'curso': str(self.curso.id),
+            'jornada': str(segunda_jornada.id),
+        })
+        hojas_jornada, _filtros = _hojas_recaudacion_data(request_jornada)
+
+        self.assertEqual(len(hojas_jornada), 1)
+        self.assertEqual(hojas_jornada[0]['jornada_id'], segunda_jornada.pk)
+        self.assertEqual(
+            hojas_jornada[0]['items'][0]['estudiante'],
+            segundo_estudiante,
+        )
+
+    def test_editar_solo_datos_oculta_campos_de_pago(self):
+        admin = User.objects.create_superuser(
+            username='admin_edicion_datos',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('30.00'),
+            tipo_registro='central_ia',
+            factura_realizada='no',
+            registrado_por=admin,
+            vendedora=self.usuario,
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse(
+                'academia:matricula_editar',
+                kwargs={'modalidad': 'presencial', 'pk': matricula.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn('Seleccione la jornada', html)
+        self.assertIn('¿Factura con datos?', html)
+        self.assertIn('Selecciona el asesor', html)
+        self.assertNotIn('Valor pagado (USD)', html)
+        self.assertNotIn('Forma de pago *', html)
+        self.assertNotIn('Distribución de pago', html)
+        self.assertNotIn('Método de pago *', html)
+        self.assertNotIn('Valor del curso (USD)', html)
+
+    def test_editar_pago_inicial_mantiene_campos_de_pago_visibles(self):
+        admin = User.objects.create_superuser(
+            username='admin_edicion_pago',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('30.00'),
+            tipo_registro='central_ia',
+            factura_realizada='no',
+            registrado_por=admin,
+            vendedora=self.usuario,
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse(
+                'academia:matricula_editar',
+                kwargs={'modalidad': 'presencial', 'pk': matricula.pk},
+            ),
+            {'editar_pago': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn('Valor pagado (USD)', html)
+        self.assertIn('Forma de pago *', html)
+        self.assertIn('Distribución de pago', html)
+
+    def test_comprobante_usa_vendedora_de_matricula(self):
+        registrador = User.objects.create_user(username='registrador')
+        vendedora_1 = User.objects.create_user(
+            username='asesora_uno',
+            first_name='Asesora',
+            last_name='Uno',
+        )
+        vendedora_2 = User.objects.create_user(
+            username='asesora_dos',
+            first_name='Asesora',
+            last_name='Dos',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('30.00'),
+            tipo_registro='central_ia',
+            factura_realizada='no',
+            registrado_por=registrador,
+            vendedora=vendedora_1,
+        )
+
+        comprobante = Comprobante.objects.get(matricula=matricula)
+        self.assertEqual(comprobante.vendedora, vendedora_1)
+        self.assertEqual(comprobante.vendedora_nombre, 'Asesora Uno')
+
+        matricula.vendedora = vendedora_2
+        matricula.save()
+        comprobante.refresh_from_db()
+
+        self.assertEqual(comprobante.vendedora, vendedora_2)
+        self.assertEqual(comprobante.vendedora_nombre, 'Asesora Dos')
 
     def _abono_data(self, **overrides):
         data = {

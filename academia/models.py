@@ -779,7 +779,8 @@ class Matricula(models.Model):
             pass
 
     def _sync_comprobante(self):
-        if not self.registrado_por_id:
+        vendedora_usuario = self.vendedora or self.registrado_por
+        if not vendedora_usuario:
             return
 
         modalidad_comp = 'virtual' if self.modalidad == 'online' else 'presencial'
@@ -805,10 +806,10 @@ class Matricula(models.Model):
             'pago_abono': self.valor_pagado or Decimal('0.00'),
             'diferencia': self.saldo if self.saldo > 0 else Decimal('0.00'),
             'link_comprobante': self.link_comprobante or '',
-            'vendedora': self.registrado_por,
+            'vendedora': vendedora_usuario,
             'vendedora_nombre': (
-                f'{self.registrado_por.first_name} {self.registrado_por.last_name}'.strip()
-                or self.registrado_por.username
+                f'{vendedora_usuario.first_name} {vendedora_usuario.last_name}'.strip()
+                or vendedora_usuario.username
             ),
             'factura_realizada': self.factura_realizada or 'no',
             'fact_nombres': fact_nombres,
