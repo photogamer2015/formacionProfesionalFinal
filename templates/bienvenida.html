@@ -50,7 +50,9 @@
     /* ───── HEADER minimalista ───── */
     .dashboard-header {
         text-align: center;
-        margin: 8px 0 44px;
+        max-width: 760px;
+        margin: 8px auto 40px;
+        padding: 0 8px;
         animation: fadeDown .6s ease both;
     }
     @keyframes fadeDown {
@@ -65,29 +67,61 @@
     .page-title {
         font-weight: 800;
         color: var(--primary);
-        letter-spacing: -0.5px;
+        letter-spacing: 0;
+        line-height: 1.15;
     }
     .page-subtitle {
         color: var(--text-muted);
         font-size: 14px;
-        margin-top: 4px;
+        margin: 8px 0 0;
+        line-height: 1.45;
     }
 
     /* ───── GRID ───── */
+    .dashboard-shell {
+        position: relative;
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 20px;
+        border: 1px solid rgba(27,42,78,.08);
+        border-radius: 24px;
+        background:
+            radial-gradient(circle at 10% 0%, rgba(228,81,3,.08), transparent 32%),
+            radial-gradient(circle at 92% 12%, rgba(27,42,78,.07), transparent 34%),
+            linear-gradient(180deg, rgba(255,255,255,.72), rgba(255,255,255,.36));
+        box-shadow: 0 18px 48px rgba(27,42,78,.08);
+    }
+    .dashboard-shell::before {
+        content: "";
+        position: absolute;
+        left: 22px;
+        right: 22px;
+        top: 0;
+        height: 3px;
+        border-radius: 99px;
+        background: linear-gradient(90deg, var(--orange), var(--orange-lt), transparent 74%);
+        opacity: .9;
+    }
     .dashboard-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
-        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 248px), 1fr));
+        gap: 16px;
+        align-items: stretch;
     }
 
-    /* ───── TARJETAS minimalistas ───── */
+    /* ───── TARJETAS ───── */
     .card-box {
+        --card-accent: var(--orange);
+        --card-accent-soft: rgba(228,81,3,.10);
         position: relative;
+        display: flex;
+        flex-direction: column;
         background: var(--card-bg);
         border-radius: 18px;
-        padding: 22px 20px 18px;
-        border: 1px solid var(--line);
-        box-shadow: 0 1px 2px rgba(27,42,78,.04);
+        min-height: 186px;
+        padding: 20px;
+        border: 1px solid rgba(27,42,78,.08);
+        box-shadow: 0 10px 24px rgba(27,42,78,.07);
         transition: transform .25s cubic-bezier(.2,.8,.2,1),
                     box-shadow .25s ease,
                     border-color .25s ease;
@@ -101,88 +135,153 @@
         from { opacity:0; transform: translateY(14px); }
         to   { opacity:1; transform: translateY(0); }
     }
-    /* franja superior naranja que aparece al pasar el mouse */
     .card-box::before {
         content: "";
         position: absolute;
-        top: 0; left: 0; right: 0;
-        height: 3px;
-        background: linear-gradient(90deg, var(--orange), var(--orange-lt));
-        transform: scaleX(0);
-        transform-origin: left;
-        transition: transform .3s ease;
+        top: 18px;
+        bottom: 18px;
+        left: 0;
+        width: 4px;
+        border-radius: 0 99px 99px 0;
+        background: linear-gradient(180deg, var(--card-accent), rgba(244,122,51,.50));
+        opacity: .85;
+        transition: opacity .25s ease, transform .25s ease;
+    }
+    .card-box::after {
+        content: "";
+        position: absolute;
+        width: 104px;
+        height: 104px;
+        right: -48px;
+        top: -48px;
+        border-radius: 50%;
+        background: var(--card-accent-soft);
+        pointer-events: none;
+        transition: transform .25s ease, opacity .25s ease;
     }
     .card-box:hover {
-        transform: translateY(-6px);
-        border-color: transparent;
-        box-shadow: 0 18px 38px rgba(27,42,78,.14);
+        transform: translateY(-5px);
+        border-color: rgba(228,81,3,.20);
+        box-shadow: 0 20px 42px rgba(27,42,78,.13);
     }
-    .card-box:hover::before { transform: scaleX(1); }
+    .card-box:hover::before {
+        opacity: 1;
+        transform: scaleY(1.08);
+    }
+    .card-box:hover::after {
+        opacity: .9;
+        transform: scale(1.08);
+    }
+    .card-box:focus-visible {
+        outline: 3px solid rgba(228,81,3,.28);
+        outline-offset: 3px;
+    }
 
     .card-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        gap: 14px;
+        min-height: 48px;
     }
     .card-icon-wrap {
-        width: 44px; height: 44px;
-        border-radius: 13px;
+        width: 46px; height: 46px;
+        border-radius: 14px;
         display: flex; align-items: center; justify-content: center;
         font-size: 21px;
-        background: linear-gradient(135deg, rgba(228,81,3,.10), rgba(244,122,51,.06));
-        color: var(--orange);
+        background: linear-gradient(135deg, var(--card-accent-soft), rgba(244,122,51,.06));
+        color: var(--card-accent);
         flex-shrink: 0;
-        transition: transform .25s ease;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+        transition: transform .25s ease, background .25s ease;
     }
     .card-box:hover .card-icon-wrap { transform: scale(1.08) rotate(-3deg); }
 
     .card-title {
         font-size: 16px;
-        font-weight: 700;
+        font-weight: 800;
         color: var(--primary);
-        letter-spacing: -0.3px;
+        letter-spacing: 0;
+        line-height: 1.25;
+        padding-right: 4px;
     }
     .card-desc {
-        margin-top: 12px;
-        font-size: 13px;
+        margin-top: 16px;
+        font-size: 13.5px;
         color: var(--text-muted);
         line-height: 1.55;
-        min-height: 38px;
+        min-height: 54px;
     }
     .card-footer {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-top: 18px;
-        padding-top: 14px;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: auto;
+        padding-top: 16px;
         border-top: 1px solid var(--line);
+    }
+    .status-ok,
+    .status-admin {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        white-space: nowrap;
     }
     .status-ok {
         background: rgba(46,125,50,.10);
         color: var(--secondary);
-        font-size: 11px;
-        padding: 4px 10px;
+        font-size: 11.5px;
+        padding: 4px 11px;
         border-radius: 99px;
-        font-weight: 700;
+        font-weight: 800;
     }
     .status-admin {
         background: rgba(228,81,3,.12);
         color: var(--orange);
-        font-size: 11px;
-        padding: 4px 10px;
+        font-size: 11.5px;
+        padding: 4px 11px;
         border-radius: 99px;
-        font-weight: 700;
+        font-weight: 800;
     }
     .card-cta {
         font-size: 13px;
-        font-weight: 700;
+        font-weight: 800;
         color: var(--primary);
         display: inline-flex;
         align-items: center;
         gap: 5px;
+        margin-left: auto;
+        white-space: nowrap;
         transition: gap .2s ease;
     }
     .card-box:hover .card-cta { gap: 9px; color: var(--orange); }
+    .card-matriculas { --card-accent: #2f7df6; --card-accent-soft: rgba(47,125,246,.10); }
+    .card-cursos { --card-accent: #1B2A4E; --card-accent-soft: rgba(27,42,78,.10); }
+    .card-pagos { --card-accent: #0e7c6b; --card-accent-soft: rgba(14,124,107,.10); }
+    .card-historial,
+    .card-archivo { --card-accent: #6d5dfc; --card-accent-soft: rgba(109,93,252,.10); }
+    .card-adicional,
+    .card-avisos { --card-accent: var(--orange); --card-accent-soft: rgba(228,81,3,.12); }
+    .card-admin { --card-accent: #c2440b; --card-accent-soft: rgba(194,68,11,.12); }
+    .card-recordatorio { --card-accent: #4f8ef7; --card-accent-soft: rgba(79,142,247,.12); }
+    .card-ayuda { --card-accent: #c62828; --card-accent-soft: rgba(198,40,40,.10); }
+
+    body.dark-mode .dashboard-shell {
+        border-color: rgba(255,255,255,.08);
+        background:
+            radial-gradient(circle at 10% 0%, rgba(228,81,3,.13), transparent 34%),
+            linear-gradient(180deg, rgba(28,34,48,.92), rgba(18,21,32,.58));
+        box-shadow: 0 18px 48px rgba(0,0,0,.28);
+    }
+    body.dark-mode .card-box {
+        border-color: rgba(255,255,255,.08);
+        box-shadow: 0 12px 28px rgba(0,0,0,.24);
+    }
+    body.dark-mode .card-icon-wrap {
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
 
     /* ALERTA sin rol */
     .alert-box {
@@ -192,6 +291,160 @@
         background: #fff8e1;
         border-radius: 14px;
         color: #856404;
+    }
+
+    @media (max-width: 900px) {
+        .dashboard-header {
+            margin-bottom: 28px;
+        }
+        .dashboard-shell {
+            padding: 16px;
+            border-radius: 22px;
+        }
+        .dashboard-grid {
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+            gap: 14px;
+        }
+        .card-box {
+            min-height: 174px;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .container {
+            padding: 24px 14px;
+        }
+        .dashboard-header {
+            text-align: left;
+            margin: 4px 0 22px;
+            padding: 0;
+        }
+        .header-accent {
+            margin: 0 0 16px;
+            width: 46px;
+        }
+        .page-title {
+            font-size: 25px !important;
+        }
+        .page-subtitle {
+            font-size: 13px;
+        }
+        .dashboard-shell {
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+        .dashboard-shell::before {
+            display: none;
+        }
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+            padding-bottom: 72px;
+        }
+        .card-box {
+            min-height: 0;
+            padding: 16px 15px;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(27,42,78,.08);
+        }
+        .card-box::before {
+            top: 14px;
+            bottom: 14px;
+        }
+        .card-box::after {
+            width: 86px;
+            height: 86px;
+            right: -44px;
+            top: -44px;
+        }
+        .card-header {
+            align-items: center;
+            min-height: 0;
+        }
+        .card-icon-wrap {
+            width: 42px;
+            height: 42px;
+            border-radius: 13px;
+            font-size: 19px;
+        }
+        .card-title {
+            font-size: 15.5px;
+        }
+        .card-desc {
+            min-height: 0;
+            margin-top: 10px;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .card-footer {
+            align-items: stretch;
+            margin-top: 12px;
+            padding-top: 12px;
+        }
+        .status-ok,
+        .status-admin {
+            min-height: 30px;
+            padding: 5px 11px;
+        }
+        .card-cta {
+            min-height: 36px;
+            justify-content: center;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(27,42,78,.06);
+        }
+        body.dark-mode .card-cta {
+            background: rgba(255,255,255,.06);
+        }
+        .card-box:hover {
+            transform: none;
+        }
+    }
+
+    @media (max-width: 380px) {
+        .card-footer {
+            align-items: stretch;
+        }
+        .card-cta {
+            width: 100%;
+            justify-content: center;
+            margin-left: 0;
+            padding: 8px 10px;
+            border-radius: 999px;
+            background: rgba(27,42,78,.06);
+        }
+        body.dark-mode .card-cta {
+            background: rgba(255,255,255,.06);
+        }
+    }
+
+    @media (max-width: 420px) {
+        .page-title {
+            font-size: 23px !important;
+        }
+        .dashboard-grid {
+            gap: 10px;
+        }
+        .card-box {
+            padding: 15px 14px;
+        }
+        .card-header {
+            gap: 10px;
+        }
+        .card-title {
+            font-size: 15px;
+        }
+        .card-desc {
+            font-size: 12.8px;
+        }
+        .card-icon-wrap {
+            width: 40px;
+            height: 40px;
+            font-size: 18px;
+        }
     }
 </style>
 <div class="dashboard-header">
@@ -207,6 +460,7 @@
         {% elif es_asesor %}
         — <strong style="color:var(--secondary);">Asesor</strong>
         {% endif %}
+    </p>
 </div>
 
 {# ─── Avisos vigentes del panel (visibles para todos) ──────── #}
@@ -418,11 +672,72 @@
     .gm-vermas > summary::-webkit-details-marker { display: none; }
     body.dark-mode .gm-vermas > summary { color: #7fb0e8; }
 
-    @media (max-width: 640px) {
-        .gm-card { grid-template-columns: 1fr; }
-        .gm-acciones { justify-content: flex-start; }
-    }
-</style>
+	    @media (max-width: 640px) {
+	        .gm-panel {
+	            margin-bottom: 16px;
+	            border-radius: 14px;
+	        }
+	        .gm-head {
+	            padding: 12px;
+	            gap: 8px;
+	        }
+	        .gm-head .gm-ico {
+	            width: 28px;
+	            height: 28px;
+	            flex-basis: 28px;
+	        }
+	        .gm-head .gm-titulo {
+	            display: flex;
+	            align-items: center;
+	            gap: 7px;
+	            flex-wrap: wrap;
+	            font-size: 14px;
+	            line-height: 1.25;
+	        }
+	        .gm-head .gm-count {
+	            margin-left: 0;
+	        }
+	        .gm-body-inner {
+	            padding: 0 12px 12px;
+	        }
+	        .gm-resumen {
+	            display: none;
+	        }
+	        .gm-card {
+	            grid-template-columns: 1fr;
+	            padding: 12px;
+	            border-radius: 12px;
+	            gap: 12px;
+	        }
+	        .gm-card .gm-nombre {
+	            font-size: 13.5px;
+	        }
+	        .gm-estado {
+	            gap: 5px;
+	        }
+	        .gm-chip {
+	            font-size: 11px;
+	            padding: 4px 8px;
+	        }
+	        .gm-acciones {
+	            display: grid;
+	            grid-template-columns: repeat(2, minmax(0, 1fr));
+	            justify-content: stretch;
+	            gap: 7px;
+	        }
+	        .gm-acciones form,
+	        .gm-acciones .btn {
+	            width: 100%;
+	        }
+	        .gm-acciones .btn {
+	            padding: 8px 9px;
+	            text-align: center;
+	        }
+	        .gm-acciones form .btn {
+	            width: 100%;
+	        }
+	    }
+	</style>
 
 {% comment %}
    Panel colapsable de Gestión de Matrículas.
@@ -621,10 +936,11 @@
 </script>
 {% endif %}
 
+<section class="dashboard-shell" aria-label="Accesos principales">
 <div class="dashboard-grid">
 
     {% if puede_gestionar_matriculas %}
-    <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}" class="card-box" style="animation-delay:.05s;">
+    <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}" class="card-box card-matriculas" style="animation-delay:.05s;">
         <div class="card-header">
             <div class="card-title">Registro de Matrículas</div>
             <div class="card-icon-wrap">🎓</div>
@@ -639,7 +955,7 @@
     </a>
     {% endif %}
 
-    <a href="{% url 'academia:cursos_lista' modalidad='presencial' %}" class="card-box" style="animation-delay:.1s;">
+    <a href="{% url 'academia:cursos_lista' modalidad='presencial' %}" class="card-box card-cursos" style="animation-delay:.1s;">
         <div class="card-header">
             <div class="card-title">Cursos Disponibles</div>
             <div class="card-icon-wrap">📘</div>
@@ -659,7 +975,7 @@
 
 
     {% if puede_gestionar_matriculas %}
-    <a href="{% url 'academia:pagos_lista' %}" class="card-box" style="animation-delay:.15s;">
+    <a href="{% url 'academia:pagos_lista' %}" class="card-box card-pagos" style="animation-delay:.15s;">
         <div class="card-header">
             <div class="card-title">Pagos</div>
             <div class="card-icon-wrap">💳</div>
@@ -673,7 +989,7 @@
         </div>
     </a>
 
-    <a href="{% url 'academia:historial_lista' %}" class="card-box" style="animation-delay:.2s;">
+    <a href="{% url 'academia:historial_lista' %}" class="card-box card-historial" style="animation-delay:.2s;">
         <div class="card-header">
             <div class="card-title">Historial</div>
             <div class="card-icon-wrap">📚</div>
@@ -687,7 +1003,7 @@
         </div>
     </a>
 
-    <a href="{% url 'academia:archivo_index' %}" class="card-box" style="animation-delay:.25s;">
+    <a href="{% url 'academia:archivo_index' %}" class="card-box card-archivo" style="animation-delay:.25s;">
         <div class="card-header">
             <div class="card-title">Archivo</div>
             <div class="card-icon-wrap">🗄️</div>
@@ -703,7 +1019,7 @@
     {% endif %}
 
     {% if puede_gestionar_matriculas %}
-    <a href="{% url 'academia:adicional_menu' %}" class="card-box" style="animation-delay:.3s;">
+    <a href="{% url 'academia:adicional_menu' %}" class="card-box card-adicional" style="animation-delay:.3s;">
         <div class="card-header">
             <div class="card-title">Adicional</div>
             <div class="card-icon-wrap">➕</div>
@@ -720,7 +1036,7 @@
     {% endif %}
 
     {% if es_admin %}
-    <a href="{% url 'academia:admin_dashboard' %}" class="card-box" style="animation-delay:.35s;">
+    <a href="{% url 'academia:admin_dashboard' %}" class="card-box card-admin" style="animation-delay:.35s;">
         <div class="card-header">
             <div class="card-title">Registro Administrativo</div>
             <div class="card-icon-wrap">📊</div>
@@ -736,7 +1052,7 @@
     {% endif %}
 
     {% if es_admin %}
-    <a href="{% url 'academia:control_registro' %}" class="card-box" style="animation-delay:.36s;">
+    <a href="{% url 'academia:control_registro' %}" class="card-box card-admin" style="animation-delay:.36s;">
         <div class="card-header">
             <div class="card-title">Control de Registro</div>
             <div class="card-icon-wrap">📋</div>
@@ -752,7 +1068,7 @@
     {% endif %}
 
     {% if es_admin %}
-    <a href="{% url 'academia:avisos_lista' %}" class="card-box" style="animation-delay:.38s;">
+    <a href="{% url 'academia:avisos_lista' %}" class="card-box card-avisos" style="animation-delay:.38s;">
         <div class="card-header">
             <div class="card-title">Avisos del panel</div>
             <div class="card-icon-wrap">📢</div>
@@ -768,7 +1084,7 @@
     {% endif %}
 
     {% if puede_gestionar_matriculas %}
-    <a href="{% url 'academia:recordatorio_lista' %}" class="card-box" style="animation-delay:.39s;">
+    <a href="{% url 'academia:recordatorio_lista' %}" class="card-box card-recordatorio" style="animation-delay:.39s;">
         <div class="card-header">
             <div class="card-title">Recordatorio - Borrador</div>
             <div class="card-icon-wrap">🗒️</div>
@@ -789,7 +1105,7 @@
     {% endif %}
 
     {% if puede_gestionar_matriculas %}
-    <a href="{% url 'academia:ayuda' %}" class="card-box" style="animation-delay:.4s;">
+    <a href="{% url 'academia:ayuda' %}" class="card-box card-ayuda" style="animation-delay:.4s;">
         <div class="card-header">
             <div class="card-title">Ayuda</div>
             <div class="card-icon-wrap">❓</div>
@@ -804,6 +1120,7 @@
     </a>
     {% endif %}
 </div>
+</section>
 
 {% if not puede_gestionar_matriculas and not es_admin %}
 <div class="alert-box">

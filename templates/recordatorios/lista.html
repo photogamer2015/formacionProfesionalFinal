@@ -1,57 +1,614 @@
 {% extends 'base.html' %}
 
-{% block title %}Recordatorios — Borradores{% endblock %}
+{% block title %}Recordatorios — Mensajes{% endblock %}
 
 {% block content %}
-<div class="crumb">
-    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Recordatorios
-</div>
+<style>
+    .rm-page {
+        max-width: 1180px;
+        margin: 0 auto;
+    }
+    .rm-hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 22px;
+        padding: 20px;
+        border-radius: 22px;
+        border: 1px solid rgba(27,42,78,.08);
+        background:
+            radial-gradient(circle at 8% 0%, rgba(228,81,3,.09), transparent 32%),
+            linear-gradient(135deg, #ffffff, #f7f9fd);
+        box-shadow: 0 14px 36px rgba(27,42,78,.08);
+    }
+    .rm-hero-main {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+    }
+    .rm-hero-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 56px;
+        font-size: 26px;
+        color: var(--fp-navy);
+        background: linear-gradient(135deg, rgba(228,81,3,.14), rgba(27,42,78,.08));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+    }
+    .rm-title {
+        margin: 0;
+        color: var(--fp-navy);
+        font-size: 28px;
+        line-height: 1.1;
+        letter-spacing: 0;
+    }
+    .rm-subtitle {
+        margin: 7px 0 0;
+        color: #667085;
+        font-size: 14px;
+        line-height: 1.45;
+    }
+    .rm-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .rm-compose {
+        min-height: 44px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 10px 22px rgba(27,42,78,.18);
+    }
+    .rm-stats {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+    }
+    .rm-stat {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--fp-navy);
+        background: #fff;
+        border: 1px solid rgba(27,42,78,.08);
+        box-shadow: 0 4px 12px rgba(27,42,78,.05);
+    }
+    .rm-stat-alert {
+        color: #c62828;
+        background: #fff4f2;
+        border-color: rgba(198,40,40,.12);
+    }
+    .rm-board {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+    }
+    .rm-section {
+        min-width: 0;
+        border-radius: 22px;
+        border: 1px solid rgba(27,42,78,.08);
+        background: rgba(255,255,255,.72);
+        box-shadow: 0 14px 32px rgba(27,42,78,.07);
+        overflow: hidden;
+    }
+    .rm-section-wide {
+        grid-column: 1 / -1;
+    }
+    .rm-section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 15px 16px;
+        border-bottom: 1px solid rgba(27,42,78,.07);
+        background: linear-gradient(135deg, rgba(27,42,78,.05), rgba(228,81,3,.04));
+    }
+    .rm-section-title {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin: 0;
+        color: var(--fp-navy);
+        font-size: 16px;
+        font-weight: 900;
+        letter-spacing: 0;
+    }
+    .rm-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 25px;
+        height: 25px;
+        padding: 0 8px;
+        border-radius: 999px;
+        color: #fff;
+        background: var(--fp-navy);
+        font-size: 12px;
+        font-weight: 900;
+    }
+    .rm-thread {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 16px;
+    }
+    .rm-empty {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 16px;
+        padding: 16px;
+        border-radius: 18px;
+        color: #697386;
+        background: #f8fafc;
+        border: 1px dashed rgba(27,42,78,.12);
+    }
+    .rm-empty-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 42px;
+        background: #eef3fb;
+        font-size: 20px;
+    }
+    .rm-empty strong {
+        display: block;
+        color: var(--fp-navy);
+        margin-bottom: 3px;
+    }
+    .msg-card {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        gap: 10px;
+        align-items: flex-start;
+    }
+    .msg-enviado {
+        grid-template-columns: minmax(0, 1fr) 42px;
+    }
+    .msg-enviado .msg-avatar {
+        grid-column: 2;
+        grid-row: 1;
+        background: linear-gradient(135deg, var(--fp-orange), var(--fp-orange-2));
+    }
+    .msg-enviado .msg-bubble {
+        grid-column: 1;
+        grid-row: 1;
+        margin-left: auto;
+        border-radius: 18px 6px 18px 18px;
+        background: linear-gradient(135deg, #fff8f2, #ffffff);
+        border-color: rgba(228,81,3,.14);
+    }
+    .msg-admin .msg-avatar {
+        background: linear-gradient(135deg, #6d5dfc, #4f8ef7);
+    }
+    .msg-avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 900;
+        background: linear-gradient(135deg, var(--fp-navy), #3a4d7a);
+        box-shadow: 0 8px 18px rgba(27,42,78,.18);
+        text-transform: uppercase;
+    }
+    .msg-bubble {
+        position: relative;
+        width: min(100%, 540px);
+        padding: 14px;
+        border: 1px solid rgba(27,42,78,.10);
+        border-radius: 6px 18px 18px 18px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(27,42,78,.08);
+    }
+    .msg-bubble::before {
+        content: "";
+        position: absolute;
+        top: 16px;
+        left: -7px;
+        width: 12px;
+        height: 12px;
+        border-left: 1px solid rgba(27,42,78,.10);
+        border-bottom: 1px solid rgba(27,42,78,.10);
+        background: inherit;
+        transform: rotate(45deg);
+    }
+    .msg-enviado .msg-bubble::before {
+        left: auto;
+        right: -7px;
+        border-left: 0;
+        border-bottom: 0;
+        border-right: 1px solid rgba(228,81,3,.14);
+        border-top: 1px solid rgba(228,81,3,.14);
+    }
+    .msg-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .msg-person {
+        min-width: 0;
+        color: var(--fp-navy);
+        font-size: 13px;
+        font-weight: 900;
+        line-height: 1.25;
+    }
+    .msg-badges {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        flex-shrink: 0;
+    }
+    .msg-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 21px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+    .msg-badge-new { background: #ffebee; color: #c62828; }
+    .msg-badge-muted { background: #f1f3f5; color: #7b8494; }
+    .msg-badge-warning { background: #fff3e0; color: var(--fp-orange); }
+    .msg-badge-ok { background: #e8f5e9; color: #2e7d32; }
+    .msg-title {
+        margin: 9px 0 6px;
+        color: #172447;
+        font-size: 16px;
+        line-height: 1.3;
+        letter-spacing: 0;
+    }
+    .msg-text {
+        color: #4e5b70;
+        font-size: 13.5px;
+        line-height: 1.55;
+    }
+    .msg-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(27,42,78,.07);
+        color: #758196;
+        font-size: 11.5px;
+        line-height: 1.4;
+    }
+    .msg-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 12px;
+    }
+    .msg-action-form {
+        margin: 0;
+    }
+    .msg-btn {
+        min-height: 31px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 7px 11px;
+        border-radius: 999px;
+        border: 0;
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 900;
+        text-decoration: none;
+        cursor: pointer;
+        transition: transform .15s ease, filter .15s ease, background .15s ease;
+    }
+    .msg-btn:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.04);
+    }
+    .msg-btn-ok { background: #2e7d32; color: #fff; }
+    .msg-btn-edit { background: #eef1f6; color: var(--fp-navy); }
+    .msg-btn-danger { background: #ffebee; color: #c62828; }
+    .is-unread .msg-bubble {
+        border-color: rgba(198,40,40,.20);
+        box-shadow: 0 14px 28px rgba(198,40,40,.09);
+    }
+    .is-expired .msg-bubble {
+        opacity: .74;
+        filter: grayscale(.12);
+    }
+    body.dark-mode .rm-hero,
+    body.dark-mode .rm-section,
+    body.dark-mode .rm-stat {
+        background: #161922;
+        border-color: #262b38;
+        box-shadow: 0 14px 34px rgba(0,0,0,.26);
+    }
+    body.dark-mode .rm-section-head {
+        background: #1b2030;
+        border-bottom-color: #262b38;
+    }
+    body.dark-mode .rm-title,
+    body.dark-mode .rm-section-title,
+    body.dark-mode .rm-empty strong {
+        color: #90caf9;
+    }
+    body.dark-mode .rm-subtitle,
+    body.dark-mode .rm-empty {
+        color: #aab1c1;
+    }
+    body.dark-mode .rm-empty {
+        background: #121722;
+        border-color: #2a3040;
+    }
+    body.dark-mode .rm-empty-icon,
+    body.dark-mode .rm-hero-icon {
+        background: #202a3e;
+    }
+    body.dark-mode .msg-bubble,
+    body.dark-mode .msg-enviado .msg-bubble {
+        background: #1c2230;
+        border-color: #2a3040;
+        box-shadow: 0 10px 24px rgba(0,0,0,.26);
+    }
+    body.dark-mode .msg-person,
+    body.dark-mode .msg-title {
+        color: #e8ecff;
+    }
+    body.dark-mode .msg-text {
+        color: #b8c0d1;
+    }
+    body.dark-mode .msg-meta {
+        color: #98a2b7;
+        border-top-color: #2a3040;
+    }
+    body.dark-mode .msg-btn-edit {
+        background: #293244;
+        color: #dbe5ff;
+    }
 
-<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-    <div>
-        <h2 class="page-title">🗒️ Recordatorio - Borrador</h2>
-        <p class="page-subtitle">
-            Notas rápidas para ti o para avisar a otro compañero del equipo.
-            {% if no_leidos %}Tienes <strong>{{ no_leidos }}</strong> recordatorio{{ no_leidos|pluralize }} sin leer.{% endif %}
-        </p>
+    @media (max-width: 860px) {
+        .rm-hero {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+        .rm-actions,
+        .rm-compose {
+            width: 100%;
+        }
+        .rm-compose {
+            justify-content: center;
+        }
+        .rm-board {
+            grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 640px) {
+        .rm-page .crumb {
+            margin-bottom: 12px;
+        }
+        .rm-hero {
+            padding: 15px;
+            border-radius: 18px;
+            margin-bottom: 14px;
+        }
+        .rm-hero-main {
+            align-items: flex-start;
+            gap: 11px;
+        }
+        .rm-hero-icon {
+            width: 46px;
+            height: 46px;
+            flex-basis: 46px;
+            border-radius: 15px;
+            font-size: 22px;
+        }
+        .rm-title {
+            font-size: 22px;
+        }
+        .rm-subtitle {
+            font-size: 13px;
+        }
+        .rm-stats {
+            gap: 7px;
+            margin-bottom: 12px;
+        }
+        .rm-stat {
+            flex: 1 1 calc(50% - 7px);
+            justify-content: center;
+            padding: 7px 9px;
+            font-size: 11.5px;
+        }
+        .rm-section {
+            border-radius: 18px;
+        }
+        .rm-section-head {
+            padding: 13px 14px;
+        }
+        .rm-section-title {
+            font-size: 15px;
+        }
+        .rm-thread {
+            padding: 12px;
+            gap: 12px;
+        }
+        .rm-empty {
+            margin: 12px;
+            padding: 13px;
+        }
+        .msg-card,
+        .msg-enviado {
+            grid-template-columns: 36px minmax(0, 1fr);
+            gap: 8px;
+        }
+        .msg-enviado .msg-avatar {
+            grid-column: 1;
+        }
+        .msg-enviado .msg-bubble {
+            grid-column: 2;
+            margin-left: 0;
+            border-radius: 6px 16px 16px 16px;
+            background: #fff;
+        }
+        .msg-enviado .msg-bubble::before {
+            left: -7px;
+            right: auto;
+            border-right: 0;
+            border-top: 0;
+            border-left: 1px solid rgba(27,42,78,.10);
+            border-bottom: 1px solid rgba(27,42,78,.10);
+        }
+        .msg-avatar {
+            width: 36px;
+            height: 36px;
+            font-size: 11px;
+        }
+        .msg-bubble {
+            width: 100%;
+            padding: 12px;
+            border-radius: 6px 16px 16px 16px;
+        }
+        .msg-top {
+            flex-direction: column;
+            gap: 7px;
+        }
+        .msg-badges {
+            justify-content: flex-start;
+        }
+        .msg-title {
+            font-size: 15px;
+        }
+        .msg-text {
+            font-size: 13px;
+        }
+        .msg-actions,
+        .msg-action-form,
+        .msg-btn {
+            width: 100%;
+        }
+        .msg-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .msg-btn {
+            min-height: 36px;
+        }
+        .msg-actions .msg-action-form:last-child:nth-child(odd),
+        .msg-actions > .msg-btn:last-child:nth-child(odd) {
+            grid-column: 1 / -1;
+        }
+    }
+</style>
+
+<div class="rm-page">
+    <div class="crumb">
+        <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Recordatorios
     </div>
-    <a href="{% url 'academia:recordatorio_crear' %}" class="btn btn-primary">＋ Nuevo recordatorio</a>
+
+    <section class="rm-hero" aria-label="Recordatorios">
+        <div class="rm-hero-main">
+            <div class="rm-hero-icon" aria-hidden="true">💬</div>
+            <div>
+                <h2 class="rm-title">Recordatorio - Borrador</h2>
+                <p class="rm-subtitle">
+                    Mensajes rápidos para ti o para avisar a otro compañero del equipo.
+                    {% if no_leidos %}Tienes <strong>{{ no_leidos }}</strong> sin leer.{% endif %}
+                </p>
+            </div>
+        </div>
+        <div class="rm-actions">
+            <a href="{% url 'academia:recordatorio_crear' %}" class="btn btn-primary rm-compose">＋ Nuevo recordatorio</a>
+        </div>
+    </section>
+
+    <div class="rm-stats" aria-label="Resumen de recordatorios">
+        <span class="rm-stat">📥 Recibidos {{ recibidos|length }}</span>
+        <span class="rm-stat">📤 Enviados {{ enviados|length }}</span>
+        {% if no_leidos %}<span class="rm-stat rm-stat-alert">🔔 Sin leer {{ no_leidos }}</span>{% endif %}
+        {% if es_admin and todos %}<span class="rm-stat">🗂️ Equipo {{ todos|length }}</span>{% endif %}
+    </div>
+
+    <div class="rm-board">
+        <section class="rm-section" aria-label="Recordatorios recibidos">
+            <div class="rm-section-head">
+                <h3 class="rm-section-title">📥 Recibidos</h3>
+                <span class="rm-count">{{ recibidos|length }}</span>
+            </div>
+            {% if recibidos %}
+            <div class="rm-thread">
+                {% for r in recibidos %}
+                {% include 'recordatorios/_tarjeta.html' with r=r contexto='recibido' %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="rm-empty">
+                <span class="rm-empty-icon">📭</span>
+                <div>
+                    <strong>Sin mensajes recibidos</strong>
+                    <span>No tienes recordatorios recibidos.</span>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="rm-section" aria-label="Recordatorios enviados">
+            <div class="rm-section-head">
+                <h3 class="rm-section-title">📤 Enviados</h3>
+                <span class="rm-count">{{ enviados|length }}</span>
+            </div>
+            {% if enviados %}
+            <div class="rm-thread">
+                {% for r in enviados %}
+                {% include 'recordatorios/_tarjeta.html' with r=r contexto='enviado' %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="rm-empty">
+                <span class="rm-empty-icon">✉️</span>
+                <div>
+                    <strong>Sin mensajes enviados</strong>
+                    <span>No has enviado recordatorios a otras personas.</span>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+
+        {% if es_admin and todos %}
+        <section class="rm-section rm-section-wide" aria-label="Recordatorios del equipo">
+            <div class="rm-section-head">
+                <h3 class="rm-section-title">🗂️ Otros del equipo</h3>
+                <span class="rm-count">{{ todos|length }}</span>
+            </div>
+            <div class="rm-thread">
+                {% for r in todos %}
+                {% include 'recordatorios/_tarjeta.html' with r=r contexto='admin' %}
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+    </div>
 </div>
-
-{# ─────────── Recibidos ─────────── #}
-<h3 style="font-size:17px; color:#1B2A4E; margin:22px 0 12px;">📥 Recibidos {% if recibidos %}<span class="badge" style="background:#e8eaf6; color:#1B2A4E;">{{ recibidos|length }}</span>{% endif %}</h3>
-
-{% if recibidos %}
-<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
-    {% for r in recibidos %}
-    {% include 'recordatorios/_tarjeta.html' with r=r contexto='recibido' %}
-    {% endfor %}
-</div>
-{% else %}
-<div class="empty-state" style="padding:18px;"><p style="font-size:13px;">No tienes recordatorios recibidos.</p></div>
-{% endif %}
-
-{# ─────────── Enviados ─────────── #}
-<h3 style="font-size:17px; color:#1B2A4E; margin:26px 0 12px;">📤 Enviados a otros {% if enviados %}<span class="badge" style="background:#e8eaf6; color:#1B2A4E;">{{ enviados|length }}</span>{% endif %}</h3>
-
-{% if enviados %}
-<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
-    {% for r in enviados %}
-    {% include 'recordatorios/_tarjeta.html' with r=r contexto='enviado' %}
-    {% endfor %}
-</div>
-{% else %}
-<div class="empty-state" style="padding:18px;"><p style="font-size:13px;">No has enviado recordatorios a otras personas.</p></div>
-{% endif %}
-
-{# ─────────── Todos (solo admin) ─────────── #}
-{% if es_admin and todos %}
-<h3 style="font-size:17px; color:#1B2A4E; margin:26px 0 12px;">🗂️ Otros del equipo (vista admin) <span class="badge" style="background:#fff3e0; color:#E45103;">{{ todos|length }}</span></h3>
-<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
-    {% for r in todos %}
-    {% include 'recordatorios/_tarjeta.html' with r=r contexto='admin' %}
-    {% endfor %}
-</div>
-{% endif %}
-
 {% endblock %}

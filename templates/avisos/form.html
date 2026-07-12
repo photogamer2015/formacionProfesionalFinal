@@ -4,11 +4,47 @@
 
 {% block extra_head %}
 <style>
-    .aviso-form-wrap { max-width: 760px; }
+    .aviso-form-wrap {
+        max-width: 840px;
+        margin: 0 auto;
+    }
+    .aviso-form-card {
+        position: relative;
+        padding: 24px;
+        border: 1px solid rgba(27,42,78,.08);
+        border-radius: 20px;
+        background:
+            radial-gradient(circle at 8% 0%, rgba(228,81,3,.07), transparent 30%),
+            #fff;
+        box-shadow: 0 16px 40px rgba(27,42,78,.08);
+        overflow: hidden;
+    }
+    .aviso-form-card::before {
+        content: "";
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        top: 0;
+        height: 3px;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #E45103, #F47A33, transparent 72%);
+    }
+    .aviso-editor-shell {
+        border: 1px solid #d8dbe4;
+        border-radius: 14px;
+        background: #fff;
+        overflow: hidden;
+        transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    .aviso-editor-shell:focus-within {
+        border-color: #E45103;
+        box-shadow: 0 0 0 3px rgba(228,81,3,.11);
+    }
     .editor-toolbar {
         display: flex; flex-wrap: wrap; gap: 4px;
-        padding: 8px; border: 1px solid var(--line, #ddd);
-        border-bottom: none; border-radius: 10px 10px 0 0;
+        padding: 9px 10px;
+        border: 0;
+        border-bottom: 1px solid #e5e7ee;
         background: #f7f8fb;
     }
     body.dark-mode .editor-toolbar { background:#1b1f2a; border-color:#2a2f3d; }
@@ -17,38 +53,129 @@
     }
     .tb-btn {
         border: 1px solid #d8dbe4; background:#fff; color:#222;
-        border-radius: 7px; padding: 6px 10px; cursor: pointer;
-        font-size: 13px; min-width: 34px; line-height: 1;
+        border-radius: 9px; padding: 7px 11px; cursor: pointer;
+        font-size: 13px; min-width: 38px; min-height: 36px; line-height: 1;
         transition: all .15s ease;
     }
     .tb-btn:hover { background:#1B2A4E; color:#fff; border-color:#1B2A4E; }
     body.dark-mode .tb-btn { background:#11141c; color:#e6e8ee; border-color:#2a2f3d; }
-    .tb-sep { width:1px; background:#d8dbe4; margin:2px 4px; align-self:stretch; }
-    .tb-color {
-        width:30px; height:30px; padding:0; border:1px solid #d8dbe4;
-        border-radius:7px; cursor:pointer; background:transparent;
+    .tb-sep { width:1px; background:#d8dbe4; margin:3px 5px; align-self:stretch; }
+    .tb-note {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 36px;
+        padding: 0 10px;
+        border-radius: 999px;
+        color: #1f2937;
+        background: #eef1f6;
+        font-size: 12px;
+        font-weight: 700;
     }
-    .tb-swatch {
-        width:24px; height:24px; border-radius:6px; border:2px solid #fff;
-        box-shadow:0 0 0 1px #d8dbe4; cursor:pointer; padding:0;
+    .tb-black-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 5px;
+        background: #111827;
+        box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d8dbe4;
+        flex: 0 0 auto;
     }
-    .tb-swatch:hover { transform: scale(1.12); }
     .editor-area {
         min-height: 180px; max-height: 420px; overflow-y:auto;
-        border: 1px solid var(--line, #ddd); border-radius: 0 0 10px 10px;
+        border: 0;
+        border-radius: 0;
         padding: 14px 16px; background:#fff; font-size:15px; line-height:1.6;
         outline: none;
+        color: #111827 !important;
     }
+    .editor-area * { color: #111827 !important; }
     body.dark-mode .editor-area { background:#0e1016; color:#e6e8ee; border-color:#2a2f3d; }
+    body.dark-mode .editor-area * { color:#e6e8ee !important; }
     .editor-area:focus { border-color:#E45103; box-shadow:0 0 0 3px rgba(228,81,3,.12); }
     .editor-area:empty:before {
         content: attr(data-placeholder); color:#9aa1b0;
     }
-    .editor-hint { font-size:11px; color:#888; margin-top:6px; }
+    .editor-hint {
+        font-size:12px;
+        color:#777;
+        margin-top:8px;
+        padding: 9px 11px;
+        border-radius: 10px;
+        background: #f7f8fb;
+    }
     .field-block { display:flex; flex-direction:column; gap:6px; margin-bottom:18px; }
-    .form-label { font-weight:600; font-size:13px; color: var(--text-main, #1f2937); }
+    .form-label { font-weight:700; font-size:13px; color: var(--text-main, #1f2937); }
     .errorlist { color:#c62828; font-size:12px; list-style:none; padding:0; margin:4px 0 0; }
     .aviso-preview-card { border-radius:12px; padding:16px 18px; margin-top:10px; }
+    .aviso-date-grid {
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:16px;
+    }
+    .aviso-checks {
+        display:flex;
+        gap:18px;
+        flex-wrap:wrap;
+        margin-bottom:18px;
+        padding: 12px;
+        border-radius: 14px;
+        background: #f7f8fb;
+    }
+    .aviso-checks label {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        cursor:pointer;
+        min-height: 30px;
+    }
+    .aviso-actions {
+        display:flex;
+        gap:10px;
+        justify-content:flex-end;
+        padding-top: 4px;
+    }
+    body.dark-mode .aviso-form-card,
+    body.dark-mode .aviso-editor-shell {
+        background:#161922;
+        border-color:#262b38;
+    }
+    body.dark-mode .editor-hint,
+    body.dark-mode .aviso-checks,
+    body.dark-mode .tb-note {
+        background:#1b1f2a;
+        color:#cdd4e2;
+    }
+    @media (max-width: 720px) {
+        .aviso-form-card {
+            padding: 18px;
+            border-radius: 18px;
+        }
+        .aviso-date-grid {
+            grid-template-columns: 1fr;
+            gap: 0;
+        }
+        .editor-toolbar {
+            gap: 6px;
+        }
+        .tb-sep {
+            display: none;
+        }
+        .tb-btn {
+            flex: 1 1 auto;
+            min-width: 44px;
+        }
+        .tb-note {
+            width: 100%;
+            justify-content: center;
+        }
+        .aviso-actions {
+            flex-direction: column-reverse;
+        }
+        .aviso-actions .btn {
+            width: 100%;
+            text-align: center;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -62,11 +189,11 @@
 <h2 class="page-title">{% if modo == 'crear' %}📢 Nuevo aviso{% else %}✏️ {{ titulo }}{% endif %}</h2>
 <p class="page-subtitle">
     Escribe un aviso que verán todos los usuarios en el panel principal.
-    Puedes darle formato (negrita, color, listas) y definir desde y hasta cuándo se muestra.
+    Puedes darle formato básico y definir desde y hasta cuándo se muestra.
     Al pasar la fecha final, el aviso desaparece automáticamente.
 </p>
 
-<div class="card-box aviso-form-wrap" style="padding:22px;">
+<div class="card-box aviso-form-wrap aviso-form-card">
     <form method="post" id="aviso-form">
         {% csrf_token %}
 
@@ -84,45 +211,39 @@
             <label class="form-label">{{ form.contenido.label }} *</label>
 
             {# ── Barra de herramientas del editor ── #}
-            <div class="editor-toolbar" id="editor-toolbar">
-                <button type="button" class="tb-btn" data-cmd="bold" title="Negrita"><b>B</b></button>
-                <button type="button" class="tb-btn" data-cmd="italic" title="Cursiva"><i>I</i></button>
-                <button type="button" class="tb-btn" data-cmd="underline" title="Subrayado"><u>U</u></button>
-                <button type="button" class="tb-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
-                <span class="tb-sep"></span>
-                <button type="button" class="tb-btn" data-cmd="insertUnorderedList" title="Lista con viñetas">• Lista</button>
-                <button type="button" class="tb-btn" data-cmd="insertOrderedList" title="Lista numerada">1. Lista</button>
-                <span class="tb-sep"></span>
-                <button type="button" class="tb-btn" data-cmd="justifyLeft" title="Alinear izquierda">⯇</button>
-                <button type="button" class="tb-btn" data-cmd="justifyCenter" title="Centrar">≡</button>
-                <button type="button" class="tb-btn" data-cmd="justifyRight" title="Alinear derecha">⯈</button>
-                <span class="tb-sep"></span>
-                {# Colores de texto rápidos #}
-                <button type="button" class="tb-swatch" style="background:#1B2A4E" data-color="#1B2A4E" title="Azul marino"></button>
-                <button type="button" class="tb-swatch" style="background:#E45103" data-color="#E45103" title="Naranja"></button>
-                <button type="button" class="tb-swatch" style="background:#2e7d32" data-color="#2e7d32" title="Verde"></button>
-                <button type="button" class="tb-swatch" style="background:#c62828" data-color="#c62828" title="Rojo"></button>
-                <button type="button" class="tb-swatch" style="background:#6a1b9a" data-color="#6a1b9a" title="Morado"></button>
-                <button type="button" class="tb-swatch" style="background:#00838f" data-color="#00838f" title="Cian"></button>
-                <input type="color" class="tb-color" id="custom-color" title="Color personalizado de texto" value="#E45103">
-                <span class="tb-sep"></span>
-                <button type="button" class="tb-btn" id="btn-clear" title="Borrar todo el contenido">✖ Limpiar todo</button>
-            </div>
+            <div class="aviso-editor-shell">
+                <div class="editor-toolbar" id="editor-toolbar">
+                    <button type="button" class="tb-btn" data-cmd="bold" title="Negrita"><b>B</b></button>
+                    <button type="button" class="tb-btn" data-cmd="italic" title="Cursiva"><i>I</i></button>
+                    <button type="button" class="tb-btn" data-cmd="underline" title="Subrayado"><u>U</u></button>
+                    <button type="button" class="tb-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
+                    <span class="tb-sep"></span>
+                    <button type="button" class="tb-btn" data-cmd="insertUnorderedList" title="Lista con viñetas">• Lista</button>
+                    <button type="button" class="tb-btn" data-cmd="insertOrderedList" title="Lista numerada">1. Lista</button>
+                    <span class="tb-sep"></span>
+                    <button type="button" class="tb-btn" data-cmd="justifyLeft" title="Alinear izquierda">←</button>
+                    <button type="button" class="tb-btn" data-cmd="justifyCenter" title="Centrar">≡</button>
+                    <button type="button" class="tb-btn" data-cmd="justifyRight" title="Alinear derecha">→</button>
+                    <span class="tb-sep"></span>
+                    <span class="tb-note"><span class="tb-black-dot"></span> Negro</span>
+                    <button type="button" class="tb-btn" id="btn-clear" title="Borrar todo el contenido">✖ Limpiar todo</button>
+                </div>
 
-            {# Área editable visible #}
-            <div class="editor-area" id="editor-area" contenteditable="true"
-                 data-placeholder="Escribe aquí el aviso… usa la barra de arriba para dar formato y color."></div>
+                {# Área editable visible #}
+                <div class="editor-area" id="editor-area" contenteditable="true"
+                     data-placeholder="Escribe aquí el aviso... el texto se publicará en negro."></div>
+            </div>
 
             {# Textarea real (oculto): aquí se guarda el HTML que se envía #}
             <div style="display:none;">{{ form.contenido }}</div>
             {{ form.contenido.errors }}
             <p class="editor-hint">
-                Se permite: negrita, cursiva, subrayado, tachado, listas, alineación y colores.
+                Se permite: negrita, cursiva, subrayado, tachado, listas y alineación. El texto del aviso se mantiene en negro.
                 Por seguridad, no se permiten scripts ni enlaces.
             </p>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div class="aviso-date-grid">
             <div class="field-block">
                 <label class="form-label">{{ form.fecha_inicio.label }} *</label>
                 {{ form.fecha_inicio }}
@@ -141,16 +262,16 @@
             {{ form.tema.errors }}
         </div>
 
-        <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:18px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <div class="aviso-checks">
+            <label>
                 {{ form.fijado }} <span class="form-label" style="margin:0;">{{ form.fijado.label }}</span>
             </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <label>
                 {{ form.activo }} <span class="form-label" style="margin:0;">{{ form.activo.label }}</span>
             </label>
         </div>
 
-        <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <div class="aviso-actions">
             <a href="{% url 'academia:avisos_lista' %}" class="btn btn-secondary">Cancelar</a>
             <button type="submit" class="btn btn-primary" style="background:#E45103; border-color:#E45103;">
                 {% if modo == 'crear' %}📢 Publicar aviso{% else %}💾 Guardar cambios{% endif %}
@@ -168,9 +289,24 @@
     const toolbar = document.getElementById('editor-toolbar');
     const form = document.getElementById('aviso-form');
 
+    function forzarTextoNegro() {
+        if (!area) return;
+        area.querySelectorAll('*').forEach(function (el) {
+            if (el.getAttribute('color')) el.removeAttribute('color');
+            if (el.style) {
+                el.style.color = '';
+                el.style.backgroundColor = '';
+                el.style.background = '';
+                if (!el.getAttribute('style')) el.removeAttribute('style');
+            }
+        });
+    }
+
     // Cargar contenido existente (modo editar) en el área editable.
     if (textarea && textarea.value.trim()) {
         area.innerHTML = textarea.value;
+        forzarTextoNegro();
+        sincronizar();
     }
 
     function ejecutar(cmd, valor = null) {
@@ -179,6 +315,7 @@
         sincronizar();
     }
     function sincronizar() {
+        forzarTextoNegro();
         textarea.value = area.innerHTML;
     }
 
@@ -186,17 +323,6 @@
     toolbar.querySelectorAll('.tb-btn[data-cmd]').forEach(function (b) {
         b.addEventListener('click', function () { ejecutar(this.dataset.cmd); });
     });
-
-    // Colores predefinidos (swatches)
-    toolbar.querySelectorAll('.tb-swatch[data-color]').forEach(function (b) {
-        b.addEventListener('click', function () { ejecutar('foreColor', this.dataset.color); });
-    });
-
-    // Color personalizado
-    const custom = document.getElementById('custom-color');
-    if (custom) {
-        custom.addEventListener('input', function () { ejecutar('foreColor', this.value); });
-    }
 
     // Limpiar TODO el contenido del editor
     const btnClear = document.getElementById('btn-clear');
