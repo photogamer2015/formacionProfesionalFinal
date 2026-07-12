@@ -2,6 +2,187 @@
 
 {% block title %}Cierre de curso — {{ curso.nombre }}{% endblock %}
 
+{% block extra_head %}
+<style>
+    .archive-date-picker {
+        width: 100%;
+    }
+    .archive-date-fields {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: end;
+    }
+    .archive-apply-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 42px;
+        padding: 8px 10px;
+        border: 1px solid #c5cae9;
+        border-radius: 8px;
+        background: #fff;
+        color: #1a237e;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .archive-apply-toggle input {
+        transform: scale(1.15);
+    }
+    .archive-calendar {
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid #c5cae9;
+        border-radius: 8px;
+        background: #fff;
+    }
+    .archive-calendar-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #1a237e;
+        margin-bottom: 8px;
+    }
+    .archive-calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(30px, 1fr));
+        gap: 5px;
+    }
+    .archive-calendar-weekday {
+        text-align: center;
+        font-size: 10px;
+        font-weight: 700;
+        color: #666;
+        padding: 2px 0;
+    }
+    .archive-calendar-empty {
+        min-height: 30px;
+    }
+    .archive-day-button {
+        min-height: 32px;
+        border: 1px solid #d8defc;
+        border-radius: 7px;
+        background: #f8f9ff;
+        color: #1a237e;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .archive-day-button:hover,
+    .archive-day-button.is-selected {
+        background: #1a237e;
+        border-color: #1a237e;
+        color: #fff;
+    }
+    .archive-date-summary {
+        margin-top: 8px;
+        font-size: 11.5px;
+        color: #444;
+        font-weight: 600;
+    }
+    .archive-date-picker--compact .archive-date-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+    }
+    .archive-date-picker--compact .archive-apply-toggle {
+        grid-column: 1 / -1;
+        min-height: 34px;
+        padding: 6px 8px;
+    }
+    .archive-date-picker--compact .archive-calendar {
+        padding: 8px;
+    }
+    .archive-date-picker--compact .archive-calendar-grid {
+        gap: 4px;
+    }
+    .archive-date-picker--compact .archive-day-button {
+        min-height: 28px;
+        font-size: 11px;
+    }
+    @media (max-width: 720px) {
+        .archive-date-fields {
+            display: grid;
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const weekdays = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+    function daysInMonth(year, month) {
+        return new Date(year, month, 0).getDate();
+    }
+
+    function firstDayOffset(year, month) {
+        const jsDay = new Date(year, month - 1, 1).getDay();
+        return (jsDay + 6) % 7;
+    }
+
+    document.querySelectorAll('.archive-date-picker').forEach(function (picker) {
+        const monthSelect = picker.querySelector('.js-archive-month');
+        const yearSelect = picker.querySelector('.js-archive-year');
+        const applyCheck = picker.querySelector('.js-archive-apply');
+        const applyLabel = picker.querySelector('.js-archive-apply-label');
+        const calendar = picker.querySelector('.js-archive-calendar');
+        const title = picker.querySelector('.js-archive-calendar-title');
+        const grid = picker.querySelector('.js-archive-calendar-grid');
+        const dayInput = picker.querySelector('.js-archive-day');
+        const summary = picker.querySelector('.js-archive-summary');
+        const defaultDay = Number(picker.dataset.defaultDay || dayInput.value || 1);
+
+        function render() {
+            const month = Number(monthSelect.value);
+            const year = Number(yearSelect.value);
+            const maxDay = daysInMonth(year, month);
+            let selectedDay = Number(dayInput.value || defaultDay || 1);
+            selectedDay = Math.max(1, Math.min(selectedDay, maxDay));
+            dayInput.value = selectedDay;
+
+            applyLabel.textContent = 'Aplicarlo igual en ' + monthNames[month];
+            title.textContent = monthNames[month] + ' ' + year;
+            calendar.hidden = !applyCheck.checked;
+
+            grid.innerHTML = '';
+            weekdays.forEach(function (weekday) {
+                const cell = document.createElement('div');
+                cell.className = 'archive-calendar-weekday';
+                cell.textContent = weekday;
+                grid.appendChild(cell);
+            });
+
+            for (let i = 0; i < firstDayOffset(year, month); i += 1) {
+                const empty = document.createElement('div');
+                empty.className = 'archive-calendar-empty';
+                grid.appendChild(empty);
+            }
+
+            for (let day = 1; day <= maxDay; day += 1) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'archive-day-button' + (day === selectedDay ? ' is-selected' : '');
+                button.textContent = day;
+                button.addEventListener('click', function () {
+                    dayInput.value = day;
+                    render();
+                });
+                grid.appendChild(button);
+            }
+
+            summary.textContent = 'Fecha de archivo: ' + selectedDay + ' de ' + monthNames[month] + ' de ' + year + '.';
+        }
+
+        monthSelect.addEventListener('change', render);
+        yearSelect.addEventListener('change', render);
+        applyCheck.addEventListener('change', render);
+        render();
+    });
+});
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
@@ -140,9 +321,10 @@
                                 <th>Estudiante</th>
                                 <th>Cédula</th>
                                 <th>Celular</th>
+                                <th>Fecha matrícula</th>
                                 <th>Jornada</th>
                                 <th>Estado</th>
-                                <th style="min-width:280px;">Cierre manual</th>
+                                <th style="min-width:360px;">Cierre manual</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -151,6 +333,7 @@
                                 <td><strong>{{ m.estudiante.nombres }}</strong></td>
                                 <td>{{ m.estudiante.cedula }}</td>
                                 <td>{{ m.estudiante.celular|default:"—" }}</td>
+                                <td>{{ m.fecha_matricula|date:"d/m/Y" }}</td>
                                 <td>
                                     {% if m.jornada %}
                                         {{ m.jornada.descripcion_legible }}
@@ -176,8 +359,38 @@
                                           onsubmit="return confirm('¿Cerrar manualmente solo la matrícula de {{ m.estudiante.nombres|escapejs }}?');"
                                           style="display:grid; gap:8px;">
                                         {% csrf_token %}
-                                        <input type="hidden" name="archivo_mes" value="{{ periodo_mes }}">
-                                        <input type="hidden" name="archivo_anio" value="{{ periodo_anio }}">
+                                        <input type="hidden" name="periodo_mes" value="{{ periodo_mes }}">
+                                        <input type="hidden" name="periodo_anio" value="{{ periodo_anio }}">
+                                        <div class="archive-date-picker archive-date-picker--compact" data-default-day="{{ archivo_opts.dia_actual }}">
+                                            <div class="archive-date-fields">
+                                                <div>
+                                                    <label class="form-label" style="font-size:11px;">Mes archivo</label>
+                                                    <select name="archivo_mes" class="form-input js-archive-month" required>
+                                                        {% for mes_opt in archivo_opts.meses %}
+                                                        <option value="{{ mes_opt.numero }}" {% if mes_opt.numero == periodo_mes %}selected{% endif %}>{{ mes_opt.nombre }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label" style="font-size:11px;">Año archivo</label>
+                                                    <select name="archivo_anio" class="form-input js-archive-year" required>
+                                                        {% for anio_opt in archivo_opts.anios %}
+                                                        <option value="{{ anio_opt }}" {% if anio_opt == periodo_anio %}selected{% endif %}>{{ anio_opt }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <label class="archive-apply-toggle">
+                                                    <input type="checkbox" name="aplicar_mes_archivo" class="js-archive-apply">
+                                                    <span class="js-archive-apply-label">Aplicarlo igual en {{ periodo_nombre }}</span>
+                                                </label>
+                                            </div>
+                                            <input type="hidden" name="archivo_dia" class="js-archive-day" value="{{ archivo_opts.dia_actual }}">
+                                            <div class="archive-calendar js-archive-calendar" hidden>
+                                                <div class="archive-calendar-title js-archive-calendar-title"></div>
+                                                <div class="archive-calendar-grid js-archive-calendar-grid"></div>
+                                                <div class="archive-date-summary js-archive-summary"></div>
+                                            </div>
+                                        </div>
                                         <input type="text" name="ciclo_etiqueta" class="form-input"
                                                placeholder="Etiqueta opcional" maxlength="80">
                                         <input type="password" name="admin_password" class="form-input" required
@@ -198,7 +411,7 @@
                 </div>
             {% else %}
                 <div class="empty-state" style="background:#f8f9fb; border-radius:10px; padding:16px;">
-                    <p style="font-size:13px;">No encontré matrículas de este curso en {{ periodo_nombre }} {{ periodo_anio }} con esa búsqueda.</p>
+                    <p style="font-size:13px;">No encontré matrículas vivas de este curso con esa búsqueda.</p>
                 </div>
             {% endif %}
         </div>
@@ -322,6 +535,8 @@
     <form method="post" action="{% url 'academia:cierre_ejecutar' curso.pk %}">
         {% csrf_token %}
         {% if jornada %}<input type="hidden" name="jornada_id" value="{{ jornada.pk }}">{% endif %}
+        <input type="hidden" name="periodo_mes" value="{{ periodo_mes }}">
+        <input type="hidden" name="periodo_anio" value="{{ periodo_anio }}">
 
         <div style="background:#e8eaf6; border-left:4px solid #1a237e; padding:14px 16px; border-radius:8px; margin-bottom:14px;">
             <div style="display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; align-items:flex-end;">
@@ -331,22 +546,36 @@
                         Elige manualmente el mes del ciclo. Los estudiantes, matrículas, pagos y adicionales archivados aparecerán en ese mes.
                     </div>
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <div>
-                        <label class="form-label" style="font-size:11px;">Mes archivo</label>
-                        <select name="archivo_mes" class="form-input" required>
-                            {% for m in archivo_opts.meses %}
-                            <option value="{{ m.numero }}" {% if m.numero == periodo_mes %}selected{% endif %}>{{ m.nombre }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="form-label" style="font-size:11px;">Año archivo</label>
-                        <select name="archivo_anio" class="form-input" required>
-                            {% for a in archivo_opts.anios %}
-                            <option value="{{ a }}" {% if a == periodo_anio %}selected{% endif %}>{{ a }}</option>
-                            {% endfor %}
-                        </select>
+                <div style="min-width:340px; max-width:520px; flex:1;">
+                    <div class="archive-date-picker" data-default-day="{{ archivo_opts.dia_actual }}">
+                        <div class="archive-date-fields">
+                            <div>
+                                <label class="form-label" style="font-size:11px;">Mes archivo</label>
+                                <select name="archivo_mes" class="form-input js-archive-month" required>
+                                    {% for mes_opt in archivo_opts.meses %}
+                                    <option value="{{ mes_opt.numero }}" {% if mes_opt.numero == periodo_mes %}selected{% endif %}>{{ mes_opt.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" style="font-size:11px;">Año archivo</label>
+                                <select name="archivo_anio" class="form-input js-archive-year" required>
+                                    {% for anio_opt in archivo_opts.anios %}
+                                    <option value="{{ anio_opt }}" {% if anio_opt == periodo_anio %}selected{% endif %}>{{ anio_opt }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <label class="archive-apply-toggle">
+                                <input type="checkbox" name="aplicar_mes_archivo" class="js-archive-apply">
+                                <span class="js-archive-apply-label">Aplicarlo igual en {{ periodo_nombre }}</span>
+                            </label>
+                        </div>
+                        <input type="hidden" name="archivo_dia" class="js-archive-day" value="{{ archivo_opts.dia_actual }}">
+                        <div class="archive-calendar js-archive-calendar" hidden>
+                            <div class="archive-calendar-title js-archive-calendar-title"></div>
+                            <div class="archive-calendar-grid js-archive-calendar-grid"></div>
+                            <div class="archive-date-summary js-archive-summary"></div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -323,6 +323,15 @@ class CierreCursoManualTests(TestCase):
         self.assertContains(response, 'Cierre manual por estudiante')
         self.assertEqual(list(response.context['manual_matriculas']), [self.matricula_1])
 
+    def test_preview_manual_busca_matricula_de_otro_mes(self):
+        response = self.client.get(
+            reverse('academia:cierre_preview', kwargs={'curso_pk': self.curso.pk}),
+            {'archivo_mes': '7', 'archivo_anio': '2026', 'manual_q': 'Osmar'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['manual_matriculas']), [self.matricula_1])
+
     def test_cierre_por_jornada_no_archiva_otras_jornadas(self):
         response = self.client.post(
             reverse('academia:cierre_ejecutar', kwargs={'curso_pk': self.curso.pk}),
@@ -343,6 +352,30 @@ class CierreCursoManualTests(TestCase):
         self.assertEqual(cierre.jornada, self.jornada_1)
         self.assertEqual(cierre.total_matriculas, 1)
         self.assertEqual(cierre.matriculas_archivadas.count(), 1)
+
+    def test_cierre_por_jornada_cierra_agosto_pero_guarda_en_julio(self):
+        response = self.client.post(
+            reverse('academia:cierre_ejecutar', kwargs={'curso_pk': self.curso.pk}),
+            {
+                'jornada_id': str(self.jornada_1.pk),
+                'periodo_mes': '8',
+                'periodo_anio': '2026',
+                'archivo_mes': '7',
+                'archivo_anio': '2026',
+                'archivo_dia': '15',
+                'aplicar_mes_archivo': 'on',
+                'admin_password': 'clave-admin-123',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Matricula.objects.filter(pk=self.matricula_1.pk).exists())
+        self.assertTrue(Matricula.objects.filter(pk=self.matricula_2.pk).exists())
+
+        cierre = CierreCurso.objects.get()
+        self.assertEqual(timezone.localtime(cierre.fecha_cierre).date(), date(2026, 7, 15))
+        archivada = MatriculaArchivada.objects.get(cierre=cierre)
+        self.assertEqual(timezone.localtime(archivada.archivado_en).date(), date(2026, 7, 15))
 
     def test_cierre_manual_estudiante_archiva_solo_esa_matricula(self):
         Abono.objects.create(
@@ -385,6 +418,52 @@ class CierreCursoManualTests(TestCase):
         self.assertEqual(estudiante_archivado.estudiante_original_id, self.estudiante_1.pk)
         self.assertEqual(estudiante_archivado.nombre_completo, 'Osmár Manual')
         self.assertTrue(Estudiante.objects.filter(pk=self.estudiante_1.pk).exists())
+
+    def test_cierre_manual_guarda_en_julio_si_se_confirma_mes_distinto(self):
+        response = self.client.post(
+            reverse(
+                'academia:cierre_manual_estudiante_ejecutar',
+                kwargs={'curso_pk': self.curso.pk, 'matricula_pk': self.matricula_1.pk},
+            ),
+            {
+                'archivo_mes': '7',
+                'archivo_anio': '2026',
+                'archivo_dia': '20',
+                'aplicar_mes_archivo': 'on',
+                'admin_password': 'clave-admin-123',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Matricula.objects.filter(pk=self.matricula_1.pk).exists())
+
+        cierre = CierreCurso.objects.get()
+        self.assertEqual(cierre.alcance, 'manual')
+        self.assertEqual(timezone.localtime(cierre.fecha_cierre).date(), date(2026, 7, 20))
+
+        archivada = MatriculaArchivada.objects.get(cierre=cierre)
+        self.assertEqual(timezone.localtime(archivada.archivado_en).date(), date(2026, 7, 20))
+        estudiante_archivado = EstudianteArchivado.objects.get(cierre=cierre)
+        self.assertEqual(timezone.localtime(estudiante_archivado.archivado_en).date(), date(2026, 7, 20))
+
+    def test_cierre_manual_bloquea_mes_distinto_sin_confirmacion(self):
+        response = self.client.post(
+            reverse(
+                'academia:cierre_manual_estudiante_ejecutar',
+                kwargs={'curso_pk': self.curso.pk, 'matricula_pk': self.matricula_1.pk},
+            ),
+            {
+                'archivo_mes': '7',
+                'archivo_anio': '2026',
+                'archivo_dia': '20',
+                'admin_password': 'clave-admin-123',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Matricula.objects.filter(pk=self.matricula_1.pk).exists())
+        self.assertFalse(CierreCurso.objects.exists())
+        self.assertFalse(MatriculaArchivada.objects.exists())
 
     def test_cierre_manual_con_limpieza_quita_estudiante_sin_matriculas_vivas(self):
         response = self.client.post(

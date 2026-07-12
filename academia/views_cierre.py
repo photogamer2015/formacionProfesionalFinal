@@ -12,6 +12,7 @@ Flujo:
   5. `cierre_export` descarga el detalle de un cierre como Excel profesional.
 """
 
+import calendar
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
@@ -49,28 +50,40 @@ def _opciones_meses_archivo():
     return {
         'anio_actual': hoy.year,
         'mes_actual': hoy.month,
+        'dia_actual': hoy.day,
         'anios': [hoy.year - 1, hoy.year, hoy.year + 1],
         'meses': [{'numero': i, 'nombre': MESES_ES[i]} for i in range(1, 13)],
     }
 
 
-def _fecha_archivo_desde_request(request):
-    """
-    Convierte el mes/año elegido en una fecha de archivo estable.
-    Usamos el primer día del mes a las 12:00 para que todos los filtros por
-    mes/año agrupen el cierre donde el usuario lo decidió, no donde caiga
-    el reloj del sistema.
-    """
-    hoy = timezone.localdate()
+def _parsear_anio_mes(origen, prefijo, anio_default, mes_default):
     try:
-        anio = int(request.POST.get('archivo_anio', hoy.year))
-        mes = int(request.POST.get('archivo_mes', hoy.month))
+        anio = int(origen.get(f'{prefijo}_anio', anio_default))
+        mes = int(origen.get(f'{prefijo}_mes', mes_default))
         if not (1 <= mes <= 12):
             raise ValueError
     except (TypeError, ValueError):
-        anio, mes = hoy.year, hoy.month
+        anio, mes = anio_default, mes_default
+    return anio, mes
 
-    fecha = datetime(anio, mes, 1, 12, 0, 0)
+
+def _fecha_archivo_desde_request(request):
+    """
+    Convierte el mes/año/día elegido en una fecha de archivo estable.
+    El día permite ordenar el archivo dentro de un mismo mes sin depender del
+    reloj del sistema. Si no viene día, se conserva el comportamiento anterior:
+    primer día del mes a las 12:00.
+    """
+    hoy = timezone.localdate()
+    anio, mes = _parsear_anio_mes(request.POST, 'archivo', hoy.year, hoy.month)
+
+    try:
+        dia = int(request.POST.get('archivo_dia') or 1)
+    except (TypeError, ValueError):
+        dia = 1
+    dia = max(1, min(dia, calendar.monthrange(anio, mes)[1]))
+
+    fecha = datetime(anio, mes, dia, 12, 0, 0)
     if timezone.is_naive(fecha):
         fecha = timezone.make_aware(fecha, timezone.get_current_timezone())
     return fecha
@@ -87,14 +100,34 @@ def _periodo_desde_request(request):
     """
     hoy = timezone.localdate()
     origen = request.POST if request.method == 'POST' else request.GET
-    try:
-        anio = int(origen.get('archivo_anio', hoy.year))
-        mes = int(origen.get('archivo_mes', hoy.month))
-        if not (1 <= mes <= 12):
-            raise ValueError
-    except (TypeError, ValueError):
-        anio, mes = hoy.year, hoy.month
+    prefijo = 'archivo'
+    if request.method == 'POST' and (
+        'periodo_anio' in origen or 'periodo_mes' in origen
+    ):
+        prefijo = 'periodo'
+    anio, mes = _parsear_anio_mes(origen, prefijo, hoy.year, hoy.month)
     return anio, mes
+
+
+def _archivo_distinto_confirmado(request, fecha_archivo, anio_ref, mes_ref):
+    """Evita guardar accidentalmente en un mes distinto al del cierre."""
+    if fecha_archivo.year == anio_ref and fecha_archivo.month == mes_ref:
+        return True
+    return request.POST.get('aplicar_mes_archivo') == 'on'
+
+
+def _nombre_periodo(anio, mes):
+    return f'{MESES_ES[mes]} {anio}'
+
+
+def _fecha_local(fecha):
+    if timezone.is_aware(fecha):
+        return timezone.localtime(fecha).date()
+    return fecha.date()
+
+
+def _fecha_larga(fecha):
+    return f'{fecha.day} de {MESES_ES[fecha.month]} de {fecha.year}'
 
 
 def _fijar_fecha(obj, campo, fecha_archivo):
@@ -394,7 +427,9 @@ def cierre_preview(request, curso_pk):
     manual_q = request.GET.get('manual_q', '').strip()
     manual_matriculas = []
     if manual_q:
-        manual_qs = _matriculas_a_cerrar(curso, None, anio=anio_sel, mes=mes_sel)
+        manual_qs = Matricula.objects.select_related(
+            'estudiante', 'curso', 'curso__categoria', 'jornada', 'registrado_por'
+        ).filter(curso=curso).order_by('estudiante__nombres')
         manual_qs = filtrar_queryset_busqueda(manual_qs, manual_q, [
             'estudiante__cedula',
             'estudiante__nombres',
@@ -452,6 +487,15 @@ def cierre_ejecutar(request, curso_pk):
 
     # Período (mes/año) elegido → SOLO se cierran las matrículas de ese mes.
     anio_sel, mes_sel = _periodo_desde_request(request)
+    if not _archivo_distinto_confirmado(request, fecha_archivo, anio_sel, mes_sel):
+        messages.warning(
+            request,
+            f'Para guardar este cierre en {_nombre_periodo(fecha_archivo.year, fecha_archivo.month)} '
+            f'aunque corresponde a {_nombre_periodo(anio_sel, mes_sel)}, marca '
+            f'"Aplicarlo igual en {MESES_ES[fecha_archivo.month]}". No se hizo ningún cambio.'
+        )
+        return redirect('academia:cierre_preview', curso_pk=curso.pk)
+
     qs = _matriculas_a_cerrar(curso, jornada, anio=anio_sel, mes=mes_sel)
     matriculas = list(qs)
 
@@ -585,7 +629,6 @@ def cierre_manual_estudiante_ejecutar(request, curso_pk, matricula_pk):
     )
 
     fecha_archivo = _fecha_archivo_desde_request(request)
-    anio_sel, mes_sel = _periodo_desde_request(request)
     admin_password = request.POST.get('admin_password', '')
     ciclo_etiqueta = (request.POST.get('ciclo_etiqueta', '').strip())[:80]
     observaciones = request.POST.get('observaciones', '').strip()
@@ -596,14 +639,18 @@ def cierre_manual_estudiante_ejecutar(request, curso_pk, matricula_pk):
         messages.error(request, 'Contraseña de administrador incorrecta. Cierre manual abortado por seguridad.')
         return redirect('academia:cierre_preview', curso_pk=curso.pk)
 
-    if (
-        matricula.fecha_matricula.year != anio_sel
-        or matricula.fecha_matricula.month != mes_sel
+    if not _archivo_distinto_confirmado(
+        request,
+        fecha_archivo,
+        matricula.fecha_matricula.year,
+        matricula.fecha_matricula.month,
     ):
         messages.warning(
             request,
-            f'La matrícula de {matricula.estudiante.nombre_completo} no pertenece a '
-            f'{MESES_ES[mes_sel]} {anio_sel}. No se hizo ningún cambio.'
+            f'La matrícula de {matricula.estudiante.nombre_completo} pertenece a '
+            f'{_nombre_periodo(matricula.fecha_matricula.year, matricula.fecha_matricula.month)}. '
+            f'Para guardarla en {_nombre_periodo(fecha_archivo.year, fecha_archivo.month)}, marca '
+            f'"Aplicarlo igual en {MESES_ES[fecha_archivo.month]}". No se hizo ningún cambio.'
         )
         return redirect('academia:cierre_preview', curso_pk=curso.pk)
 
@@ -770,6 +817,15 @@ def cierre_global_ejecutar(request, modalidad):
         return redirect('academia:cierre_global_preview', modalidad=modalidad)
 
     anio_sel, mes_sel = _periodo_desde_request(request)
+    if not _archivo_distinto_confirmado(request, fecha_archivo, anio_sel, mes_sel):
+        messages.warning(
+            request,
+            f'Para guardar este cierre global en {_nombre_periodo(fecha_archivo.year, fecha_archivo.month)} '
+            f'aunque corresponde a {_nombre_periodo(anio_sel, mes_sel)}, marca '
+            f'"Aplicarlo igual en {MESES_ES[fecha_archivo.month]}". No se hizo ningún cambio.'
+        )
+        return redirect('academia:cierre_global_preview', modalidad=modalidad)
+
     qs = Matricula.objects.select_related(
         'estudiante', 'curso', 'curso__categoria', 'jornada', 'registrado_por'
     ).filter(fecha_matricula__year=anio_sel, fecha_matricula__month=mes_sel)
@@ -930,25 +986,45 @@ def archivo_index(request):
         'cierres': 0,
         'matriculas': 0,
         'estudiantes_arch': 0,
+        'fechas': defaultdict(lambda: {
+            'cierres': 0,
+            'matriculas': 0,
+            'estudiantes_arch': 0,
+        }),
     })
 
     # Cierres de curso (cada uno trae sus propios totales congelados)
     for c in CierreCurso.objects.all().only(
         'id', 'fecha_cierre', 'total_matriculas'
     ):
-        key = (c.fecha_cierre.year, c.fecha_cierre.month)
+        fecha = _fecha_local(c.fecha_cierre)
+        key = (fecha.year, fecha.month)
         periodos_est[key]['cierres'] += 1
         periodos_est[key]['matriculas'] += c.total_matriculas
+        periodos_est[key]['fechas'][fecha]['cierres'] += 1
+        periodos_est[key]['fechas'][fecha]['matriculas'] += c.total_matriculas
 
     # Estudiantes archivados (por su propia fecha de archivado)
     for ea in EstudianteArchivado.objects.all().only('archivado_en'):
-        key = (ea.archivado_en.year, ea.archivado_en.month)
+        fecha = _fecha_local(ea.archivado_en)
+        key = (fecha.year, fecha.month)
         periodos_est[key]['estudiantes_arch'] += 1
+        periodos_est[key]['fechas'][fecha]['estudiantes_arch'] += 1
 
     # Convertimos el diccionario en una lista ordenada de períodos
     # (más reciente primero) listos para el template.
     meses_estudiantes = []
     for (anio, mes), datos in sorted(periodos_est.items(), reverse=True):
+        fechas = []
+        for fecha, detalle in sorted(datos['fechas'].items(), reverse=True):
+            fechas.append({
+                'etiqueta': _fecha_larga(fecha),
+                'descripcion': (
+                    f'{detalle["cierres"]} cierre(s) · '
+                    f'{detalle["matriculas"]} matrícula(s) · '
+                    f'{detalle["estudiantes_arch"]} estudiante(s)'
+                ),
+            })
         meses_estudiantes.append({
             'anio': anio,
             'mes': mes,
@@ -956,6 +1032,7 @@ def archivo_index(request):
             'total_cierres': datos['cierres'],
             'total_matriculas': datos['matriculas'],
             'total_estudiantes_arch': datos['estudiantes_arch'],
+            'fechas': fechas,
             # Descripción corta para mostrar bajo el nombre del mes
             'descripcion': (
                 f'{datos["cierres"]} cierre(s) · '
@@ -972,21 +1049,34 @@ def archivo_index(request):
     # ───────────────────────────────────────────────────────────────
     meses_admin = []
     if es_admin_user:
-        periodos_adm = defaultdict(int)
+        periodos_adm = defaultdict(lambda: {
+            'cierres': 0,
+            'fechas': defaultdict(int),
+        })
         for ca in CierreAdministrativo.objects.all().only('anio', 'mes', 'fecha_cierre'):
+            fecha = _fecha_local(ca.fecha_cierre)
             # Si el cierre tiene `mes` explícito, lo usamos (ya está modelado por mes).
             # Si no (cierre anual completo), caemos a la fecha_cierre real.
             anio = ca.anio
             mes = ca.mes if ca.mes else ca.fecha_cierre.month
-            periodos_adm[(anio, mes)] += 1
+            periodos_adm[(anio, mes)]['cierres'] += 1
+            periodos_adm[(anio, mes)]['fechas'][fecha] += 1
 
-        for (anio, mes), n in sorted(periodos_adm.items(), reverse=True):
+        for (anio, mes), datos in sorted(periodos_adm.items(), reverse=True):
+            fechas = [
+                {
+                    'etiqueta': _fecha_larga(fecha),
+                    'descripcion': f'{n} corte(s) de caja',
+                }
+                for fecha, n in sorted(datos['fechas'].items(), reverse=True)
+            ]
             meses_admin.append({
                 'anio': anio,
                 'mes': mes,
                 'etiqueta': f'{MESES_ES[mes]} {anio}',
-                'total_cierres': n,
-                'descripcion': f'{n} corte(s) de caja',
+                'total_cierres': datos['cierres'],
+                'fechas': fechas,
+                'descripcion': f'{datos["cierres"]} corte(s) de caja',
             })
 
     total_cierres_admin = CierreAdministrativo.objects.count()
@@ -995,19 +1085,32 @@ def archivo_index(request):
     # CARPETA ADICIONALES — agrupar adicionales archivados por mes
     # ───────────────────────────────────────────────────────────────
     from .models import AdicionalArchivado
-    periodos_adicional = defaultdict(int)
+    periodos_adicional = defaultdict(lambda: {
+        'total': 0,
+        'fechas': defaultdict(int),
+    })
     for ad in AdicionalArchivado.objects.all().only('archivado_en'):
-        key = (ad.archivado_en.year, ad.archivado_en.month)
-        periodos_adicional[key] += 1
+        fecha = _fecha_local(ad.archivado_en)
+        key = (fecha.year, fecha.month)
+        periodos_adicional[key]['total'] += 1
+        periodos_adicional[key]['fechas'][fecha] += 1
 
     meses_adicionales = []
-    for (anio, mes), n in sorted(periodos_adicional.items(), reverse=True):
+    for (anio, mes), datos in sorted(periodos_adicional.items(), reverse=True):
+        fechas = [
+            {
+                'etiqueta': _fecha_larga(fecha),
+                'descripcion': f'{n} adicional(es)',
+            }
+            for fecha, n in sorted(datos['fechas'].items(), reverse=True)
+        ]
         meses_adicionales.append({
             'anio': anio,
             'mes': mes,
             'etiqueta': f'{MESES_ES[mes]} {anio}',
-            'total_cierres': n,
-            'descripcion': f'{n} adicional(es)',
+            'total_cierres': datos['total'],
+            'fechas': fechas,
+            'descripcion': f'{datos["total"]} adicional(es)',
         })
     total_adicional_arch = AdicionalArchivado.objects.count()
 

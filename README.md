@@ -4,8 +4,11 @@ Sistema interno para gestión de matrículas, pagos, abonos por módulo,
 recibos y reportes de **Formación Técnica y Profesional EC**
 (presencial y virtual, sedes Guayaquil y Quito).
 
-Stack: **Django 5** · **SQLite** (por defecto) o **MySQL 8** (producción)
-· Python 3.11+ · openpyxl + reportlab para exportaciones.
+Stack: **Django 5.2 LTS / 6.x** · **SQLite** (por defecto) o **MySQL 8**
+(producción) · Python 3.11+ · openpyxl + reportlab para exportaciones.
+
+> Con Python 3.11 se usa Django 5.2 LTS; con Python 3.12+ el entorno puede
+> resolver Django 6.x.
 
 ---
 
@@ -19,7 +22,8 @@ cd formacion-tecnica-profesional
 
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 
 # Copia el .env de ejemplo y edítalo
 cp .env.example .env
@@ -48,7 +52,8 @@ cd formacion-tecnica-profesional
 
 python -m venv venv
 venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 
 copy .env.example .env
 
