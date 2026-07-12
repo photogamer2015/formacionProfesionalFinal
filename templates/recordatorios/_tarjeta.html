@@ -1,5 +1,3 @@
-{# Tarjeta reutilizable de un recordatorio.
-   Espera: r (recordatorio), contexto ('recibido' | 'enviado' | 'admin') #}
 <article class="msg-card msg-{{ contexto }} {% if r.vencido %}is-expired{% endif %} {% if contexto == 'recibido' and not r.leido and not r.vencido %}is-unread{% endif %}">
     <div class="msg-avatar" aria-hidden="true">
         {% if r.creado_por == r.destinatario %}
