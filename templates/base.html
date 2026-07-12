@@ -35,65 +35,185 @@
         }
         
         header.top {
-            background: var(--fp-navy);
+            position: relative;
             color: white;
             padding: 14px 28px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            gap: 18px;
+            overflow: visible;
+            isolation: isolate;
+            background:
+                radial-gradient(circle at 18% -40%, rgba(244,122,51,.36), transparent 34%),
+                linear-gradient(135deg, var(--fp-navy) 0%, #24375f 58%, var(--fp-navy) 100%);
+            border-bottom: 3px solid var(--fp-orange);
+            box-shadow: 0 12px 30px rgba(27,42,78,.20);
+        }
+        header.top::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            background:
+                linear-gradient(90deg, transparent 0 8%, rgba(255,255,255,.08) 8% 8.4%, transparent 8.4% 100%),
+                radial-gradient(circle at 74% 0%, rgba(255,255,255,.12), transparent 26%);
+        }
+        header.top::after {
+            content: "";
+            position: absolute;
+            left: 28px;
+            right: 28px;
+            bottom: -3px;
+            height: 3px;
+            background: linear-gradient(90deg, var(--fp-orange), var(--fp-orange-2), transparent 76%);
+            border-radius: 99px;
+            pointer-events: none;
         }
         header.top h1 {
-            font-size: 18px; /* Ligeramente más grande */
-            font-weight: 600; /* Un poco más de grosor para que se vea profesional */
-            letter-spacing: -0.3px; /* Espaciado más moderno */
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: 0;
+            line-height: 1.1;
             margin: 0;
             padding: 0;
+            white-space: nowrap;
         }
         header.top .logo-circle {
-            width: 42px;
-            height: 42px;
-    
+            width: 46px;
+            height: 46px;
             border-radius: 50%;
-    
             object-fit: cover;
-    
-          
             background: #ffffff;
             padding: 2px;
-            border: 2px solid #f97618; /* Borde dorado sutil que combina con los badges */
-    
-
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    
-          
+            border: 2px solid rgba(244,122,51,.95);
+            box-shadow:
+                0 8px 18px rgba(0,0,0,.24),
+                0 0 0 5px rgba(255,255,255,.12);
             margin: 0 !important;
-    
-            
             display: block;
         }
 
         header.top .brand {
             display: flex;
             align-items: center;
-            gap: 15px; /* Un poco más de espacio entre logo y texto */
-        }  }
+            gap: 13px;
+            min-width: 0;
+            color: inherit;
+            text-decoration: none;
+            padding: 6px 14px 6px 6px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.10);
+            border: 1px solid rgba(255,255,255,.18);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+            transition: transform .2s ease, background .2s ease, border-color .2s ease;
+        }
+        header.top .brand:hover {
+            transform: translateY(-1px);
+            background: rgba(255,255,255,.16);
+            border-color: rgba(255,255,255,.28);
+        }
         .logo-mini {
             width: 36px; height: 36px; border-radius: 50%;
             background: var(--fp-orange); color: #fff;
             display: flex; align-items: center; justify-content: center;
             font-weight: 700; font-size: 14px;
         }
-        header.top nav { display: flex; gap: 8px; align-items: center; }
-        header.top a, header.top button {
-            color: white; text-decoration: none;
-            background: rgba(255,255,255,0.15);
-            padding: 8px 14px; border: none; border-radius: 6px;
-            font-size: 13px; font-family: inherit;
-            cursor: pointer; transition: background 0.2s;
+        header.top nav {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: flex-end;
         }
-        header.top a:hover, header.top button:hover { background: rgba(255,255,255,0.28); }
         header.top form { margin: 0; display: inline; }
+
+        .top-profile {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            max-width: 34%;
+        }
+        .top-profile-link,
+        .nav-link,
+        .icon-btn,
+        .logout-button {
+            color: white;
+            text-decoration: none;
+            border: 1px solid rgba(255,255,255,.18);
+            background: rgba(255,255,255,.13);
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            min-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+            transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+        }
+        .top-profile-link,
+        .nav-link {
+            padding: 8px 14px 8px 10px;
+        }
+        .top-profile-link {
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background: rgba(255,255,255,.16);
+        }
+        .top-profile-link span:last-child {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .nav-link-admin {
+            background: rgba(228,81,3,.24);
+            border-color: rgba(244,122,51,.42);
+        }
+        .icon-btn {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            font-size: 17px;
+        }
+        .logout-button {
+            padding: 8px 15px;
+            background: rgba(198,40,40,.92);
+            border-color: rgba(255,255,255,.14);
+        }
+        .top-profile-link:hover,
+        .nav-link:hover,
+        .icon-btn:hover,
+        .logout-button:hover {
+            transform: translateY(-1px);
+            background: rgba(255,255,255,.24);
+            border-color: rgba(255,255,255,.36);
+            box-shadow: 0 10px 18px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.18);
+        }
+        .logout-button:hover {
+            background: #b71c1c;
+        }
+        .nav-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 22px;
+            color: var(--fp-navy);
+            background: linear-gradient(135deg, #fff, #fff3ec);
+            font-size: 12px;
+            font-weight: 900;
+            box-shadow: 0 2px 6px rgba(0,0,0,.16);
+        }
 
         header.top .user-info {
             display: flex;
@@ -101,35 +221,94 @@
             align-items: flex-end;
             justify-content: center;
             gap: 5px;
-            padding-right: 20px;
-            margin-right: 20px;
-            border-right: 2px solid rgba(255, 255, 255, 0.25); /* Línea divisoria elegante */
-            border-right: 2px solid rgba(255, 255, 255, 0.25); /* Línea divisoria elegante */
-
+            padding: 6px 16px 6px 0;
+            margin-right: 8px;
+            border-right: 1px solid rgba(255,255,255,.24);
         }
         header.top .user-info h3 {
             margin: 0;
             padding: 0;
-            font-size: 15px; /* Tamaño ideal, ni muy grande ni muy chico */
-            font-weight: 600;
+            font-size: 14px;
+            font-weight: 800;
             color: #ffffff;
-            line-height: 1; /* Evita espacios extra arriba y abajo del texto */
-            letter-spacing: 0.3px;
+            line-height: 1.05;
+            letter-spacing: 0;
         }
         header.top .role-badge {
             display: inline-block;
-            padding: 3px 9px;
-            border-radius: 12px; /* Más redondito */
+            padding: 4px 9px;
+            border-radius: 999px;
             font-size: 10px;
-            font-weight: 800; /* Letra más gordita y legible */
+            font-weight: 900;
             letter-spacing: 0.5px;
             text-transform: uppercase;
             line-height: 1;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.15); /* Una sombra muy sutil */
+            box-shadow: 0 3px 8px rgba(0,0,0,.16);
         }
-        .role-admin   { background: #ff7700; color: #ffffff; }
+        .role-admin   { background: var(--fp-orange); color: #ffffff; }
         .role-asesor  { background: #377d2e; color: white; }
-        .role-default { background: rgba(255, 255, 255, 0.94); color: white; }
+        .role-default { background: rgba(255,255,255,.94); color: var(--fp-navy); }
+
+        @media (max-width: 1140px) {
+            header.top {
+                flex-wrap: wrap;
+                align-items: flex-start;
+            }
+            .top-profile {
+                position: static;
+                transform: none;
+                order: 3;
+                width: 100%;
+                max-width: none;
+                justify-content: center;
+            }
+            header.top nav {
+                flex-wrap: wrap;
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 760px) {
+            header.top {
+                padding: 12px 14px 14px;
+                gap: 12px;
+            }
+            header.top::after {
+                left: 14px;
+                right: 14px;
+            }
+            header.top .brand {
+                width: 100%;
+            }
+            header.top h1 {
+                font-size: 16px;
+            }
+            header.top nav {
+                width: 100%;
+                justify-content: center;
+                gap: 7px;
+            }
+            header.top .user-info {
+                width: 100%;
+                align-items: center;
+                padding: 0 0 6px;
+                margin: 0 0 2px;
+                border-right: 0;
+                border-bottom: 1px solid rgba(255,255,255,.18);
+            }
+            .top-profile {
+                justify-content: stretch;
+            }
+            .top-profile-link {
+                width: 100%;
+            }
+            .nav-link {
+                flex: 1 1 138px;
+            }
+            .logout-button {
+                min-width: 138px;
+            }
+        }
 
         .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
 
@@ -303,7 +482,20 @@
 
         /* ── MODO OSCURO ── */
         body.dark-mode { background: #121212; color: #e0e0e0; }
-        body.dark-mode header.top { background: #000000; border-bottom: 1px solid #333; }
+        body.dark-mode header.top {
+            background:
+                radial-gradient(circle at 18% -40%, rgba(228,81,3,.22), transparent 34%),
+                linear-gradient(135deg, #05070d 0%, #101827 58%, #05070d 100%);
+            border-bottom-color: var(--fp-orange);
+        }
+        body.dark-mode header.top h1 { color: #ffffff !important; }
+        body.dark-mode header.top .brand,
+        body.dark-mode .top-profile-link,
+        body.dark-mode .nav-link,
+        body.dark-mode .icon-btn {
+            border-color: rgba(255,255,255,.16);
+            background: rgba(255,255,255,.10);
+        }
         body.dark-mode .card-box, body.dark-mode .table-wrap, body.dark-mode .toolbar {
             background: #1e1e1e; border: 1px solid #333; color: #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
@@ -429,9 +621,9 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <header class="top" style="position: relative;">
+    <header class="top">
         {% if user.is_authenticated %}
-        <a href="{% url 'academia:bienvenida' %}" class="brand" style="text-decoration:none; color:inherit; cursor:pointer;" title="Ir al menú principal">
+        <a href="{% url 'academia:bienvenida' %}" class="brand" title="Ir al menú principal">
             <div class="logo-area">
                 <img src="{% static 'logo.png' %}" alt="Logo Formación Profesional EC" class="logo-circle">
             </div>
@@ -447,14 +639,15 @@
         {% endif %}
         
         {% if user.is_authenticated %}
-        <div style="position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center;">
-            <a href="{% url 'academia:comprobante_asesor_detalle' user.id %}" style="background: rgba(255,255,255,0.15); color: white; text-decoration: none; border-radius: 20px; font-weight: 600; padding: 8px 18px; font-size: 14px; display: flex; align-items: center; gap: 8px; transition: background 0.2s;">
-                <span style="font-size: 16px;">👤</span> Perfil {{ user.first_name|default:user.username }}
+        <div class="top-profile">
+            <a href="{% url 'academia:comprobante_asesor_detalle' user.id %}" class="top-profile-link">
+                <span class="nav-icon" aria-hidden="true">P</span>
+                <span>Perfil {{ user.first_name|default:user.username }}</span>
             </a>
         </div>
         {% endif %}
 
-        <nav>
+        <nav aria-label="Menú principal">
             {% if user.is_authenticated %}
                 <div class="user-info">
                     <h3>{{ user.first_name|default:user.username }}</h3>
@@ -468,7 +661,7 @@
                 </div>
                 <div class="notif-bell" style="position:relative;">
                     <button type="button" id="notif-toggle" title="Recordatorios" aria-label="Recordatorios"
-                            style="background: rgba(255,255,255,0.15); border:none; border-radius:50%; width:36px; height:36px; padding:0; display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; position:relative;">
+                            class="icon-btn" style="position:relative;">
                         🔔
                         {% if recordatorios_no_leidos_n %}
                         <span id="notif-badge" style="position:absolute; top:-4px; right:-4px; background:#dc3545; color:#fff; font-size:10px; font-weight:700; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #1B2A4E;">{{ recordatorios_no_leidos_n }}</span>
@@ -512,14 +705,22 @@
                         </a>
                     </div>
                 </div>
-                <button id="theme-toggle" title="Alternar modo oscuro" style="background: rgba(255,255,255,0.15); border-radius: 50%; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px;">🌙</button>
-                <a href="{% url 'academia:bienvenida' %}">Inicio</a>
+                <button id="theme-toggle" class="icon-btn" title="Alternar modo oscuro" aria-label="Alternar modo oscuro">🌙</button>
+                <a href="{% url 'academia:bienvenida' %}" class="nav-link">
+                    <span class="nav-icon" aria-hidden="true">I</span>
+                    <span>Inicio</span>
+                </a>
                 {% if es_admin %}
-                    <a href="/admin/" title="Panel administrativo de Django">Dashboard Admin</a>
+                    <a href="/admin/" class="nav-link nav-link-admin" title="Panel administrativo de Django">
+                        <span class="nav-icon" aria-hidden="true">A</span>
+                        <span>Admin</span>
+                    </a>
                 {% endif %}
                 <form id="logout-form" method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
-                    <button type="button" id="logout-btn" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cerrar sesión</button>
+                    <button type="button" id="logout-btn" class="logout-button">
+                        <span>Cerrar sesión</span>
+                    </button>
                 </form>
             {% endif %}
         </nav>
