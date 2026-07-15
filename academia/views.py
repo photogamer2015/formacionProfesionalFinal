@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
@@ -48,6 +48,55 @@ def _filtrar_matriculas_por_busqueda(qs, termino):
         'fact_cedula',
         'fact_nombres',
     ])
+
+
+def _nombre_usuario(usuario):
+    if not usuario:
+        return ''
+    return usuario.get_full_name() or usuario.username
+
+
+def _resumen_pagos_factura(abonos):
+    tipos = {}
+    metodos = {}
+    registradores = []
+    bancos_map = dict(Abono.BANCOS)
+    metodos_map = dict(Abono.METODOS)
+
+    def sumar(diccionario, etiqueta, monto):
+        item = diccionario.setdefault(
+            etiqueta,
+            {'label': etiqueta, 'total': Decimal('0.00'), 'count': 0},
+        )
+        item['total'] += monto
+        item['count'] += 1
+
+    def etiqueta_metodo(metodo, banco):
+        etiqueta = metodos_map.get(metodo, metodo or 'Sin método')
+        if metodo in ('transferencia', 'tarjeta') and banco:
+            etiqueta = f'{etiqueta} · {bancos_map.get(banco, banco)}'
+        return etiqueta
+
+    for abono in abonos:
+        monto = abono.monto or Decimal('0.00')
+        monto_2 = abono.monto_2 or Decimal('0.00')
+        monto_1 = monto - monto_2 if monto_2 > 0 else monto
+
+        sumar(tipos, abono.get_tipo_pago_display(), monto)
+        sumar(metodos, etiqueta_metodo(abono.metodo, abono.banco), monto_1)
+
+        if monto_2 > 0 and abono.metodo_2:
+            sumar(metodos, etiqueta_metodo(abono.metodo_2, abono.banco_2), monto_2)
+
+        registrado = _nombre_usuario(abono.registrado_por)
+        if registrado and registrado not in registradores:
+            registradores.append(registrado)
+
+    return {
+        'tipos': list(tipos.values()),
+        'metodos': list(metodos.values()),
+        'registradores': registradores,
+    }
 
 
 @login_required
@@ -1134,6 +1183,81 @@ def matricula_lista(request, modalidad):
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
         'modalidad_registro': 'presencial' if modalidad == 'todos' else modalidad,
+    })
+
+
+@matricula_requerida
+def matricula_facturas(request):
+    estudiante_q = request.GET.get('estudiante', '').strip()
+    curso_id = request.GET.get('curso', '').strip()
+    modalidad_filtro = request.GET.get('modalidad', '').strip()
+
+    qs = (
+        Matricula.objects
+        .filter(factura_realizada='si')
+        .select_related(
+            'estudiante', 'curso', 'jornada', 'jornada__sede',
+            'registrado_por', 'vendedora',
+        )
+        .prefetch_related(
+            Prefetch(
+                'abonos',
+                queryset=(
+                    Abono.objects
+                    .filter(cuenta_para_saldo=True)
+                    .select_related('registrado_por')
+                    .order_by('fecha', 'creado', 'id')
+                ),
+                to_attr='abonos_factura',
+            )
+        )
+    )
+
+    if estudiante_q:
+        qs = filtrar_queryset_busqueda(qs, estudiante_q, ['estudiante__nombres'])
+
+    if curso_id.isdigit():
+        qs = qs.filter(curso_id=int(curso_id))
+    else:
+        curso_id = ''
+
+    if modalidad_filtro in MODALIDADES_VALIDAS:
+        qs = qs.filter(modalidad=modalidad_filtro)
+    else:
+        modalidad_filtro = ''
+
+    matriculas = list(qs.order_by('-fecha_matricula', '-creado', '-id'))
+    for matricula in matriculas:
+        matricula.factura_resumen_pagos = _resumen_pagos_factura(
+            getattr(matricula, 'abonos_factura', [])
+        )
+
+    total_neto = sum((m.valor_neto for m in matriculas), Decimal('0.00'))
+    total_pagado = sum((m.valor_pagado or Decimal('0.00') for m in matriculas), Decimal('0.00'))
+    total_saldo = sum((m.saldo for m in matriculas), Decimal('0.00'))
+
+    cursos = (
+        Curso.objects
+        .filter(matriculas__factura_realizada='si')
+        .distinct()
+        .order_by('nombre')
+    )
+    modalidad_opciones = [
+        {'value': modalidad, 'label': _label_modalidad(modalidad)}
+        for modalidad in MODALIDADES_VALIDAS
+    ]
+
+    return render(request, 'matricula/facturas.html', {
+        'matriculas': matriculas,
+        'total_facturas': len(matriculas),
+        'cursos': cursos,
+        'modalidad_opciones': modalidad_opciones,
+        'estudiante_q': estudiante_q,
+        'curso_seleccionado': curso_id,
+        'modalidad_seleccionada': modalidad_filtro,
+        'total_neto': total_neto,
+        'total_pagado': total_pagado,
+        'total_saldo': total_saldo,
     })
 
 

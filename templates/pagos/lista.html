@@ -39,8 +39,11 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
-        min-width: 150px;
+        min-width: 135px;
         white-space: normal;
+    }
+    .payment-summary--compact {
+        gap: 6px;
     }
     .payment-chip {
         display: inline-flex;
@@ -65,10 +68,62 @@
         color: #888;
         font-size: 12px;
     }
+    .payment-details {
+        max-width: 175px;
+    }
+    .payment-details summary {
+        display: inline-flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: #eef3fb;
+        color: #1a237e;
+        font-size: 11px;
+        font-weight: 700;
+        list-style: none;
+        white-space: nowrap;
+        border: 1px solid #dfe3ff;
+    }
+    .payment-details summary::-webkit-details-marker {
+        display: none;
+    }
+    .payment-details summary::after {
+        content: "▾";
+        font-size: 10px;
+        margin-left: 6px;
+    }
+    .payment-details[open] summary {
+        margin-bottom: 7px;
+    }
+    .payment-details[open] summary::after {
+        content: "▴";
+    }
+    .payment-details__body {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+        padding: 7px;
+        border: 1px solid #dde4ee;
+        border-radius: 8px;
+        background: #fbfcff;
+    }
+    .payment-details[open] .payment-details__body {
+        display: flex;
+    }
     body.dark-mode .payment-chip {
         background: #1f2a44;
         border-color: #34446a;
         color: #d8e2ff;
+    }
+    body.dark-mode .payment-details summary {
+        background: #1f2a44;
+        border-color: #34446a;
+        color: #d8e2ff;
+    }
+    body.dark-mode .payment-details__body {
+        background: #121925;
+        border-color: #34446a;
     }
     /* Celda de jornada/día — compacta */
     .jornada-cell {
@@ -174,6 +229,14 @@
 
         /* Chips de pago: que no se desborden y queden legibles */
         .payment-summary { gap: 2px !important; min-width: 0 !important; }
+        .payment-details summary { display: none !important; }
+        .payment-details__body {
+            display: flex !important;
+            padding: 0 !important;
+            border: 0 !important;
+            background: transparent !important;
+            gap: 2px !important;
+        }
         .payment-chip {
             background: #f5f7ff !important;
             border: 1px solid #ccc !important;
@@ -447,27 +510,61 @@
                 <td>${{ m.valor_curso|floatformat:2 }}</td>
                 <td><strong style="color:#2e7d32;">${{ m.valor_pagado|floatformat:2 }}</strong></td>
                 <td>
-                    <div class="payment-summary">
+                    <div class="payment-summary payment-summary--compact">
                         {% for item in m.resumen_abonos.tipos %}
+                            {% if forloop.first %}
                             <span class="payment-chip">
                                 {{ item.label }}
                                 <strong>${{ item.total|floatformat:2 }}</strong>
                             </span>
+                            {% endif %}
                         {% empty %}
                             <span class="payment-empty">Sin pagos</span>
                         {% endfor %}
+                        {% if m.resumen_abonos.tipos|length > 1 %}
+                        <details class="payment-details">
+                            <summary>Ver más</summary>
+                            <div class="payment-details__body">
+                                {% for item in m.resumen_abonos.tipos %}
+                                    {% if not forloop.first %}
+                                    <span class="payment-chip">
+                                        {{ item.label }}
+                                        <strong>${{ item.total|floatformat:2 }}</strong>
+                                    </span>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% endif %}
                     </div>
                 </td>
                 <td>
-                    <div class="payment-summary">
+                    <div class="payment-summary payment-summary--compact">
                         {% for item in m.resumen_abonos.metodos %}
+                            {% if forloop.first %}
                             <span class="payment-chip">
                                 {{ item.label }}
                                 <strong>${{ item.total|floatformat:2 }}</strong>
                             </span>
+                            {% endif %}
                         {% empty %}
                             <span class="payment-empty">Sin método</span>
                         {% endfor %}
+                        {% if m.resumen_abonos.metodos|length > 1 %}
+                        <details class="payment-details">
+                            <summary>Ver más</summary>
+                            <div class="payment-details__body">
+                                {% for item in m.resumen_abonos.metodos %}
+                                    {% if not forloop.first %}
+                                    <span class="payment-chip">
+                                        {{ item.label }}
+                                        <strong>${{ item.total|floatformat:2 }}</strong>
+                                    </span>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% endif %}
                     </div>
                 </td>
                 <td><strong style="color:{% if m.saldo > 0 %}#c62828{% else %}#2e7d32{% endif %};">${{ m.saldo|floatformat:2 }}</strong></td>

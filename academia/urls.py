@@ -17,6 +17,8 @@ urlpatterns = [
     path('ayuda/', views.ayuda, name='ayuda'),
 
     # ── Matrícula (presencial u online) ────────────────────────
+    path('matricula/facturas/',
+         views.matricula_facturas, name='matricula_facturas'),
     path('matricula/<str:modalidad>/',
          views.matricula_menu, name='matricula_menu'),
     path('matricula/<str:modalidad>/registrar/',
