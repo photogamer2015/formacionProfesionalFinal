@@ -457,7 +457,8 @@
         </small>
     </div>
 
-    <div style="display:flex; gap:10px; margin-top:24px; justify-content:flex-end;">
+    <div class="form-actions-row">
+        <div id="submit-aviso-validacion" class="submit-aviso-validacion" aria-live="polite"></div>
         <a href="{% url 'academia:matricula_lista' modalidad=modalidad %}" class="btn btn-secondary">Cancelar</a>
         <!-- CORRECCIÓN: Se quitó el onclick que llamaba a una función inexistente -->
         <button type="{% if modo == 'editar' %}submit{% else %}button{% endif %}" id="submit-btn" class="btn btn-primary">
@@ -600,6 +601,39 @@
         border-top: 1px solid #edf0f6;
     }
 
+    .form-actions-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 24px;
+        justify-content: flex-end;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .submit-aviso-validacion {
+        display: none;
+        max-width: min(620px, 100%);
+        margin-right: auto;
+        color: #c62828;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.35;
+        text-align: left;
+        background: #fff3f3;
+        border: 1px solid #ffcdd2;
+        border-left: 4px solid #c62828;
+        border-radius: 8px;
+        padding: 9px 12px;
+    }
+
+    #submit-btn:disabled {
+        background: #cfd5df !important;
+        color: #6b7280 !important;
+        cursor: not-allowed !important;
+        opacity: 1 !important;
+        box-shadow: none !important;
+    }
+
     @media (max-width: 720px) {
         .confirm-summary {
             grid-template-columns: 1fr;
@@ -616,6 +650,20 @@
 
         .confirm-modal__actions .btn {
             width: 100%;
+        }
+
+        .form-actions-row {
+            align-items: stretch;
+        }
+
+        .form-actions-row .btn,
+        .form-actions-row button {
+            width: 100%;
+        }
+
+        .submit-aviso-validacion {
+            width: 100%;
+            margin-right: 0;
         }
     }
 
@@ -2032,20 +2080,32 @@
         // Devuelve un arreglo con los motivos por los que NO se puede registrar.
         function obtenerFaltantesRegistro() {
             const faltantes = [];
+            const agregarFaltante = function (mensaje) {
+                if (mensaje && !faltantes.includes(mensaje)) {
+                    faltantes.push(mensaje);
+                }
+            };
+
+            // 0. Campos principales obligatorios.
+            CAMPOS_REQUERIDOS.forEach(({ name, label }) => {
+                if (campoEstaVacio(name)) {
+                    agregarFaltante(label);
+                }
+            });
 
             // 1. Valor pagado debe ser mayor a 0.00 (solo en modo registrar)
             if (valorPagadoInput && MODO !== 'editar') {
                 const valStr = (valorPagadoInput.value || '').replace(',', '.');
                 const val = parseFloat(valStr);
                 if (isNaN(val) || val <= 0) {
-                    faltantes.push('Ingresa un Valor pagado mayor a $0.00.');
+                    agregarFaltante('Valor pagado mayor a $0.00');
                 }
             }
 
             // 2. Debe seleccionar un asesor (vendedora)
             const vSelect = document.getElementById('vendedora_id');
             if (vSelect && !vSelect.value) {
-                faltantes.push('Selecciona el asesor (vendedora).');
+                agregarFaltante('Asesor (vendedora)');
             }
 
             // 3. Contraseña del asesor (solo cuando el campo está visible/requerido)
@@ -2053,42 +2113,70 @@
             const pInput = document.getElementById('password_vendedora');
             if (vSelect && vSelect.value && pWrap && pInput && pWrap.style.display !== 'none') {
                 if (!pInput.value.trim()) {
-                    faltantes.push('Ingresa la contraseña del asesor.');
+                    agregarFaltante('Contraseña del asesor');
                 }
             }
 
-            // 4. Banco — obligatorio solo cuando el contenedor está visible
+            // 4. Jornada / sede obligatoria.
+            if (!SOLO_DATOS && jornadaNoSeleccionada()) {
+                agregarFaltante('Jornada / sede');
+            }
+
+            // 5. Método de pago obligatorio según la distribución.
+            const tipoCobroSelect = document.getElementById('id_tipo_cobro');
+            const metodoPagoSelect = document.getElementById('id_metodo_pago');
+            const metodoPagoSelect1 = document.getElementById('id_metodo_pago_1');
+            const metodoPagoSelect2 = document.getElementById('id_metodo_pago_2');
+            if (!SOLO_DATOS && tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
+                const monto1 = parseFloat((document.getElementById('id_monto_pago_1') || {}).value || 0);
+                const monto2 = parseFloat((document.getElementById('id_monto_pago_2') || {}).value || 0);
+                if (!monto1 || monto1 <= 0) agregarFaltante('Monto 1');
+                if (!monto2 || monto2 <= 0) agregarFaltante('Monto 2');
+                if (!metodoPagoSelect1 || !metodoPagoSelect1.value) agregarFaltante('Método de pago 1');
+                if (!metodoPagoSelect2 || !metodoPagoSelect2.value) agregarFaltante('Método de pago 2');
+            } else if (!SOLO_DATOS && metodoPagoSelect && !metodoPagoSelect.value) {
+                agregarFaltante('Método de pago');
+            }
+
+            // 6. Banco — obligatorio solo cuando el contenedor está visible
             //    (método de pago: Transferencia bancaria o Tarjeta / App)
             const bancoCont = document.getElementById('banco-container');
             const bancoSel = document.getElementById('id_banco');
             if (bancoCont && bancoSel && bancoCont.style.display !== 'none') {
                 if (!bancoSel.value) {
-                    faltantes.push('Selecciona el banco.');
+                    agregarFaltante('Banco');
                 }
             }
             const bancoCont1 = document.getElementById('banco-1-container');
             const bancoSel1 = document.getElementById('id_banco_1');
             if (bancoCont1 && bancoSel1 && bancoCont1.style.display !== 'none') {
                 if (!bancoSel1.value) {
-                    faltantes.push('Selecciona el banco 1.');
+                    agregarFaltante('Banco 1');
                 }
             }
             const bancoCont2 = document.getElementById('banco-2-container');
             const bancoSel2 = document.getElementById('id_banco_2');
             if (bancoCont2 && bancoSel2 && bancoCont2.style.display !== 'none') {
                 if (!bancoSel2.value) {
-                    faltantes.push('Selecciona el banco 2.');
+                    agregarFaltante('Banco 2');
                 }
             }
 
-            // 5. Mixto sum validation
-            const tipoCobroSelect = document.getElementById('id_tipo_cobro');
+            // 7. Datos de factura obligatorios si factura = Sí.
+            const facturaRealizada = obtenerElementoCampo('factura_realizada');
+            if (facturaRealizada && facturaRealizada.value === 'si') {
+                if (campoEstaVacio('fact_nombres')) agregarFaltante('Nombres de factura');
+                if (campoEstaVacio('fact_cedula')) agregarFaltante('Cédula / RUC de factura');
+                if (campoEstaVacio('fact_correo')) agregarFaltante('Correo de factura');
+            }
+
+            // 8. Mixto sum validation
             if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
                 const total = parseFloat(valorPagadoInput.value) || 0;
                 const m1 = parseFloat(document.getElementById('id_monto_pago_1').value) || 0;
                 const m2 = parseFloat(document.getElementById('id_monto_pago_2').value) || 0;
                 if (Math.abs((m1 + m2) - total) > 0.01) {
-                    faltantes.push('La suma de Monto 1 y Monto 2 debe ser exactamente igual al Valor pagado');
+                    agregarFaltante('Suma exacta de Monto 1 y Monto 2');
                 }
             }
 
@@ -2103,28 +2191,21 @@
             const faltantes = obtenerFaltantesRegistro();
             const isValido = faltantes.length === 0;
 
-            // Mensaje de ayuda debajo del botón indicando qué falta
-            let aviso = document.getElementById('submit-aviso-validacion');
-            if (!aviso) {
-                aviso = document.createElement('div');
-                aviso.id = 'submit-aviso-validacion';
-                aviso.style.cssText = 'width:100%; text-align:right; color:#c62828; font-size:12px; font-weight:600; margin-top:8px;';
-                const cont = btn.closest('div');
-                if (cont) cont.appendChild(aviso);
-            }
+            const aviso = document.getElementById('submit-aviso-validacion');
 
             if (!isValido) {
                 btn.disabled = true;
-                btn.style.opacity = '0.5';
+                btn.setAttribute('aria-disabled', 'true');
+                btn.title = 'Completa los campos pendientes para registrar la matrícula.';
                 btn.style.cursor = 'not-allowed';
                 if (aviso) {
                     aviso.style.display = 'block';
-                    aviso.innerHTML = 'Para registrar la matrícula, completa: ' +
-                        faltantes.map(f => f.replace(/\.$/, '')).join(' · ') + '.';
+                    aviso.textContent = 'Falta completar: ' + faltantes.join(', ') + '.';
                 }
             } else {
                 btn.disabled = false;
-                btn.style.opacity = '1';
+                btn.removeAttribute('aria-disabled');
+                btn.title = '';
                 btn.style.cursor = 'pointer';
                 if (aviso) aviso.style.display = 'none';
             }

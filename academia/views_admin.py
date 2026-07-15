@@ -13,23 +13,26 @@ import json
 import os
 import subprocess
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
+from .busqueda import filtrar_queryset_busqueda
 from .forms import EgresoForm
 from .models import (
     Abono, AbonoArchivado, Adicional, AdicionalArchivado, CategoriaEgreso,
     CierreAdministrativo, CierreCurso, Comprobante, Egreso, Matricula, Curso,
+    JornadaCurso, Sede,
 )
 from .permisos import admin_requerido
 
@@ -1691,17 +1694,128 @@ def cierre_admin_eliminar(request, pk):
 @admin_requerido
 def control_registro(request):
     """Auditoria de los registros realizados por los asesores/admin."""
-    matriculas = Matricula.objects.select_related(
-        'curso', 'estudiante', 'vendedora', 'registrado_por', 'jornada'
-    ).order_by('-fecha_matricula', '-creado')[:300]
-    
-    pagos = Abono.objects.select_related(
-        'matricula__estudiante', 'matricula__curso', 'registrado_por'
-    ).order_by('-creado')[:300]
-    
+    active_tab = request.GET.get('tab', 'matriculas').strip()
+    if active_tab not in ('matriculas', 'pagos'):
+        active_tab = 'matriculas'
+
+    q = request.GET.get('q', '').strip()
+    curso_id = request.GET.get('curso', '').strip()
+    campus = request.GET.get('campus', '').strip()
+    fecha_desde = request.GET.get('fecha_desde', '').strip()
+    fecha_hasta = request.GET.get('fecha_hasta', '').strip()
+    fecha_desde_date = parse_date(fecha_desde) if fecha_desde else None
+    fecha_hasta_date = parse_date(fecha_hasta) if fecha_hasta else None
+    pago_fecha = request.GET.get('pago_fecha', '').strip()
+    pago_curso_id = request.GET.get('pago_curso', '').strip()
+    pago_metodo = request.GET.get('pago_metodo', '').strip()
+    pago_monto = request.GET.get('pago_monto', '').strip()
+    pago_fecha_date = parse_date(pago_fecha) if pago_fecha else None
+    pago_monto_decimal = None
+    if pago_monto:
+        monto_normalizado = pago_monto.replace('$', '').replace(' ', '').replace(',', '.')
+        try:
+            pago_monto_decimal = Decimal(monto_normalizado)
+        except InvalidOperation:
+            pago_monto_decimal = None
+
+    matriculas_qs = Matricula.objects.select_related(
+        'curso', 'estudiante', 'vendedora', 'registrado_por', 'jornada',
+        'jornada__sede',
+    )
+    pagos_qs = Abono.objects.select_related(
+        'matricula__estudiante', 'matricula__curso', 'matricula__jornada',
+        'matricula__jornada__sede', 'registrado_por'
+    )
+
+    if curso_id.isdigit():
+        matriculas_qs = matriculas_qs.filter(curso_id=int(curso_id))
+
+    if campus.startswith('sede:') and campus[5:].isdigit():
+        sede_id = int(campus[5:])
+        matriculas_qs = matriculas_qs.filter(jornada__sede_id=sede_id)
+    elif campus.startswith('ciudad:') and campus[7:]:
+        ciudad = campus[7:]
+        matriculas_qs = matriculas_qs.filter(jornada__ciudad=ciudad)
+
+    if fecha_desde_date:
+        matriculas_qs = matriculas_qs.filter(fecha_matricula__gte=fecha_desde_date)
+    if fecha_hasta_date:
+        matriculas_qs = matriculas_qs.filter(fecha_matricula__lte=fecha_hasta_date)
+
+    if q:
+        matriculas_qs = filtrar_queryset_busqueda(
+            matriculas_qs,
+            q,
+            ['estudiante__nombres', 'estudiante__cedula'],
+        )
+
+    if pago_fecha_date:
+        pagos_qs = pagos_qs.filter(creado__date=pago_fecha_date)
+    if pago_curso_id.isdigit():
+        pagos_qs = pagos_qs.filter(matricula__curso_id=int(pago_curso_id))
+    metodos_validos = {codigo for codigo, _ in Abono.METODOS}
+    if pago_metodo in metodos_validos:
+        pagos_qs = pagos_qs.filter(Q(metodo=pago_metodo) | Q(metodo_2=pago_metodo))
+    if pago_monto_decimal is not None:
+        pagos_qs = pagos_qs.filter(monto=pago_monto_decimal)
+
+    campus_sedes = Sede.objects.filter(
+        jornadas__matriculas__isnull=False
+    )
+    campus_ciudades_qs = JornadaCurso.objects.filter(
+        matriculas__isnull=False,
+        sede__isnull=True,
+    ).exclude(ciudad='')
+    if curso_id.isdigit():
+        campus_sedes = campus_sedes.filter(jornadas__curso_id=int(curso_id))
+        campus_ciudades_qs = campus_ciudades_qs.filter(curso_id=int(curso_id))
+
+    campus_opciones = [
+        {'value': f'sede:{sede.id}', 'label': sede.etiqueta}
+        for sede in campus_sedes.distinct().order_by('pais', 'orden', 'nombre')
+    ]
+    campus_opciones.extend(
+        {'value': f'ciudad:{ciudad}', 'label': ciudad}
+        for ciudad in campus_ciudades_qs.values_list('ciudad', flat=True)
+        .distinct().order_by('ciudad')
+    )
+
+    matriculas_total = matriculas_qs.count()
+    pagos_total = pagos_qs.count()
+    matriculas = matriculas_qs.order_by('-fecha_matricula', '-creado', '-pk')[:300]
+    pagos = pagos_qs.order_by('-creado', '-pk')[:300]
+    filtros_aplicados = any([q, curso_id, campus, fecha_desde, fecha_hasta])
+    filtros_pagos_aplicados = any([pago_fecha, pago_curso_id, pago_metodo, pago_monto])
+
     return render(request, 'admin_panel/control_registro.html', {
         'matriculas': matriculas,
         'pagos': pagos,
+        'cursos': Curso.objects.filter(
+            matriculas__isnull=False,
+        ).distinct().order_by('nombre'),
+        'campus_opciones': campus_opciones,
+        'filtros': {
+            'q': q,
+            'curso': curso_id,
+            'campus': campus,
+            'fecha_desde': fecha_desde,
+            'fecha_hasta': fecha_hasta,
+        },
+        'filtros_aplicados': filtros_aplicados,
+        'filtros_pagos': {
+            'fecha': pago_fecha,
+            'curso': pago_curso_id,
+            'metodo': pago_metodo,
+            'monto': pago_monto,
+        },
+        'filtros_pagos_aplicados': filtros_pagos_aplicados,
+        'metodos_pago': Abono.METODOS,
+        'cursos_pagos': Curso.objects.filter(
+            matriculas__abonos__isnull=False,
+        ).distinct().order_by('nombre'),
+        'active_tab': active_tab,
+        'matriculas_total': matriculas_total,
+        'pagos_total': pagos_total,
         'titulo': 'Control de Registro',
     })
 
@@ -1726,4 +1840,3 @@ def ejecutar_backup_s3(request):
         messages.error(request, f'❌ Error inesperado ejecutando el backup: {str(e)}')
         
     return redirect('academia:admin_dashboard')
-

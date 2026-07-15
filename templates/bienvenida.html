@@ -119,19 +119,6 @@
 	        background: linear-gradient(90deg, var(--orange), var(--orange-lt), transparent 74%);
 	        opacity: .9;
 	    }
-	    .dashboard-shell::after {
-	        content: "";
-	        position: absolute;
-	        right: -112px;
-	        top: -96px;
-	        width: 440px;
-	        height: 430px;
-	        background: url("{% static 'logo.png' %}") no-repeat center / contain;
-	        opacity: .035;
-	        pointer-events: none;
-	        z-index: 0;
-	        filter: saturate(.95);
-	    }
 	    .dashboard-grid {
 	        position: relative;
 	        z-index: 1;
@@ -376,10 +363,6 @@
 	        background: var(--shell-bg);
 	        box-shadow: 0 20px 52px rgba(0,0,0,.34);
 	    }
-	    body.dark-mode .dashboard-shell::after {
-	        opacity: .045;
-	        filter: saturate(.6) brightness(1.25);
-	    }
 	    body.dark-mode .card-box {
 	        background:
 	            linear-gradient(180deg, rgba(22,30,44,.98), rgba(16,22,34,.98));
@@ -550,9 +533,6 @@
             box-shadow: none;
         }
 	        .dashboard-shell::before {
-	            display: none;
-	        }
-	        .dashboard-shell::after {
 	            display: none;
 	        }
 	        .dashboard-grid {

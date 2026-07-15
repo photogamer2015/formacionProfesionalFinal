@@ -16,26 +16,119 @@
     </div>
 </div>
 
+<form method="get" id="filters-matriculas" class="card tab-filter" style="padding:18px; margin:18px 0 20px; {% if active_tab != 'matriculas' %}display:none;{% endif %}">
+    <input type="hidden" name="tab" value="matriculas">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px; align-items:end;">
+        <div>
+            <label for="filtro-curso" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Curso</label>
+            <select id="filtro-curso" name="curso" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+                <option value="">Todos los cursos</option>
+                {% for curso in cursos %}
+                    <option value="{{ curso.id }}" {% if filtros.curso == curso.id|stringformat:"s" %}selected{% endif %}>{{ curso.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="filtro-campus" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Sede</label>
+            <select id="filtro-campus" name="campus" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+                <option value="">Todas las sedes</option>
+                {% for opcion in campus_opciones %}
+                    <option value="{{ opcion.value }}" {% if filtros.campus == opcion.value %}selected{% endif %}>{{ opcion.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="filtro-desde" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Fecha matrícula desde</label>
+            <input id="filtro-desde" type="date" name="fecha_desde" value="{{ filtros.fecha_desde }}" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+        </div>
+        <div>
+            <label for="filtro-hasta" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Fecha matrícula hasta</label>
+            <input id="filtro-hasta" type="date" name="fecha_hasta" value="{{ filtros.fecha_hasta }}" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+        </div>
+        <div>
+            <label for="filtro-q" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Estudiante</label>
+            <input id="filtro-q" type="search" name="q" value="{{ filtros.q }}" placeholder="Nombre o cédula" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary btn-sm" style="min-height:40px;">Filtrar</button>
+            {% if filtros_aplicados %}
+                <a href="{% url 'academia:control_registro' %}" class="btn btn-secondary btn-sm" style="min-height:40px; display:inline-flex; align-items:center;">Limpiar</a>
+            {% endif %}
+        </div>
+    </div>
+    <div style="margin-top:12px; color:#666; font-size:12px;">
+        Mostrando {{ matriculas|length }} de {{ matriculas_total }} matrícula{{ matriculas_total|pluralize }}.
+        {% if matriculas_total > 300 %}
+            Se muestran máximo 300 registros.
+        {% endif %}
+    </div>
+</form>
+
+<form method="get" id="filters-pagos" class="card tab-filter" style="padding:18px; margin:18px 0 20px; {% if active_tab != 'pagos' %}display:none;{% endif %}">
+    <input type="hidden" name="tab" value="pagos">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px; align-items:end;">
+        <div>
+            <label for="filtro-pago-fecha" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Fecha</label>
+            <input id="filtro-pago-fecha" type="date" name="pago_fecha" value="{{ filtros_pagos.fecha }}" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+        </div>
+        <div>
+            <label for="filtro-pago-curso" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Curso</label>
+            <select id="filtro-pago-curso" name="pago_curso" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+                <option value="">Todos los cursos</option>
+                {% for curso in cursos_pagos %}
+                    <option value="{{ curso.id }}" {% if filtros_pagos.curso == curso.id|stringformat:"s" %}selected{% endif %}>{{ curso.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="filtro-pago-metodo" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Método</label>
+            <select id="filtro-pago-metodo" name="pago_metodo" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+                <option value="">Todos los métodos</option>
+                {% for codigo, etiqueta in metodos_pago %}
+                    <option value="{{ codigo }}" {% if filtros_pagos.metodo == codigo %}selected{% endif %}>{{ etiqueta }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="filtro-pago-monto" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Monto</label>
+            <input id="filtro-pago-monto" type="text" inputmode="decimal" name="pago_monto" value="{{ filtros_pagos.monto }}" placeholder="Ej. 10,00" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary btn-sm" style="min-height:40px;">Filtrar</button>
+            {% if filtros_pagos_aplicados %}
+                <a href="{% url 'academia:control_registro' %}?tab=pagos" class="btn btn-secondary btn-sm" style="min-height:40px; display:inline-flex; align-items:center;">Limpiar</a>
+            {% endif %}
+        </div>
+    </div>
+    <div style="margin-top:12px; color:#666; font-size:12px;">
+        Mostrando {{ pagos|length }} de {{ pagos_total }} pago{{ pagos_total|pluralize }}.
+        {% if pagos_total > 300 %}
+            Se muestran máximo 300 registros.
+        {% endif %}
+    </div>
+</form>
+
 <!-- Tabs Navigation -->
 <div class="tabs-container" style="margin-bottom:20px; border-bottom:1px solid #ddd;">
-    <button class="tab-btn active" onclick="switchTab('matriculas')" id="btn-matriculas" style="padding:10px 20px; border:none; background:none; font-weight:bold; color:#1a237e; border-bottom:3px solid #1a237e; cursor:pointer;">
+    <button class="tab-btn {% if active_tab == 'matriculas' %}active{% endif %}" onclick="switchTab('matriculas')" id="btn-matriculas" style="padding:10px 20px; border:none; background:none; font-weight:bold; color:{% if active_tab == 'matriculas' %}#1a237e{% else %}#666{% endif %}; border-bottom:{% if active_tab == 'matriculas' %}3px solid #1a237e{% else %}none{% endif %}; cursor:pointer;">
         🎓 Matrículas Registradas
     </button>
-    <button class="tab-btn" onclick="switchTab('pagos')" id="btn-pagos" style="padding:10px 20px; border:none; background:none; font-weight:bold; color:#666; cursor:pointer;">
+    <button class="tab-btn {% if active_tab == 'pagos' %}active{% endif %}" onclick="switchTab('pagos')" id="btn-pagos" style="padding:10px 20px; border:none; background:none; font-weight:bold; color:{% if active_tab == 'pagos' %}#1a237e{% else %}#666{% endif %}; border-bottom:{% if active_tab == 'pagos' %}3px solid #1a237e{% else %}none{% endif %}; cursor:pointer;">
         💰 Pagos Registrados
     </button>
 </div>
 
 <!-- MATRICULAS TAB -->
-<div id="tab-matriculas" class="tab-content" style="display:block;">
+<div id="tab-matriculas" class="tab-content" style="display:{% if active_tab == 'matriculas' %}block{% else %}none{% endif %};">
     <div class="card" style="padding:0; overflow:hidden;">
         <div class="table-wrap">
             {% if matriculas %}
             <table>
                 <thead>
                     <tr>
-                        <th>Fecha y Hora</th>
+                        <th>Fecha de inscripción</th>
                         <th>Curso</th>
+                        <th>Sede</th>
                         <th>Estudiante</th>
                         <th>Vendedora</th>
                         <th>Registrado por</th>
@@ -46,12 +139,22 @@
                     {% for m in matriculas %}
                     <tr>
                         <td>
-                            <div style="font-weight:bold;">{{ m.creado|date:"d/m/Y" }}</div>
-                            <div style="font-size:11px; color:#666;">{{ m.creado|time:"H:i" }}</div>
+                            <div style="font-weight:bold;">{{ m.fecha_matricula|date:"d/m/Y" }}</div>
+                            <div style="font-size:11px; color:#666;">Registrado {{ m.creado|date:"d/m/Y H:i" }}</div>
                         </td>
                         <td>
                             <strong>{{ m.curso.nombre }}</strong>
                             {% if m.jornada %}<div style="font-size:11px; color:#666;">{{ m.jornada.descripcion_legible }}</div>{% endif %}
+                        </td>
+                        <td>
+                            {% if m.jornada and m.jornada.sede_nombre %}
+                                {{ m.jornada.sede_nombre }}
+                                {% if m.jornada.fecha_inicio %}
+                                <div style="font-size:11px; color:#666;">Inicio {{ m.jornada.fecha_inicio|date:"d/m/Y" }}</div>
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
                         </td>
                         <td>
                             {{ m.estudiante.nombres }}
@@ -80,7 +183,11 @@
             </table>
             {% else %}
                 <div style="padding:30px; text-align:center; color:#666;">
-                    No hay matrículas recientes registradas.
+                    {% if filtros_aplicados %}
+                        No hay matrículas que coincidan con los filtros.
+                    {% else %}
+                        No hay matrículas recientes registradas.
+                    {% endif %}
                 </div>
             {% endif %}
         </div>
@@ -88,7 +195,7 @@
 </div>
 
 <!-- PAGOS TAB -->
-<div id="tab-pagos" class="tab-content" style="display:none;">
+<div id="tab-pagos" class="tab-content" style="display:{% if active_tab == 'pagos' %}block{% else %}none{% endif %};">
     <div class="card" style="padding:0; overflow:hidden;">
         <div class="table-wrap">
             {% if pagos %}
@@ -97,6 +204,8 @@
                     <tr>
                         <th>Fecha y Hora</th>
                         <th>Estudiante / Curso</th>
+                        <th>Sede</th>
+                        <th>Fecha matrícula</th>
                         <th>Monto</th>
                         <th>Método</th>
                         <th>Registrado por</th>
@@ -112,6 +221,16 @@
                         <td>
                             <strong>{{ p.matricula.estudiante.nombres }}</strong>
                             <div style="font-size:11px; color:#666;">{{ p.matricula.curso.nombre }}</div>
+                        </td>
+                        <td>
+                            {% if p.matricula.jornada and p.matricula.jornada.sede_nombre %}
+                                {{ p.matricula.jornada.sede_nombre }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ p.matricula.fecha_matricula|date:"d/m/Y" }}</strong>
                         </td>
                         <td>
                             <strong style="color:#2e7d32;">${{ p.monto }}</strong>
@@ -134,7 +253,11 @@
             </table>
             {% else %}
                 <div style="padding:30px; text-align:center; color:#666;">
-                    No hay pagos recientes registrados.
+                    {% if filtros_pagos_aplicados %}
+                        No hay pagos que coincidan con los filtros.
+                    {% else %}
+                        No hay pagos recientes registrados.
+                    {% endif %}
                 </div>
             {% endif %}
         </div>
@@ -144,6 +267,7 @@
 <script>
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.tab-filter').forEach(el => el.style.display = 'none');
     document.querySelectorAll('.tab-btn').forEach(el => {
         el.style.borderBottom = 'none';
         el.style.color = '#666';
@@ -151,6 +275,7 @@ function switchTab(tabId) {
     });
     
     document.getElementById('tab-' + tabId).style.display = 'block';
+    document.getElementById('filters-' + tabId).style.display = 'block';
     const btn = document.getElementById('btn-' + tabId);
     btn.style.borderBottom = '3px solid #1a237e';
     btn.style.color = '#1a237e';

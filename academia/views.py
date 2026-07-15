@@ -360,14 +360,16 @@ def _assistant_local_search(query: str) -> str:
 # ─────────────────────────────────────────────────────────
 
 MODALIDADES_VALIDAS = ('presencial', 'online')
+MODALIDADES_LISTA_VALIDAS = ('presencial', 'online', 'todos')
 
 # La matrícula online ha sido habilitada nuevamente a petición del usuario.
 MATRICULA_ONLINE_HABILITADA = True
 
 
-def _modalidad_o_404(modalidad):
+def _modalidad_o_404(modalidad, incluir_todos=False):
     """Valida que la modalidad de la URL sea válida; si no, lanza 404."""
-    if modalidad not in MODALIDADES_VALIDAS:
+    validas = MODALIDADES_LISTA_VALIDAS if incluir_todos else MODALIDADES_VALIDAS
+    if modalidad not in validas:
         from django.http import Http404
         raise Http404(f'Modalidad desconocida: {modalidad}')
     return modalidad
@@ -389,6 +391,8 @@ def _bloquear_si_online(request, modalidad):
 
 
 def _label_modalidad(modalidad):
+    if modalidad == 'todos':
+        return 'Todos'
     return 'Presencial' if modalidad == 'presencial' else 'Online'
 
 
@@ -1028,17 +1032,36 @@ def matricula_editar(request, modalidad, pk):
 
 @matricula_requerida
 def matricula_lista(request, modalidad):
-    modalidad = _modalidad_o_404(modalidad)
+    modalidad = _modalidad_o_404(modalidad, incluir_todos=True)
     q = request.GET.get('q', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
     jornada_id = request.GET.get('jornada', '').strip()
-
+    modalidad_filtro = request.GET.get('modalidad_filtro', '').strip()
+    campus = request.GET.get('campus', '').strip()
     registrado_por_id = request.GET.get('registrador', '').strip()
 
     qs = (Matricula.objects
-          .filter(modalidad=modalidad)
-          .select_related('estudiante', 'curso', 'jornada', 'registrado_por', 'comprobante'))
+          .select_related(
+              'estudiante', 'curso', 'jornada', 'jornada__sede',
+              'registrado_por', 'comprobante',
+          ))
+    if modalidad != 'todos':
+        qs = qs.filter(modalidad=modalidad)
+        modalidad_filtro = ''
+        campus = ''
+    else:
+        if modalidad_filtro in MODALIDADES_VALIDAS:
+            qs = qs.filter(modalidad=modalidad_filtro)
+        else:
+            modalidad_filtro = ''
+
+        if campus.startswith('sede:') and campus[5:].isdigit():
+            qs = qs.filter(jornada__sede_id=int(campus[5:]))
+        elif campus.startswith('ciudad:') and campus[7:]:
+            qs = qs.filter(jornada__ciudad=campus[7:])
+        else:
+            campus = ''
 
     if q:
         qs = _filtrar_matriculas_por_busqueda(qs, q)
@@ -1046,10 +1069,10 @@ def matricula_lista(request, modalidad):
         qs = qs.filter(curso_id=curso_id)
     jornada_filtrada = None
     if jornada_id.isdigit():
-        jornada_filtrada = JornadaCurso.objects.filter(
-            id=int(jornada_id),
-            modalidad=modalidad,
-        ).select_related('curso').first()
+        jornada_qs = JornadaCurso.objects.filter(id=int(jornada_id))
+        if modalidad != 'todos':
+            jornada_qs = jornada_qs.filter(modalidad=modalidad)
+        jornada_filtrada = jornada_qs.select_related('curso').first()
         if jornada_filtrada:
             qs = qs.filter(jornada_id=jornada_filtrada.id)
         
@@ -1061,7 +1084,11 @@ def matricula_lista(request, modalidad):
     if registrado_por_id.isdigit():
         qs = qs.filter(registrado_por_id=int(registrado_por_id))
 
-    if modalidad == 'online':
+    if modalidad == 'todos':
+        cursos_filtro = Curso.objects.filter(activo=True).filter(
+            Q(ofrece_presencial=True) | Q(ofrece_online=True)
+        )
+    elif modalidad == 'online':
         cursos_filtro = Curso.objects.filter(activo=True, ofrece_online=True)
     else:
         cursos_filtro = Curso.objects.filter(activo=True, ofrece_presencial=True)
@@ -1069,6 +1096,25 @@ def matricula_lista(request, modalidad):
     from django.contrib.auth import get_user_model
     User = get_user_model()
     registradores = User.objects.filter(is_active=True).order_by('first_name', 'username')
+    campus_opciones = []
+    if modalidad == 'todos':
+        campus_sedes = Sede.objects.filter(jornadas__matriculas__isnull=False)
+        campus_ciudades_qs = JornadaCurso.objects.filter(
+            matriculas__isnull=False,
+            sede__isnull=True,
+        ).exclude(ciudad='')
+        if modalidad_filtro in MODALIDADES_VALIDAS:
+            campus_sedes = campus_sedes.filter(jornadas__modalidad=modalidad_filtro)
+            campus_ciudades_qs = campus_ciudades_qs.filter(modalidad=modalidad_filtro)
+        campus_opciones = [
+            {'value': f'sede:{sede.id}', 'label': sede.etiqueta}
+            for sede in campus_sedes.distinct().order_by('pais', 'orden', 'nombre')
+        ]
+        campus_opciones.extend(
+            {'value': f'ciudad:{ciudad}', 'label': ciudad}
+            for ciudad in campus_ciudades_qs.values_list('ciudad', flat=True)
+            .distinct().order_by('ciudad')
+        )
 
     qs = qs.order_by('-creado', '-id')
 
@@ -1082,8 +1128,12 @@ def matricula_lista(request, modalidad):
         'jornada_seleccionada': jornada_id if jornada_filtrada else '',
         'jornada_filtrada': jornada_filtrada,
         'registrador_seleccionado': registrado_por_id,
+        'modalidad_filtro': modalidad_filtro,
+        'campus_seleccionado': campus,
+        'campus_opciones': campus_opciones,
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
+        'modalidad_registro': 'presencial' if modalidad == 'todos' else modalidad,
     })
 
 
@@ -1750,17 +1800,29 @@ def _matriculas_filtradas_para_export(request, modalidad):
     descuento_str = request.GET.get('descuento', '').strip()
     jornada_id = request.GET.get('jornada', '').strip()
     registrador_id = request.GET.get('registrador', '').strip()
+    modalidad_filtro = request.GET.get('modalidad_filtro', '').strip()
+    campus = request.GET.get('campus', '').strip()
 
     qs = (Matricula.objects
-          .filter(modalidad=modalidad)
-          .select_related('estudiante', 'curso', 'jornada', 'registrado_por'))
+          .select_related('estudiante', 'curso', 'jornada', 'jornada__sede', 'registrado_por'))
+    if modalidad != 'todos':
+        qs = qs.filter(modalidad=modalidad)
+    else:
+        if modalidad_filtro in MODALIDADES_VALIDAS:
+            qs = qs.filter(modalidad=modalidad_filtro)
+        if campus.startswith('sede:') and campus[5:].isdigit():
+            qs = qs.filter(jornada__sede_id=int(campus[5:]))
+        elif campus.startswith('ciudad:') and campus[7:]:
+            qs = qs.filter(jornada__ciudad=campus[7:])
 
     if q:
         qs = _filtrar_matriculas_por_busqueda(qs, q)
     if curso_id:
         qs = qs.filter(curso_id=curso_id)
     if jornada_id.isdigit():
-        qs = qs.filter(jornada_id=int(jornada_id), jornada__modalidad=modalidad)
+        qs = qs.filter(jornada_id=int(jornada_id))
+        if modalidad != 'todos':
+            qs = qs.filter(jornada__modalidad=modalidad)
         
     if descuento_str == 'si':
         qs = qs.filter(descuento__gt=0)
@@ -1779,7 +1841,7 @@ def matricula_export_excel(request, modalidad):
     from .views_pagos import _build_excel_response
     from datetime import date as _date
 
-    modalidad = _modalidad_o_404(modalidad)
+    modalidad = _modalidad_o_404(modalidad, incluir_todos=True)
     qs = _matriculas_filtradas_para_export(request, modalidad)
 
     headers = [
@@ -1873,7 +1935,7 @@ def matricula_export_pdf(request, modalidad):
             status=500, content_type='text/plain; charset=utf-8',
         )
 
-    modalidad = _modalidad_o_404(modalidad)
+    modalidad = _modalidad_o_404(modalidad, incluir_todos=True)
     qs = _matriculas_filtradas_para_export(request, modalidad)
 
     buf = BytesIO()

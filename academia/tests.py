@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -7,11 +7,11 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import AbonoForm, AdicionalSupletorioRapidoForm
+from .forms import AbonoForm, AdicionalSupletorioRapidoForm, MatriculaForm
 from .models import (
     Abono, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
-    MatriculaArchivada, PersonaExterna,
+    MatriculaArchivada, PersonaExterna, Sede,
 )
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
@@ -120,6 +120,102 @@ class JornadaMatriculasAccessTests(TestCase):
         self.assertEqual(len(matriculas), 1)
         self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
 
+    def test_lista_matriculas_todos_mezcla_presencial_y_online(self):
+        sede = Sede.objects.create(nombre='Guayaquil', orden=1)
+        self.jornada_1.sede = sede
+        self.jornada_1.save(update_fields=['sede', 'ciudad'])
+        curso_online = Curso.objects.create(
+            nombre='Curso Online Jornadas Test',
+            ofrece_presencial=False,
+            ofrece_online=True,
+            valor_online=Decimal('80.00'),
+        )
+        jornada_online = JornadaCurso.objects.create(
+            curso=curso_online,
+            modalidad='online',
+            descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 7, 7),
+        )
+        estudiante_online = Estudiante.objects.create(
+            cedula='1207342718',
+            nombres='Estudiante Online',
+        )
+        Matricula.objects.create(
+            estudiante=estudiante_online,
+            curso=curso_online,
+            jornada=jornada_online,
+            modalidad='online',
+            fecha_matricula=date(2026, 7, 7),
+            valor_curso=Decimal('80.00'),
+            valor_pagado=Decimal('80.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.asesor,
+        )
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(
+            reverse('academia:matricula_lista', kwargs={'modalidad': 'todos'})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        modalidades = {m.modalidad for m in response.context['matriculas']}
+        self.assertEqual(response.context['modalidad'], 'todos')
+        self.assertEqual(response.context['modalidad_registro'], 'presencial')
+        self.assertIn('presencial', modalidades)
+        self.assertIn('online', modalidades)
+
+    def test_lista_matriculas_todos_filtra_modalidad_y_sede(self):
+        sede_guayaquil = Sede.objects.create(nombre='Guayaquil', orden=1)
+        sede_quito = Sede.objects.create(nombre='Quito', orden=2)
+        self.jornada_1.sede = sede_guayaquil
+        self.jornada_1.save(update_fields=['sede', 'ciudad'])
+        self.jornada_2.sede = sede_quito
+        self.jornada_2.save(update_fields=['sede', 'ciudad'])
+        curso_online = Curso.objects.create(
+            nombre='Curso Online Filtro',
+            ofrece_presencial=False,
+            ofrece_online=True,
+            valor_online=Decimal('80.00'),
+        )
+        jornada_online = JornadaCurso.objects.create(
+            curso=curso_online,
+            modalidad='online',
+            descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 7, 7),
+        )
+        estudiante_online = Estudiante.objects.create(
+            cedula='1207342718',
+            nombres='Estudiante Online Filtro',
+        )
+        Matricula.objects.create(
+            estudiante=estudiante_online,
+            curso=curso_online,
+            jornada=jornada_online,
+            modalidad='online',
+            fecha_matricula=date(2026, 7, 7),
+            valor_curso=Decimal('80.00'),
+            valor_pagado=Decimal('80.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.asesor,
+        )
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(
+            reverse('academia:matricula_lista', kwargs={'modalidad': 'todos'}),
+            {
+                'modalidad_filtro': 'presencial',
+                'campus': f'sede:{sede_guayaquil.pk}',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = list(response.context['matriculas'])
+        self.assertEqual(response.context['modalidad_filtro'], 'presencial')
+        self.assertEqual(response.context['campus_seleccionado'], f'sede:{sede_guayaquil.pk}')
+        self.assertTrue(matriculas)
+        self.assertTrue(all(m.modalidad == 'presencial' for m in matriculas))
+        self.assertTrue(all(m.jornada.sede_id == sede_guayaquil.pk for m in matriculas))
+
     def test_listas_muestran_ultimo_registro_primero_aunque_fecha_sea_anterior(self):
         self.client.force_login(self.asesor)
         vieja = Matricula.objects.get(estudiante=self.estudiante_1)
@@ -146,6 +242,250 @@ class JornadaMatriculasAccessTests(TestCase):
             self.estudiante_2,
         )
         self.assertEqual(pagos_response.context['matriculas'][0].estudiante, self.estudiante_2)
+
+    def test_control_registro_ordena_matriculas_por_fecha_de_inscripcion(self):
+        admin = User.objects.create_superuser(username='admin_control')
+        reciente = Matricula.objects.get(estudiante=self.estudiante_1)
+        antigua = Matricula.objects.get(estudiante=self.estudiante_2)
+        estudiante_futura = Estudiante.objects.create(
+            cedula='1207342718',
+            nombres='Estudiante Fecha Futura',
+        )
+        futura = Matricula.objects.create(
+            estudiante=estudiante_futura,
+            curso=self.curso,
+            jornada=self.jornada_1,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 7, 16),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.asesor,
+        )
+        ahora = timezone.now()
+        Matricula.objects.filter(pk=reciente.pk).update(
+            fecha_matricula=date(2026, 7, 15),
+            creado=ahora - timezone.timedelta(minutes=10),
+        )
+        Matricula.objects.filter(pk=antigua.pk).update(
+            fecha_matricula=date(2026, 7, 1),
+            creado=ahora,
+        )
+        Matricula.objects.filter(pk=futura.pk).update(creado=ahora - timezone.timedelta(minutes=20))
+        self.client.force_login(admin)
+
+        response = self.client.get(reverse('academia:control_registro'))
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = list(response.context['matriculas'])
+        self.assertEqual(
+            [m.estudiante for m in matriculas[:3]],
+            [estudiante_futura, self.estudiante_1, self.estudiante_2],
+        )
+
+    def test_control_registro_ordena_pagos_por_fecha_reciente(self):
+        admin = User.objects.create_superuser(username='admin_control_orden_pagos')
+        matricula_1 = Matricula.objects.get(estudiante=self.estudiante_1)
+        matricula_2 = Matricula.objects.get(estudiante=self.estudiante_2)
+        pago_15 = Abono.objects.create(
+            matricula=matricula_1,
+            fecha=date(2026, 7, 15),
+            monto=Decimal('15.00'),
+            metodo='efectivo',
+            registrado_por=self.asesor,
+        )
+        pago_01 = Abono.objects.create(
+            matricula=matricula_2,
+            fecha=date(2026, 7, 1),
+            monto=Decimal('10.00'),
+            metodo='efectivo',
+            registrado_por=self.asesor,
+        )
+        pago_16 = Abono.objects.create(
+            matricula=matricula_1,
+            fecha=date(2026, 7, 16),
+            monto=Decimal('16.00'),
+            metodo='transferencia',
+            registrado_por=self.asesor,
+        )
+        Abono.objects.filter(pk=pago_15.pk).update(
+            creado=timezone.make_aware(datetime(2026, 7, 15, 12, 0))
+        )
+        Abono.objects.filter(pk=pago_01.pk).update(
+            creado=timezone.make_aware(datetime(2026, 7, 1, 12, 0))
+        )
+        Abono.objects.filter(pk=pago_16.pk).update(
+            creado=timezone.make_aware(datetime(2026, 7, 16, 12, 0))
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(reverse('academia:control_registro'), {'tab': 'pagos'})
+
+        self.assertEqual(response.status_code, 200)
+        pagos = list(response.context['pagos'])
+        self.assertEqual(pagos[:3], [pago_16, pago_15, pago_01])
+
+    def test_control_registro_filtra_estudiante_sin_tildes_ni_mayusculas(self):
+        admin = User.objects.create_superuser(username='admin_control_busqueda')
+        self.estudiante_1.nombres = 'Osmár Jornada Uno'
+        self.estudiante_1.save(update_fields=['nombres'])
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:control_registro'),
+            {'q': 'OSMAR jornada'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = list(response.context['matriculas'])
+        self.assertEqual(len(matriculas), 1)
+        self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
+
+    def test_control_registro_filtra_por_curso_campus_y_fecha_matricula(self):
+        admin = User.objects.create_superuser(username='admin_control_filtros')
+        sede_guayaquil = Sede.objects.create(nombre='Guayaquil', orden=1)
+        sede_quito = Sede.objects.create(nombre='Quito', orden=2)
+        sede_cuenca = Sede.objects.create(nombre='Cuenca', orden=3)
+        self.jornada_1.sede = sede_guayaquil
+        self.jornada_1.save(update_fields=['sede', 'ciudad'])
+        self.jornada_2.sede = sede_quito
+        self.jornada_2.save(update_fields=['sede', 'ciudad'])
+        otra_curso = Curso.objects.create(
+            nombre='Curso Otro Control',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('100.00'),
+        )
+        otra_jornada = JornadaCurso.objects.create(
+            curso=otra_curso,
+            modalidad='presencial',
+            descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 7, 9),
+            sede=sede_cuenca,
+        )
+        otro_estudiante = Estudiante.objects.create(
+            cedula='1207342718',
+            nombres='Estudiante Otro Curso',
+        )
+        Matricula.objects.create(
+            estudiante=otro_estudiante,
+            curso=otra_curso,
+            jornada=otra_jornada,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 7, 9),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.asesor,
+        )
+        Matricula.objects.filter(estudiante=self.estudiante_1).update(
+            fecha_matricula=date(2026, 7, 5),
+        )
+        Matricula.objects.filter(estudiante=self.estudiante_2).update(
+            fecha_matricula=date(2026, 7, 15),
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:control_registro'),
+            {
+                'curso': str(self.curso.pk),
+                'campus': f'sede:{sede_guayaquil.pk}',
+                'fecha_desde': '2026-07-01',
+                'fecha_hasta': '2026-07-10',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = list(response.context['matriculas'])
+        self.assertEqual(len(matriculas), 1)
+        self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
+        campus_labels = [opcion['label'] for opcion in response.context['campus_opciones']]
+        self.assertIn('Guayaquil', campus_labels)
+        self.assertIn('Quito', campus_labels)
+        self.assertNotIn('Cuenca', campus_labels)
+
+    def test_control_registro_filtra_pagos_por_fecha_curso_metodo_y_monto(self):
+        admin = User.objects.create_superuser(username='admin_control_pagos')
+        matricula_1 = Matricula.objects.get(estudiante=self.estudiante_1)
+        matricula_2 = Matricula.objects.get(estudiante=self.estudiante_2)
+        otro_curso = Curso.objects.create(
+            nombre='Curso Pagos Otro Control',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('100.00'),
+        )
+        otra_jornada = JornadaCurso.objects.create(
+            curso=otro_curso,
+            modalidad='presencial',
+            descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 7, 9),
+        )
+        otro_estudiante = Estudiante.objects.create(
+            cedula='1207342718',
+            nombres='Estudiante Pago Otro',
+        )
+        otra_matricula = Matricula.objects.create(
+            estudiante=otro_estudiante,
+            curso=otro_curso,
+            jornada=otra_jornada,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 7, 9),
+            valor_curso=Decimal('100.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.asesor,
+        )
+        pago_objetivo = Abono.objects.create(
+            matricula=matricula_1,
+            fecha=date(2026, 7, 9),
+            monto=Decimal('25.00'),
+            metodo='transferencia',
+            registrado_por=self.asesor,
+        )
+        pago_otro_monto = Abono.objects.create(
+            matricula=matricula_2,
+            fecha=date(2026, 7, 9),
+            monto=Decimal('10.00'),
+            metodo='transferencia',
+            registrado_por=self.asesor,
+        )
+        pago_otro_curso = Abono.objects.create(
+            matricula=otra_matricula,
+            fecha=date(2026, 7, 9),
+            monto=Decimal('25.00'),
+            metodo='transferencia',
+            registrado_por=self.asesor,
+        )
+        pago_otro_metodo = Abono.objects.create(
+            matricula=matricula_2,
+            fecha=date(2026, 7, 9),
+            monto=Decimal('25.00'),
+            metodo='efectivo',
+            registrado_por=self.asesor,
+        )
+        fecha_registro = timezone.make_aware(datetime(2026, 7, 9, 17, 25))
+        Abono.objects.filter(
+            pk__in=[
+                pago_objetivo.pk, pago_otro_monto.pk,
+                pago_otro_curso.pk, pago_otro_metodo.pk,
+            ]
+        ).update(creado=fecha_registro)
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:control_registro'),
+            {
+                'tab': 'pagos',
+                'pago_fecha': '2026-07-09',
+                'pago_curso': str(self.curso.pk),
+                'pago_metodo': 'transferencia',
+                'pago_monto': '25,00',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['active_tab'], 'pagos')
+        pagos = list(response.context['pagos'])
+        self.assertEqual(pagos, [pago_objetivo])
 
 
 class BusquedaSinTildesTests(TestCase):
@@ -496,6 +836,7 @@ class CierreCursoManualTests(TestCase):
 class PagoInicialMatriculaTests(TestCase):
     def setUp(self):
         self.usuario = User.objects.create_user(username='soporte')
+        self.sede = Sede.objects.create(nombre='Guayaquil', orden=1)
         self.curso = Curso.objects.create(
             nombre='Curso Técnico',
             ofrece_presencial=True,
@@ -507,11 +848,75 @@ class PagoInicialMatriculaTests(TestCase):
             modalidad='presencial',
             descripcion='lun_mie_vie',
             fecha_inicio=date(2026, 7, 5),
+            sede=self.sede,
         )
         self.estudiante = Estudiante.objects.create(
             cedula='1207342716',
             nombres='Gianny Guevara',
         )
+
+    def _matricula_form_data(self, **overrides):
+        data = {
+            'mat-curso': str(self.curso.pk),
+            'mat-jornada': str(self.jornada.pk),
+            'mat-estado': 'activa',
+            'mat-tipo_matricula': 'reserva_abono',
+            'mat-forma_pago': 'abono',
+            'mat-fecha_matricula': '2026-07-05',
+            'mat-valor_curso': '115.00',
+            'mat-descuento': '0.00',
+            'mat-valor_pagado': '30.00',
+            'mat-observaciones': '',
+            'mat-tipo_registro': 'central_ia',
+            'mat-link_comprobante': '',
+            'mat-factura_realizada': 'no',
+            'mat-fact_nombres': '',
+            'mat-fact_cedula': '',
+            'mat-fact_correo': '',
+            'mat-tipo_cobro': 'un_solo_metodo',
+            'mat-metodo_pago': 'efectivo',
+            'mat-banco': '',
+            'mat-monto_pago_1': '',
+            'mat-metodo_pago_1': '',
+            'mat-banco_1': '',
+            'mat-monto_pago_2': '',
+            'mat-metodo_pago_2': '',
+            'mat-banco_2': '',
+            'mat-modulos_a_pagar': '1',
+        }
+        data.update(overrides)
+        return data
+
+    def test_matricula_metodo_pago_muestra_seleccione_primero(self):
+        form = MatriculaForm(prefix='mat')
+
+        choices = list(form.fields['metodo_pago'].choices)
+
+        self.assertEqual(choices[0], ('', 'Seleccione'))
+
+    def test_matricula_rechaza_metodo_pago_vacio(self):
+        form = MatriculaForm(
+            self._matricula_form_data(**{'mat-metodo_pago': ''}),
+            prefix='mat',
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('metodo_pago', form.errors)
+
+    def test_matricula_rechaza_jornada_presencial_sin_sede(self):
+        jornada_sin_sede = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_jue',
+            fecha_inicio=date(2026, 7, 6),
+        )
+        form = MatriculaForm(
+            self._matricula_form_data(**{'mat-jornada': str(jornada_sin_sede.pk)}),
+            prefix='mat',
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('jornada', form.errors)
 
     def _mat_form(self, modulos_a_pagar=1, **overrides):
         data = {
@@ -843,6 +1248,44 @@ class PagoInicialMatriculaTests(TestCase):
         }
         data.update(overrides)
         return data
+
+    def test_abono_metodo_pago_muestra_seleccione_primero(self):
+        form = AbonoForm(matricula=None)
+
+        self.assertEqual(list(form.fields['metodo'].choices)[0], ('', 'Seleccione'))
+        self.assertEqual(list(form.fields['metodo_pago_1'].choices)[0], ('', 'Seleccione'))
+        self.assertEqual(list(form.fields['metodo_pago_2'].choices)[0], ('', 'Seleccione'))
+        self.assertEqual(form['metodo'].value(), '')
+
+    def test_abono_rechaza_metodo_pago_vacio_en_un_solo_metodo(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('40.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+
+        form = AbonoForm(
+            self._abono_data(
+                tipo_cobro='un_solo_metodo',
+                metodo='',
+                monto_pago_1='',
+                metodo_pago_1='',
+                monto_pago_2='',
+                metodo_pago_2='',
+            ),
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('metodo', form.errors)
 
     def test_abono_mixto_rechaza_suma_distinta_al_monto_principal(self):
         matricula = Matricula.objects.create(

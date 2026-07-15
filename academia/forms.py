@@ -450,9 +450,9 @@ class MatriculaForm(forms.ModelForm):
 
         from .models import Abono
         if 'metodo_pago' in self.fields:
-            self.fields['metodo_pago'].choices = Abono.METODOS
-            self.fields['metodo_pago_1'].choices = Abono.METODOS
-            self.fields['metodo_pago_2'].choices = Abono.METODOS
+            self.fields['metodo_pago'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
+            self.fields['metodo_pago_1'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
+            self.fields['metodo_pago_2'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
         # Añadir opción vacía para que "Matrícula *" no venga preseleccionado
         if 'tipo_matricula' in self.fields:
             from .models import TIPO_MATRICULA
@@ -510,7 +510,7 @@ class MatriculaForm(forms.ModelForm):
         self.fields['tipo_registro'].empty_label = '— Selecciona origen —'
 
         # Required flags
-        self.fields['jornada'].required = False
+        self.fields['jornada'].required = captura_pago
         self.fields['talla_camiseta'].required = False
         self.fields['tipo_matricula'].required = captura_pago
         self.fields['forma_pago'].required = captura_pago
@@ -592,7 +592,25 @@ class MatriculaForm(forms.ModelForm):
 
             curso = cleaned.get('curso')
             jornada = cleaned.get('jornada')
+            tipo_cobro = cleaned.get('tipo_cobro') or 'un_solo_metodo'
+            metodo_pago = cleaned.get('metodo_pago')
+            banco = cleaned.get('banco')
             modalidad = jornada.modalidad if jornada else self.modalidad
+
+            if not jornada:
+                self.add_error('jornada', 'Debes seleccionar una jornada con sede o plataforma.')
+            elif jornada.modalidad == 'presencial' and not jornada.sede_id:
+                self.add_error('jornada', 'La jornada presencial seleccionada debe tener sede.')
+
+            if tipo_cobro != 'mixto':
+                if not metodo_pago:
+                    self.add_error('metodo_pago', 'Selecciona el método de pago.')
+                if metodo_pago == 'transferencia' and not banco:
+                    self.add_error('banco', 'Debes indicar el banco cuando el método es Transferencia.')
+                if metodo_pago == 'tarjeta' and not banco:
+                    self.add_error('banco', 'Debes indicar la opción correspondiente (Payphone).')
+                if metodo_pago not in ('transferencia', 'tarjeta'):
+                    cleaned['banco'] = ''
 
             vp = cleaned.get('valor_pagado')
 
@@ -709,6 +727,7 @@ class AbonoForm(forms.ModelForm):
             'tipo_pago': 'Tipo de pago',
             'numero_modulo': 'Módulo',
             'cuenta_para_saldo': '¿Suma al pago del curso?',
+            'metodo': 'Método de pago',
             'numero_recibo': 'Nº de recibo',
             'banco': 'Banco',
         }
@@ -728,9 +747,13 @@ class AbonoForm(forms.ModelForm):
             self.fields['banco_2'].widget.choices = bancos_list
 
         if 'metodo' in self.fields:
-            self.fields['metodo'].choices = Abono.METODOS
-            self.fields['metodo_pago_1'].choices = Abono.METODOS
-            self.fields['metodo_pago_2'].choices = Abono.METODOS
+            metodo_choices = [('', 'Seleccione')] + list(Abono.METODOS)
+            self.fields['metodo'].choices = metodo_choices
+            self.fields['metodo'].required = False
+            self.fields['metodo_pago_1'].choices = metodo_choices
+            self.fields['metodo_pago_2'].choices = metodo_choices
+            if not self.is_bound and not (self.instance and self.instance.pk):
+                self.initial.setdefault('metodo', '')
 
         if self.instance and self.instance.pk and self.instance.monto_2:
             self.initial['tipo_cobro'] = 'mixto'
@@ -815,17 +838,22 @@ class AbonoForm(forms.ModelForm):
         if tipo_pago in ('abono', 'pago_completo'):
             cleaned['numero_modulo'] = None
 
-        if metodo == 'transferencia' and not banco:
-            raise forms.ValidationError({
-                'banco': 'Debes indicar el banco cuando el método es Transferencia.'
-            })
-        if metodo == 'tarjeta' and not banco:
-            raise forms.ValidationError({
-                'banco': 'Debes indicar la opción correspondiente (Payphone).'
-            })
+        if tipo_cobro != 'mixto':
+            if not metodo:
+                self.add_error('metodo', 'Selecciona el método de pago.')
+            elif metodo == 'transferencia' and not banco:
+                self.add_error(
+                    'banco',
+                    'Debes indicar el banco cuando el método es Transferencia.'
+                )
+            elif metodo == 'tarjeta' and not banco:
+                self.add_error(
+                    'banco',
+                    'Debes indicar la opción correspondiente (Payphone).'
+                )
 
-        if metodo not in ['transferencia', 'tarjeta']:
-            cleaned['banco'] = ''
+            if metodo not in ['transferencia', 'tarjeta']:
+                cleaned['banco'] = ''
 
         if tipo_cobro == 'mixto':
             monto_1 = cleaned.get('monto_pago_1') or Decimal('0.00')

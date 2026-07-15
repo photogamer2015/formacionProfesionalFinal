@@ -1500,7 +1500,6 @@ def matricula_abonos(request, pk):
         initial={
             'fecha': date.today(),
             'monto': Decimal('0.00'),
-            'metodo': 'efectivo',
         },
         matricula=matricula,
     )
@@ -2415,7 +2414,6 @@ def recuperacion_cobrar(request, recup_pk):
                 'monto': Decimal('25.00'),
                 'tipo_pago': 'recuperacion',
                 'numero_modulo': recup.numero_modulo,
-                'metodo': 'efectivo',
                 'cuenta_para_saldo': True,
             },
             matricula=matricula,

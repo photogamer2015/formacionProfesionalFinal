@@ -121,13 +121,12 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/bienvenida/'
 
 
-# ======== CONFIGURACIÓN DE SESIÓN (AUTO-LOGOUT) ========
-# Cerrar sesión después de 20 minutos (1200 segundos) de inactividad
-SESSION_COOKIE_AGE = 1200
-# Refrescar la cookie en cada solicitud para que cuente 20 minutos desde el último clic
+# ======== CONFIGURACIÓN DE SESIÓN ========
+# La sesión no se cierra por inactividad ni al cerrar el navegador.
+# El usuario sale manualmente desde el botón "Cerrar sesión".
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 365 * 10
 SESSION_SAVE_EVERY_REQUEST = True
-# Cerrar sesión si el usuario cierra el navegador
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
 
 # ======== SEGURIDAD EN PRODUCCIÓN (AWS / HTTPS) ========

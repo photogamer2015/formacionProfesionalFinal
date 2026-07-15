@@ -5,17 +5,20 @@
 {% block content %}
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
-    <a href="{% url 'academia:matricula_menu' modalidad=modalidad %}">Matrícula</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:matricula_menu' modalidad=modalidad_registro %}">Matrícula</a> &nbsp;›&nbsp;
     Lista
 </div>
 
 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
     <div>
         <h2 class="page-title">
-            {% if modalidad == 'online' %}🟢{% else %}🏫{% endif %}
+            {% if modalidad == 'todos' %}📋{% elif modalidad == 'online' %}🟢{% else %}🏫{% endif %}
             Matriculados {{ modalidad_label }}
         </h2>
-        <p class="page-subtitle">Total: {{ matriculas.count }} estudiante{{ matriculas.count|pluralize }} matriculado{{ matriculas.count|pluralize }} en esta modalidad.</p>
+        <p class="page-subtitle">
+            Total: {{ matriculas.count }} estudiante{{ matriculas.count|pluralize }} matriculado{{ matriculas.count|pluralize }}
+            {% if modalidad == 'todos' %}entre presencial y online.{% else %}en esta modalidad.{% endif %}
+        </p>
         {% if jornada_filtrada %}
         <p class="page-subtitle" style="margin-top:4px;">
             Filtro de jornada:
@@ -27,8 +30,12 @@
     </div>
 </div>
 
-{# ── Tabs Presencial / Online ──────────────────────── #}
+{# ── Tabs Todos / Presencial / Online ──────────────────────── #}
 <div class="modalidad-tabs" style="margin-bottom: 24px;">
+    <a href="{% url 'academia:matricula_lista' modalidad='todos' %}"
+       class="{% if modalidad == 'todos' %}active{% endif %}">
+        📋 Todos
+    </a>
     <a href="{% url 'academia:matricula_lista' modalidad='presencial' %}"
        class="{% if modalidad == 'presencial' %}active{% endif %}">
         🏫 Presencial
@@ -59,6 +66,21 @@
             <option value="si" {% if descuento_seleccionado == 'si' %}selected{% endif %}>Con descuento</option>
             <option value="no" {% if descuento_seleccionado == 'no' %}selected{% endif %}>Sin descuento</option>
         </select>
+        {% if modalidad == 'todos' %}
+        <select name="modalidad_filtro" class="form-input" style="max-width:190px;">
+            <option value="">Modalidad: Todas</option>
+            <option value="presencial" {% if modalidad_filtro == 'presencial' %}selected{% endif %}>🏫 Presencial</option>
+            <option value="online" {% if modalidad_filtro == 'online' %}selected{% endif %}>🟢 Online</option>
+        </select>
+        <select name="campus" class="form-input" style="max-width:190px;">
+            <option value="">Sede: Todas</option>
+            {% for campus in campus_opciones %}
+            <option value="{{ campus.value }}" {% if campus_seleccionado == campus.value %}selected{% endif %}>
+                {{ campus.label }}
+            </option>
+            {% endfor %}
+        </select>
+        {% endif %}
         <select name="registrador" class="form-input" style="max-width:180px;">
             <option value="">Registrador: Todos</option>
             {% for r in registradores %}
@@ -68,21 +90,21 @@
             {% endfor %}
         </select>
         <button type="submit" class="btn btn-primary">Filtrar</button>
-        {% if q or curso_seleccionado or descuento_seleccionado or registrador_seleccionado or jornada_seleccionada %}
+        {% if q or curso_seleccionado or descuento_seleccionado or registrador_seleccionado or jornada_seleccionada or modalidad_filtro or campus_seleccionado %}
         <a href="{% url 'academia:matricula_lista' modalidad=modalidad %}" class="btn btn-secondary">Limpiar</a>
         {% endif %}
     </form>
 
     <div style="display:flex; gap:6px;">
-        <a href="{% url 'academia:matricula_export_excel' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}&jornada={{ jornada_seleccionada }}"
+        <a href="{% url 'academia:matricula_export_excel' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}&jornada={{ jornada_seleccionada }}&modalidad_filtro={{ modalidad_filtro }}&campus={{ campus_seleccionado }}"
             class="btn btn-secondary" title="Exportar a Excel">
             📊 Excel
         </a>
-        <a href="{% url 'academia:matricula_export_pdf' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}&jornada={{ jornada_seleccionada }}"
+        <a href="{% url 'academia:matricula_export_pdf' modalidad=modalidad %}?q={{ q }}&curso={{ curso_seleccionado }}&descuento={{ descuento_seleccionado }}&registrador={{ registrador_seleccionado }}&jornada={{ jornada_seleccionada }}&modalidad_filtro={{ modalidad_filtro }}&campus={{ campus_seleccionado }}"
             class="btn btn-secondary" title="Exportar a PDF">
             📄 PDF
         </a>
-        <a href="{% url 'academia:matricula_registrar' modalidad=modalidad %}" class="btn btn-success">
+        <a href="{% url 'academia:matricula_registrar' modalidad=modalidad_registro %}" class="btn btn-success">
             + Nueva matrícula
         </a>
     </div>
@@ -209,10 +231,10 @@
                 </td>
                 <td>
                     <div class="row-actions">
-                        <a href="{% url 'academia:matricula_editar' modalidad=modalidad pk=m.pk %}"
+                        <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}"
                             class="btn btn-warning btn-sm"
                             onclick="event.preventDefault(); abrirModalEditar(this.href);">Editar</a>
-                        <form method="post" action="{% url 'academia:matricula_eliminar' modalidad=modalidad pk=m.pk %}"
+                        <form method="post" action="{% url 'academia:matricula_eliminar' modalidad=m.modalidad pk=m.pk %}"
                             style="display:inline;"
                             onsubmit="return false;">
                             {% csrf_token %}
@@ -227,7 +249,8 @@
     </table>
     {% else %}
     <div class="empty-state">
-        <p style="font-size:15px; margin-bottom:12px;">No hay matrículas {{ modalidad_label|lower }} registradas
+        <p style="font-size:15px; margin-bottom:12px;">
+            No hay matrículas {% if modalidad == 'todos' %}registradas{% else %}{{ modalidad_label|lower }} registradas{% endif %}
             todavía.</p>
         <a href="{% url 'academia:matricula_registrar' modalidad=modalidad %}" class="btn btn-primary">Registrar la
             primera</a>

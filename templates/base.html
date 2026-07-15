@@ -51,21 +51,6 @@
 	            min-height: 100vh;
 	            color: var(--fp-ink);
 	        }
-	        body::before {
-	            content: "";
-	            position: fixed;
-	            inset: 82px 0 0 0;
-	            z-index: 0;
-	            pointer-events: none;
-	            background-image: url("{% static 'logo.png' %}");
-	            background-repeat: no-repeat;
-	            background-position: calc(100% + 120px) 24px;
-	            background-size: clamp(300px, 42vw, 560px) auto;
-	            opacity: .045;
-	            filter: saturate(.9);
-	            mix-blend-mode: multiply;
-	        }
-	        
 	        header.top {
 	            position: relative;
 	            z-index: 20;
@@ -633,11 +618,6 @@
 	                radial-gradient(circle at 88% 8%, rgba(70,108,178,.14), transparent 36%),
 	                linear-gradient(180deg, #070a11 0%, #0d121c 48%, #090d14 100%);
 	            color: var(--fp-dark-text);
-	        }
-	        body.dark-mode::before {
-	            opacity: .035;
-	            filter: saturate(.65) brightness(1.25);
-	            mix-blend-mode: screen;
 	        }
 	        body.dark-mode header.top {
 	            background:
@@ -1802,26 +1782,6 @@
                     }
                 });
             }
-
-            // ── Lógica de inactividad ──
-            {% if user.is_authenticated %}
-            const TIEMPO_INACTIVIDAD = 20 * 60 * 1000; // 20 minutos
-            let temporizadorInactividad;
-
-            function reiniciarTemporizador() {
-                clearTimeout(temporizadorInactividad);
-                temporizadorInactividad = setTimeout(function() {
-                    alert("Sección finalizada por inactividad.");
-                    if (logoutForm) logoutForm.submit();
-                }, TIEMPO_INACTIVIDAD);
-            }
-
-            reiniciarTemporizador();
-            window.addEventListener('mousemove', reiniciarTemporizador);
-            window.addEventListener('keypress', reiniciarTemporizador);
-            window.addEventListener('click', reiniciarTemporizador);
-            window.addEventListener('scroll', reiniciarTemporizador);
-            {% endif %}
 
             // ── Campana de recordatorios (abrir/cerrar panel) ──
             const notifToggle = document.getElementById('notif-toggle');

@@ -532,7 +532,10 @@
                 {{ form.observaciones }}
             </div>
 
-            <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap;">
+                <small id="abono-validacion-aviso" aria-live="polite"
+                    style="display:none; flex:1; min-width:240px; color:#c62828; font-size:12px; font-weight:700; text-align:right;">
+                </small>
                 <button type="button" class="btn btn-secondary" onclick="cerrarModalAbono()">Cancelar</button>
                 <button type="submit" class="btn btn-success" id="btn-guardar-pago">Guardar pago</button>
             </div>
@@ -640,7 +643,10 @@
         }
     }
     if (tipoSel) {
-        tipoSel.addEventListener('change', actualizar);
+        tipoSel.addEventListener('change', () => {
+            actualizar();
+            validarMonto();
+        });
     }
 
     // ========== MOSTRAR/OCULTAR CONTENEDORES DE PAGO MIXTO ==========
@@ -672,10 +678,89 @@
     const mixtoErrorMsg = document.getElementById('mixto-abono-error-msg');
     const btnGuardar = document.getElementById('btn-guardar-pago');
     const formPago = btnGuardar ? btnGuardar.closest('form') : null;
+    const avisoValidacionPago = document.getElementById('abono-validacion-aviso');
+    const fechaInput = document.getElementById('id_fecha');
+    const moduloSelect = document.getElementById('id_numero_modulo');
 
     function valorNumero(input) {
         if (!input) return 0;
         return parseFloat((input.value || '').replace(',', '.')) || 0;
+    }
+
+    function agregarFaltante(faltantes, label) {
+        if (label && !faltantes.includes(label)) {
+            faltantes.push(label);
+        }
+    }
+
+    function requiereBanco(selectMetodo) {
+        return selectMetodo && (selectMetodo.value === 'transferencia' || selectMetodo.value === 'tarjeta');
+    }
+
+    function estaVisible(el) {
+        if (!el) return false;
+        return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    }
+
+    function textoListaFaltantes(faltantes) {
+        if (faltantes.length <= 1) return faltantes[0] || '';
+        if (faltantes.length === 2) return `${faltantes[0]} y ${faltantes[1]}`;
+        return `${faltantes.slice(0, -1).join(', ')} y ${faltantes[faltantes.length - 1]}`;
+    }
+
+    function obtenerFaltantesPago() {
+        const faltantes = [];
+        const montoPrincipal = valorNumero(montoInput);
+
+        if (tipoSel && !tipoSel.value) agregarFaltante(faltantes, 'Tipo de pago');
+        if (fechaInput && !fechaInput.value) agregarFaltante(faltantes, 'Fecha');
+        if (!montoInput || montoPrincipal <= 0) agregarFaltante(faltantes, 'Monto mayor a $0.00');
+
+        if (bloqueModulo && estaVisible(bloqueModulo) && moduloSelect && !moduloSelect.value) {
+            agregarFaltante(faltantes, 'Módulo');
+        }
+
+        if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
+            const monto1 = valorNumero(monto1Input);
+            const monto2 = valorNumero(monto2Input);
+            if (monto1 <= 0) agregarFaltante(faltantes, 'Monto 1');
+            if (!metodoSel1 || !metodoSel1.value) agregarFaltante(faltantes, 'Método 1');
+            if (requiereBanco(metodoSel1) && bancoSel1 && !bancoSel1.value) {
+                agregarFaltante(faltantes, metodoSel1.value === 'tarjeta' ? 'Tarjeta / app 1' : 'Banco 1');
+            }
+            if (monto2 <= 0) agregarFaltante(faltantes, 'Monto 2');
+            if (!metodoSel2 || !metodoSel2.value) agregarFaltante(faltantes, 'Método 2');
+            if (requiereBanco(metodoSel2) && bancoSel2 && !bancoSel2.value) {
+                agregarFaltante(faltantes, metodoSel2.value === 'tarjeta' ? 'Tarjeta / app 2' : 'Banco 2');
+            }
+            if (montoPrincipal > 0 && monto1 > 0 && monto2 > 0 && Math.abs((monto1 + monto2) - montoPrincipal) > 0.01) {
+                agregarFaltante(faltantes, 'Suma del pago mixto');
+            }
+        } else {
+            if (!metodoSel || !metodoSel.value) agregarFaltante(faltantes, 'Método de pago');
+            if (requiereBanco(metodoSel) && bancoSel && !bancoSel.value) {
+                agregarFaltante(faltantes, metodoSel.value === 'tarjeta' ? 'Tarjeta / app' : 'Banco');
+            }
+        }
+
+        return faltantes;
+    }
+
+    function enfocarPrimerCampoPendiente() {
+        const campos = [
+            tipoSel,
+            fechaInput,
+            montoInput,
+            moduloSelect,
+            tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? monto1Input : metodoSel,
+            tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? metodoSel1 : bancoSel,
+            tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? bancoSel1 : null,
+            tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? monto2Input : null,
+            tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? metodoSel2 : null,
+            tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? bancoSel2 : null,
+        ];
+        const campo = campos.find((el) => el && estaVisible(el) && !el.disabled && (!el.value || (el.type === 'number' && valorNumero(el) <= 0)));
+        if (campo) campo.focus();
     }
 
     function mostrarErrorMixto(mostrar, mensaje = '') {
@@ -693,7 +778,8 @@
     function validarMonto() {
         if (!btnGuardar || !montoInput) return false;
         const val = valorNumero(montoInput);
-        let esValido = (val > 0);
+        const faltantes = obtenerFaltantesPago();
+        let esValido = faltantes.length === 0;
 
         if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
             const m1 = valorNumero(monto1Input);
@@ -715,29 +801,45 @@
             mostrarErrorMixto(false);
         }
 
+        if (avisoValidacionPago) {
+            if (esValido) {
+                avisoValidacionPago.style.display = 'none';
+                avisoValidacionPago.textContent = '';
+            } else {
+                avisoValidacionPago.style.display = 'block';
+                avisoValidacionPago.textContent = `Falta completar: ${textoListaFaltantes(faltantes)}.`;
+            }
+        }
+
         if (esValido) {
             btnGuardar.disabled = false;
             btnGuardar.style.opacity = '1';
             btnGuardar.style.cursor = 'pointer';
+            btnGuardar.style.background = '';
+            btnGuardar.style.color = '';
         } else {
             btnGuardar.disabled = true;
-            btnGuardar.style.opacity = '0.4';
+            btnGuardar.style.opacity = '1';
             btnGuardar.style.cursor = 'not-allowed';
+            btnGuardar.style.background = '#dfe4ee';
+            btnGuardar.style.color = '#667085';
         }
         return esValido;
     }
 
+    if (fechaInput) fechaInput.addEventListener('change', validarMonto);
     if (montoInput) montoInput.addEventListener('input', validarMonto);
     if (monto1Input) monto1Input.addEventListener('input', validarMonto);
     if (monto2Input) monto2Input.addEventListener('input', validarMonto);
+    [moduloSelect, bancoSel, bancoSel1, bancoSel2].forEach((select) => {
+        if (select) select.addEventListener('change', validarMonto);
+    });
     if (formPago) {
         formPago.addEventListener('submit', function (e) {
             if (!validarMonto()) {
                 e.preventDefault();
                 e.stopPropagation();
-                if (tipoCobroSelect && tipoCobroSelect.value === 'mixto' && monto2Input) {
-                    monto2Input.focus();
-                }
+                enfocarPrimerCampoPendiente();
                 return false;
             }
         });
