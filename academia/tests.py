@@ -903,6 +903,43 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('metodo_pago', form.errors)
 
+    def test_matricula_mixta_rechaza_metodos_vacios(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-tipo_cobro': 'mixto',
+                    'mat-valor_pagado': '30.00',
+                    'mat-monto_pago_1': '10.00',
+                    'mat-metodo_pago_1': '',
+                    'mat-monto_pago_2': '20.00',
+                    'mat-metodo_pago_2': '',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('metodo_pago_1', form.errors)
+        self.assertIn('metodo_pago_2', form.errors)
+
+    def test_matricula_mixta_rechaza_suma_distinta_al_valor_pagado(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-tipo_cobro': 'mixto',
+                    'mat-valor_pagado': '30.00',
+                    'mat-monto_pago_1': '10.00',
+                    'mat-metodo_pago_1': 'efectivo',
+                    'mat-monto_pago_2': '10.00',
+                    'mat-metodo_pago_2': 'efectivo',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('monto_pago_2', form.errors)
+
     def test_matricula_rechaza_jornada_presencial_sin_sede(self):
         jornada_sin_sede = JornadaCurso.objects.create(
             curso=self.curso,

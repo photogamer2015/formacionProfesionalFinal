@@ -595,6 +595,12 @@ class MatriculaForm(forms.ModelForm):
             tipo_cobro = cleaned.get('tipo_cobro') or 'un_solo_metodo'
             metodo_pago = cleaned.get('metodo_pago')
             banco = cleaned.get('banco')
+            monto_pago_1 = cleaned.get('monto_pago_1') or Decimal('0.00')
+            metodo_pago_1 = cleaned.get('metodo_pago_1')
+            banco_1 = cleaned.get('banco_1')
+            monto_pago_2 = cleaned.get('monto_pago_2') or Decimal('0.00')
+            metodo_pago_2 = cleaned.get('metodo_pago_2')
+            banco_2 = cleaned.get('banco_2')
             modalidad = jornada.modalidad if jornada else self.modalidad
 
             if not jornada:
@@ -611,6 +617,23 @@ class MatriculaForm(forms.ModelForm):
                     self.add_error('banco', 'Debes indicar la opción correspondiente (Payphone).')
                 if metodo_pago not in ('transferencia', 'tarjeta'):
                     cleaned['banco'] = ''
+            else:
+                if monto_pago_1 <= 0:
+                    self.add_error('monto_pago_1', 'El Monto 1 debe ser mayor a cero.')
+                if monto_pago_2 <= 0:
+                    self.add_error('monto_pago_2', 'El Monto 2 debe ser mayor a cero.')
+                if not metodo_pago_1:
+                    self.add_error('metodo_pago_1', 'Selecciona el método del Monto 1.')
+                if not metodo_pago_2:
+                    self.add_error('metodo_pago_2', 'Selecciona el método del Monto 2.')
+                if metodo_pago_1 in ('transferencia', 'tarjeta') and not banco_1:
+                    self.add_error('banco_1', 'Selecciona el banco o app del Monto 1.')
+                if metodo_pago_2 in ('transferencia', 'tarjeta') and not banco_2:
+                    self.add_error('banco_2', 'Selecciona el banco o app del Monto 2.')
+                if metodo_pago_1 not in ('transferencia', 'tarjeta'):
+                    cleaned['banco_1'] = ''
+                if metodo_pago_2 not in ('transferencia', 'tarjeta'):
+                    cleaned['banco_2'] = ''
 
             vp = cleaned.get('valor_pagado')
 
@@ -633,6 +656,15 @@ class MatriculaForm(forms.ModelForm):
                     f'con descuento (${neto}).'
                 )
             cleaned['valor_pagado'] = vp
+
+            if tipo_cobro == 'mixto':
+                suma_mixta = (monto_pago_1 + monto_pago_2).quantize(Decimal('0.01'))
+                vp_principal = vp.quantize(Decimal('0.01')) if vp is not None else None
+                if vp_principal is not None and suma_mixta != vp_principal:
+                    self.add_error(
+                        'monto_pago_2',
+                        'La suma del Monto 1 y Monto 2 debe ser exactamente igual al valor pagado.'
+                    )
 
         # Si la factura está marcada como realizada, los datos de factura son obligatorios
         if cleaned.get('factura_realizada') == 'si':
