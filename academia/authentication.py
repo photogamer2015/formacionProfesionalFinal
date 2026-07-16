@@ -116,6 +116,7 @@ def destinatario_codigo(user):
         or _env('MFA_EMAIL_TO')
         or _env('MFA_EMAIL_HOST_USER')
         or _env('EMAIL_HOST_USER')
+        or _env('DEFAULT_FROM_EMAIL')
     )
     if fallback_email:
         return fallback_email
@@ -129,14 +130,22 @@ def config_correo_mfa():
     if not username or not password:
         raise EmailCodeDeliveryError('Faltan las credenciales del correo MFA.')
 
+    use_tls = _env_bool('MFA_EMAIL_USE_TLS', _env_bool('EMAIL_USE_TLS', False))
+    ssl_configured = bool(_env('MFA_EMAIL_USE_SSL') or _env('EMAIL_USE_SSL'))
+    use_ssl = (
+        _env_bool('MFA_EMAIL_USE_SSL', _env_bool('EMAIL_USE_SSL', False))
+        if ssl_configured
+        else not use_tls
+    )
+
     return {
-        'host': _env('MFA_EMAIL_HOST', 'smtp.gmail.com'),
-        'port': _env_int('MFA_EMAIL_PORT', 465),
-        'use_ssl': _env_bool('MFA_EMAIL_USE_SSL', True),
-        'use_tls': _env_bool('MFA_EMAIL_USE_TLS', False),
+        'host': _env('MFA_EMAIL_HOST') or _env('EMAIL_HOST') or 'smtp.gmail.com',
+        'port': _env_int('MFA_EMAIL_PORT', _env_int('EMAIL_PORT', 465)),
+        'use_ssl': use_ssl,
+        'use_tls': use_tls,
         'username': username,
         'password': password,
-        'from_email': _env('MFA_EMAIL_FROM', username),
+        'from_email': _env('MFA_EMAIL_FROM') or _env('DEFAULT_FROM_EMAIL') or username,
     }
 
 
