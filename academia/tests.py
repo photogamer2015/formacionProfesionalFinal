@@ -1,12 +1,19 @@
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import Group, User
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from .authentication import (
+    LOGIN_CAPTCHA_ANSWER_SESSION_KEY, LOGIN_MFA_CODE_HASH_SESSION_KEY,
+    LOGIN_MFA_EMAIL_SESSION_KEY, LOGIN_MFA_EMAIL_TO_SAVE_SESSION_KEY,
+    LOGIN_MFA_USER_ID_SESSION_KEY,
+)
 from .forms import AbonoForm, AdicionalSupletorioRapidoForm, MatriculaForm
 from .models import (
     Abono, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
@@ -16,6 +23,224 @@ from .models import (
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
 from .views_pagos import _hojas_recaudacion_data, _plan_recaudacion_matricula
+
+
+class LoginCaptchaTests(TestCase):
+    def test_login_muestra_captcha_matematico(self):
+        response = self.client.get(reverse('login'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(response.context['captcha_question'], r'^\d+ (\+|x) \d+$')
+        self.assertIn(LOGIN_CAPTCHA_ANSWER_SESSION_KEY, self.client.session)
+        self.assertContains(response, 'Captcha de seguridad')
+
+    def test_login_rechaza_clave_valida_si_captcha_incorrecto(self):
+        User.objects.create_user(username='admin_test', password='clave12345')
+        self.client.get(reverse('login'))
+
+        response = self.client.post(reverse('login'), {
+            'username': 'admin_test',
+            'password': 'clave12345',
+            'captcha': '999',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertContains(response, 'El resultado del captcha no es correcto.')
+
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_login_con_clave_valida_envia_codigo_y_no_autentica_aun(self, enviar_codigo):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+
+        response = self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_code'))
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertEqual(self.client.session[LOGIN_MFA_USER_ID_SESSION_KEY], str(user.pk))
+        self.assertIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+        self.assertIn(LOGIN_MFA_EMAIL_SESSION_KEY, self.client.session)
+        self.assertNotIn(LOGIN_CAPTCHA_ANSWER_SESSION_KEY, self.client.session)
+        enviar_codigo.assert_called_once()
+
+        code_response = self.client.get(reverse('login_code'))
+        self.assertContains(code_response, '¿Está seguro que desea reenviar el código?')
+
+    @patch('academia.authentication.generar_codigo_verificacion', return_value='123456')
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_codigo_correcto_completa_inicio_de_sesion(self, enviar_codigo, generar_codigo):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        response = self.client.post(reverse('login_code'), {'code': '123456'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('_auth_user_id', self.client.session)
+        self.assertNotIn(LOGIN_MFA_USER_ID_SESSION_KEY, self.client.session)
+        self.assertNotIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+
+    @patch('academia.authentication.generar_codigo_verificacion', return_value='123456')
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_codigo_incorrecto_no_autentica(self, enviar_codigo, generar_codigo):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        response = self.client.post(reverse('login_code'), {'code': '000000'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertContains(response, 'Codigo incorrecto.')
+
+    @patch('academia.authentication.generar_codigo_verificacion', return_value='123456')
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_usuario_sin_correo_lo_registra_una_vez_y_luego_solo_pide_codigo(
+        self,
+        enviar_codigo,
+        generar_codigo,
+    ):
+        user = User.objects.create_user(username='admin_test', password='clave12345')
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+
+        response = self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_email'))
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertEqual(self.client.session[LOGIN_MFA_USER_ID_SESSION_KEY], str(user.pk))
+        self.assertNotIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+
+        response = self.client.post(reverse('login_email'), {
+            'email': 'Nuevo@Example.COM',
+            'email_confirm': 'nuevo@example.com',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_code'))
+        self.assertEqual(
+            self.client.session[LOGIN_MFA_EMAIL_TO_SAVE_SESSION_KEY],
+            'nuevo@example.com',
+        )
+        self.assertIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertEqual(enviar_codigo.call_args.args[2], 'nuevo@example.com')
+
+        response = self.client.post(reverse('login_code'), {'code': '123456'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('_auth_user_id', self.client.session)
+        user.refresh_from_db()
+        self.assertEqual(user.email, 'nuevo@example.com')
+
+        self.client.logout()
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+
+        response = self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_code'))
+
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_registro_correo_requiere_confirmacion_igual(self, enviar_codigo):
+        user = User.objects.create_user(username='admin_test', password='clave12345')
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        response = self.client.post(reverse('login_email'), {
+            'email': 'uno@example.com',
+            'email_confirm': 'dos@example.com',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Los correos no coinciden.')
+        self.assertNotIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+        enviar_codigo.assert_not_called()
+
+    @patch('academia.authentication.generar_codigo_verificacion', side_effect=['111111', '222222'])
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_reenviar_codigo_invalida_el_anterior_y_permite_el_ultimo(
+        self,
+        enviar_codigo,
+        generar_codigo,
+    ):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+        self.assertTrue(
+            check_password('111111', self.client.session[LOGIN_MFA_CODE_HASH_SESSION_KEY])
+        )
+
+        response = self.client.post(reverse('login_code'), {'action': 'resend'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Te enviamos un nuevo codigo.')
+        self.assertEqual(enviar_codigo.call_count, 2)
+        self.assertTrue(
+            check_password('222222', self.client.session[LOGIN_MFA_CODE_HASH_SESSION_KEY])
+        )
+
+        response = self.client.post(reverse('login_code'), {'code': '111111'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+        response = self.client.post(reverse('login_code'), {'code': '222222'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('_auth_user_id', self.client.session)
 
 
 class SessionKeepaliveTests(TestCase):

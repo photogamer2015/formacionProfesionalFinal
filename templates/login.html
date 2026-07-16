@@ -98,6 +98,29 @@
             font-family: inherit;
         }
 
+        .captcha-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            border: 1px solid #dbe3ef;
+            border-radius: 10px;
+            background: #eef4ff;
+            color: #1e293b;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .captcha-box strong {
+            min-width: 82px;
+            text-align: center;
+            color: #1a237e;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+
         input:focus {
             outline: none;
             border-color: #1a237e;
@@ -236,11 +259,91 @@
         body.theme-dark input[type="text"], body.theme-dark input[type="password"] {
             background: #2c2c2c; border-color: #444; color: #fff;
         }
+        body.theme-dark .captcha-box { background: #242c3a; border-color: #374151; color: #cbd5e1; }
+        body.theme-dark .captcha-box strong { color: #90caf9; }
         body.theme-dark input:focus { border-color: #90caf9; box-shadow: 0 0 0 4px rgba(144, 202, 249, 0.15); }
         body.theme-dark button[type="submit"] { background: #1a237e; }
         body.theme-dark button[type="submit"]:hover { background: #283593; }
         body.theme-dark .footer a { color: #888; }
         body.theme-dark .footer a:hover { color: #90caf9; }
+
+        @media (max-width: 480px) {
+            body {
+                align-items: flex-start;
+                min-height: 100dvh;
+                padding: 64px 12px 12px;
+            }
+
+            .login-card {
+                max-width: none;
+                padding: 30px 18px 26px;
+                border-radius: 18px;
+            }
+
+            .theme-selector {
+                top: 12px;
+                right: 12px;
+            }
+
+            .logo-area {
+                margin-bottom: 26px;
+            }
+
+            .logo-circle {
+                width: 72px;
+                height: 72px;
+                margin-bottom: 14px;
+            }
+
+            h1 {
+                font-size: 20px;
+                line-height: 1.25;
+            }
+
+            .subtitle {
+                font-size: 13px;
+                line-height: 1.35;
+            }
+
+            .form-group {
+                margin-bottom: 16px;
+            }
+
+            input[type="text"],
+            input[type="password"] {
+                min-height: 48px;
+                padding: 13px 14px;
+                font-size: 16px;
+            }
+
+            .captcha-box {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 8px;
+                padding: 12px;
+            }
+
+            .captcha-box strong {
+                min-width: 0;
+                width: 100%;
+                text-align: left;
+                font-size: 22px;
+            }
+
+            button {
+                min-height: 48px;
+                padding: 13px;
+            }
+
+            .error {
+                padding: 12px 14px;
+                margin-bottom: 18px;
+            }
+
+            .footer {
+                margin-top: 24px;
+            }
+        }
     </style>
 </head>
 
@@ -260,7 +363,13 @@
 
         {% if form.errors %}
         <div class="error">
+            {% if login_error_message %}
+            {{ login_error_message }}
+            {% elif form.captcha.errors %}
+            {{ form.captcha.errors.0 }}
+            {% else %}
             Usuario o contraseña incorrectos. Inténtalo de nuevo.
+            {% endif %}
         </div>
         {% endif %}
 
@@ -274,6 +383,14 @@
                 <label for="id_password">Contraseña</label>
                 <input type="password" name="password" id="id_password" placeholder="••••••••" required>
             </div>
+            <div class="form-group">
+                <label for="id_captcha">Captcha de seguridad</label>
+                <div class="captcha-box" aria-live="polite">
+                    <span>Resuelve la operación</span>
+                    <strong>{{ captcha_question }}</strong>
+                </div>
+                <input type="text" name="captcha" id="id_captcha" placeholder="Resultado" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required{% if form.errors %} data-clear-on-load="true"{% endif %}>
+            </div>
             <button type="submit">Iniciar sesión</button>
         </form>
 
@@ -285,6 +402,11 @@
     <script>
         const body = document.body;
         const themeBtns = document.querySelectorAll('.theme-btn');
+        const captchaInput = document.getElementById('id_captcha');
+
+        if (captchaInput && captchaInput.dataset.clearOnLoad === 'true') {
+            captchaInput.value = '';
+        }
         
         // Cargar tema guardado o azul por defecto
         const savedLoginTheme = localStorage.getItem('loginTheme') || 'blue';
