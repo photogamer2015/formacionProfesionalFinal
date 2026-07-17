@@ -3794,7 +3794,7 @@ def _calcular_alertas_pago(usuario_actual=None):
             hito_label = f'Módulo {numero_modulo}'
 
         celular = (m.estudiante.celular or '').strip()
-        # Limpieza básica del celular para wa.me (solo dígitos, agregamos 593 si parece local)
+        # Limpieza básica del celular para WhatsApp (solo dígitos, agregamos 593 si parece local)
         digitos = ''.join(c for c in celular if c.isdigit())
         if digitos.startswith('0') and len(digitos) == 10:
             celular_wa = '593' + digitos[1:]

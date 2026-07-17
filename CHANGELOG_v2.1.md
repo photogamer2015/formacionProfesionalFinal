@@ -65,7 +65,7 @@ Aparecen en el dashboard de **Bienvenida** para administradores y asesores.
 - Matrícula no está en Retiro voluntario
 
 **Acciones por alerta:**
-- 💬 **WhatsApp** — abre `wa.me/{celular_internacional}` con un mensaje
+- 💬 **WhatsApp** — abre WhatsApp Web con el número internacional y un mensaje preparado
   predefinido que menciona el curso, fecha de inicio y monto adeudado.
   El celular se normaliza: `09xxxxxxxx` → `593xxxxxxxxx`.
 - 👁 **Detalle** — va a la página de abonos del estudiante.

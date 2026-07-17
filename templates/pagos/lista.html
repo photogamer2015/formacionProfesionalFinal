@@ -587,7 +587,7 @@
                        class="btn btn-success btn-sm" title="Gestionar pagos">💵 Gestionar Pagos</a>
                     
                     {% if m.estudiante.celular_wa %}
-                    <a href="https://wa.me/{{ m.estudiante.celular_wa }}?text=Mi+estimado%2Fa+{{ m.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ m.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                    <a href="https://web.whatsapp.com/send?phone={{ m.estudiante.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ m.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ m.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
                        target="_blank" rel="noopener"
                        class="btn btn-sm" style="background:#25d366; color:white; padding: 5px 8px; font-size:12px; text-decoration:none; border-radius:4px;" title="Notificar inasistencia">💬</a>
                     {% endif %}

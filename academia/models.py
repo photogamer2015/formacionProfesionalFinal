@@ -420,7 +420,7 @@ class Estudiante(models.Model):
 
     @property
     def celular_wa(self):
-        """Limpia el número de celular para usar en enlaces wa.me."""
+        """Limpia el número de celular para usar en enlaces de WhatsApp."""
         c = (self.celular or '').strip()
         digitos = ''.join(x for x in c if x.isdigit())
         if not digitos:
