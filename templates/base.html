@@ -1048,6 +1048,315 @@
 
     {% block extra_js %}{% endblock %}
 
+    <!-- ══ MODAL GLOBAL PARA WHATSAPP ═══════════════════════════════════ -->
+    <div id="whatsapp-modal-overlay" class="whatsapp-modal-overlay" aria-hidden="true">
+        <div class="whatsapp-modal-box" role="dialog" aria-modal="true" aria-labelledby="whatsapp-modal-title">
+            <button type="button" class="whatsapp-modal-close" id="whatsapp-modal-close" aria-label="Cerrar">×</button>
+            <div class="whatsapp-modal-icon">WA</div>
+            <h3 id="whatsapp-modal-title">Abrir mensaje por WhatsApp</h3>
+            <p id="whatsapp-modal-message">
+                Elige dónde preparar el mensaje. WhatsApp Web abre en una pestaña nueva; WhatsApp Desktop intenta abrir la aplicación instalada.
+            </p>
+            <div class="whatsapp-modal-actions" id="whatsapp-modal-actions">
+                <button type="button" class="whatsapp-btn whatsapp-btn-web" id="whatsapp-open-web">WhatsApp Web</button>
+                <button type="button" class="whatsapp-btn whatsapp-btn-desktop" id="whatsapp-open-desktop">WhatsApp Desktop</button>
+            </div>
+            <div class="whatsapp-modal-actions whatsapp-modal-fallback" id="whatsapp-modal-fallback">
+                <button type="button" class="whatsapp-btn whatsapp-btn-web" id="whatsapp-fallback-web">Abrir WhatsApp Web</button>
+                <button type="button" class="whatsapp-btn whatsapp-btn-muted" id="whatsapp-fallback-close">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .whatsapp-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 10020;
+            background: rgba(8, 12, 22, .58);
+            backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+        .whatsapp-modal-overlay.is-open {
+            display: flex;
+        }
+        .whatsapp-modal-box {
+            position: relative;
+            width: min(440px, 94vw);
+            border-radius: 14px;
+            background: #fff;
+            border: 1px solid rgba(27,42,78,.10);
+            box-shadow: 0 24px 70px rgba(8, 12, 22, .24);
+            padding: 30px 28px 24px;
+            text-align: center;
+            color: var(--fp-ink);
+            animation: slideUpModal .22s ease;
+        }
+        .whatsapp-modal-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 34px;
+            height: 34px;
+            border: 0;
+            border-radius: 50%;
+            background: #eef2f7;
+            color: #506079;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .whatsapp-modal-close:hover {
+            background: #e2e8f0;
+            color: #1B2A4E;
+        }
+        .whatsapp-modal-icon {
+            width: 58px;
+            height: 58px;
+            margin: 0 auto 14px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #e8f8ee;
+            color: #128c4a;
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+        .whatsapp-modal-box h3 {
+            margin: 0 0 9px;
+            font-size: 19px;
+            line-height: 1.25;
+            color: var(--fp-navy);
+        }
+        .whatsapp-modal-box p {
+            margin: 0 0 22px;
+            color: #627088;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .whatsapp-modal-actions {
+            display: flex;
+            gap: 11px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .whatsapp-modal-fallback {
+            display: none;
+        }
+        .whatsapp-modal-fallback.is-open {
+            display: flex;
+        }
+        .whatsapp-btn {
+            min-height: 42px;
+            border: 0;
+            border-radius: 10px;
+            padding: 10px 16px;
+            cursor: pointer;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 800;
+            transition: transform .15s ease, filter .15s ease, background .15s ease;
+        }
+        .whatsapp-btn:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.04);
+        }
+        .whatsapp-btn-web {
+            background: #1fbe5b;
+            color: #fff;
+        }
+        .whatsapp-btn-desktop {
+            background: #1B2A4E;
+            color: #fff;
+        }
+        .whatsapp-btn-muted {
+            background: #eef2f7;
+            color: #475569;
+        }
+        .whatsapp-modal-box.is-checking .whatsapp-modal-icon {
+            background: #eef4ff;
+            color: #2f65d9;
+        }
+        .whatsapp-modal-box.is-error .whatsapp-modal-icon {
+            background: #fff1f2;
+            color: #c62828;
+        }
+        body.dark-mode .whatsapp-modal-box {
+            background: #121925;
+            border-color: rgba(148,163,184,.18);
+            color: #e8edf7;
+        }
+        body.dark-mode .whatsapp-modal-box h3 {
+            color: #dfe8ff;
+        }
+        body.dark-mode .whatsapp-modal-box p {
+            color: #a1acc0;
+        }
+        body.dark-mode .whatsapp-modal-close,
+        body.dark-mode .whatsapp-btn-muted {
+            background: #263247;
+            color: #d4dcea;
+        }
+        @media (max-width: 420px) {
+            .whatsapp-modal-actions {
+                flex-direction: column;
+            }
+            .whatsapp-btn {
+                width: 100%;
+            }
+        }
+    </style>
+
+    <script>
+        (function () {
+            var overlay = document.getElementById('whatsapp-modal-overlay');
+            if (!overlay) return;
+
+            var box = overlay.querySelector('.whatsapp-modal-box');
+            var title = document.getElementById('whatsapp-modal-title');
+            var message = document.getElementById('whatsapp-modal-message');
+            var actions = document.getElementById('whatsapp-modal-actions');
+            var fallback = document.getElementById('whatsapp-modal-fallback');
+            var closeBtn = document.getElementById('whatsapp-modal-close');
+            var openWebBtn = document.getElementById('whatsapp-open-web');
+            var openDesktopBtn = document.getElementById('whatsapp-open-desktop');
+            var fallbackWebBtn = document.getElementById('whatsapp-fallback-web');
+            var fallbackCloseBtn = document.getElementById('whatsapp-fallback-close');
+            var current = null;
+            var desktopTimer = null;
+            var desktopHandled = false;
+            var visibilityHandler = null;
+
+            function desktopUrlFromWeb(webUrl) {
+                var url = new URL(webUrl, window.location.href);
+                var params = new URLSearchParams();
+                params.set('phone', url.searchParams.get('phone') || '');
+                var text = url.searchParams.get('text') || '';
+                if (text) params.set('text', text);
+                return 'whatsapp://send?' + params.toString();
+            }
+
+            function cleanupDesktopAttempt() {
+                if (desktopTimer) {
+                    window.clearTimeout(desktopTimer);
+                    desktopTimer = null;
+                }
+                window.removeEventListener('blur', markDesktopHandled);
+                window.removeEventListener('pagehide', markDesktopHandled);
+                if (visibilityHandler) {
+                    document.removeEventListener('visibilitychange', visibilityHandler);
+                    visibilityHandler = null;
+                }
+            }
+
+            function resetModal() {
+                cleanupDesktopAttempt();
+                box.classList.remove('is-checking', 'is-error');
+                title.textContent = 'Abrir mensaje por WhatsApp';
+                message.textContent = 'Elige dónde preparar el mensaje. WhatsApp Web abre en una pestaña nueva; WhatsApp Desktop intenta abrir la aplicación instalada.';
+                actions.style.display = 'flex';
+                fallback.classList.remove('is-open');
+                desktopHandled = false;
+            }
+
+            function closeModal() {
+                overlay.classList.remove('is-open');
+                overlay.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+                current = null;
+                resetModal();
+            }
+
+            function showModal(link) {
+                current = {
+                    web: link.href,
+                    desktop: (link.getAttribute('data-whatsapp-desktop') || desktopUrlFromWeb(link.href)).replace(/&amp;/g, '&'),
+                };
+                resetModal();
+                overlay.classList.add('is-open');
+                overlay.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+                openWebBtn.focus();
+            }
+
+            function showDesktopUnavailable() {
+                cleanupDesktopAttempt();
+                box.classList.remove('is-checking');
+                box.classList.add('is-error');
+                title.textContent = 'WhatsApp Desktop no detectado';
+                message.textContent = 'No se detectó WhatsApp Desktop en este sistema operativo o el navegador bloqueó la apertura. Puedes cerrar esta ventana o continuar con WhatsApp Web.';
+                actions.style.display = 'none';
+                fallback.classList.add('is-open');
+                fallbackCloseBtn.focus();
+            }
+
+            function markDesktopHandled() {
+                if (desktopHandled) return;
+                desktopHandled = true;
+                cleanupDesktopAttempt();
+                closeModal();
+            }
+
+            document.addEventListener('click', function (event) {
+                var link = event.target.closest('a[data-whatsapp-choice]');
+                if (!link) return;
+                event.preventDefault();
+                showModal(link);
+            });
+
+            openWebBtn.addEventListener('click', function () {
+                if (!current) return;
+                window.open(current.web, '_blank', 'noopener');
+                closeModal();
+            });
+
+            fallbackWebBtn.addEventListener('click', function () {
+                if (!current) return;
+                window.open(current.web, '_blank', 'noopener');
+                closeModal();
+            });
+
+            openDesktopBtn.addEventListener('click', function () {
+                if (!current) return;
+                box.classList.add('is-checking');
+                title.textContent = 'Abriendo WhatsApp Desktop';
+                message.textContent = 'Si el navegador pregunta si deseas abrir WhatsApp, acepta la solicitud. Si Desktop no responde, mostraremos un aviso.';
+                actions.style.display = 'none';
+
+                cleanupDesktopAttempt();
+                desktopHandled = false;
+                visibilityHandler = function () {
+                    if (document.hidden) markDesktopHandled();
+                };
+                window.addEventListener('blur', markDesktopHandled);
+                document.addEventListener('visibilitychange', visibilityHandler);
+                window.addEventListener('pagehide', markDesktopHandled);
+
+                desktopTimer = window.setTimeout(function () {
+                    if (!desktopHandled) showDesktopUnavailable();
+                }, 6500);
+
+                window.location.href = current.desktop;
+            });
+
+            closeBtn.addEventListener('click', closeModal);
+            fallbackCloseBtn.addEventListener('click', closeModal);
+            overlay.addEventListener('click', function (event) {
+                if (event.target === overlay) closeModal();
+            });
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && overlay.classList.contains('is-open')) {
+                    closeModal();
+                }
+            });
+        })();
+    </script>
+
     <!-- ══ MODAL DE CONFIRMACIÓN GLOBAL ════════════════════════════════ -->
     <div id="confirm-modal-overlay" style="
         display: none; position: fixed; inset: 0; z-index: 9999;
