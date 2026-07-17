@@ -153,7 +153,7 @@
 	        overflow: hidden;
 	        -webkit-tap-highlight-color: transparent;
 	        touch-action: manipulation;
-	        opacity: 0;
+	        opacity: 1;
 	        animation: cardIn .5s ease forwards;
     }
     @keyframes cardIn {
@@ -429,6 +429,10 @@
 	        .status-admin {
 	            animation: none !important;
 	            transition: none !important;
+	        }
+	        .card-box {
+	            opacity: 1 !important;
+	            transform: none !important;
 	        }
 	        .card-box:hover,
 	        .card-box:active,
