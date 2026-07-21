@@ -1,17 +1,102 @@
 {% extends 'base.html' %}
 
-{% block title %}Marcar clase a recuperación{% endblock %}
+{% block title %}{% if modo_edicion %}Editar clase a recuperación{% else %}Marcar clase a recuperación{% endif %}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .recup-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 620px) minmax(260px, 340px);
+        gap: 18px;
+        align-items: start;
+        max-width: 980px;
+        margin-top: 14px;
+    }
+    .recup-layout .recup-form-card {
+        max-width: none !important;
+        margin-top: 0 !important;
+    }
+    .recup-method-help {
+        background: #f8fbff;
+        border: 1px solid #d9e2f2;
+        border-left: 4px solid #1B2A4E;
+        border-radius: 10px;
+        box-shadow: 0 12px 24px rgba(27,42,78,.06);
+        color: #1a237e;
+        padding: 14px;
+    }
+    .recup-method-help summary {
+        align-items: center;
+        cursor: pointer;
+        display: flex;
+        font-size: 13px;
+        font-weight: 700;
+        gap: 10px;
+        justify-content: space-between;
+        line-height: 1.25;
+        list-style: none;
+    }
+    .recup-method-help summary::-webkit-details-marker {
+        display: none;
+    }
+    .recup-method-help .help-chevron {
+        color: #6f7889;
+        flex: 0 0 auto;
+        transition: transform .2s ease;
+    }
+    .recup-method-help[open] .help-chevron {
+        transform: rotate(180deg);
+    }
+    .recup-help-body {
+        color: #4f5b6f;
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 12px;
+    }
+    .recup-help-body ol {
+        margin: 8px 0 0 18px;
+        padding: 0;
+    }
+    .recup-help-body li {
+        margin-bottom: 6px;
+    }
+    .recup-help-note {
+        background: #fff8e1;
+        border: 1px solid #f0d48a;
+        border-radius: 8px;
+        color: #6b4e00;
+        margin-top: 10px;
+        padding: 8px 10px;
+    }
+    @media (max-width: 980px) {
+        .recup-layout {
+            grid-template-columns: 1fr;
+            max-width: 620px;
+        }
+    }
+    @media (max-width: 640px) {
+        .recup-layout {
+            gap: 12px;
+        }
+        .recup-method-help {
+            border-left-width: 3px;
+            padding: 12px;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
     <a href="{% url 'academia:matricula_abonos' matricula.pk %}">{{ matricula.estudiante.nombre_completo }}</a> &nbsp;›&nbsp;
-    Marcar clase a recuperación
+    {% if modo_edicion %}Editar clase a recuperación{% else %}Marcar clase a recuperación{% endif %}
 </div>
 
-<h2 class="page-title">✱ Marcar clase a recuperación</h2>
+<h2 class="page-title">✱ {% if modo_edicion %}Editar clase a recuperación{% else %}Marcar clase a recuperación{% endif %}</h2>
 
-<div class="card-box" style="max-width:620px; padding:24px; margin-top:14px;">
+<div class="recup-layout">
+<div class="card-box recup-form-card" style="max-width:620px; padding:24px; margin-top:14px;">
     <div style="background:#fff8e1; border-left:4px solid #f0ad4e; padding:14px; border-radius:8px; margin-bottom:18px;">
         <div style="font-weight:600; color:#1a237e; font-size:15px;">{{ matricula.estudiante.nombre_completo }}</div>
         <div style="font-size:13px; color:#666; margin-top:4px;">
@@ -25,18 +110,55 @@
     </div>
 
     <p style="font-size:13px; color:#666; margin-bottom:14px;">
-        Indica qué módulo perdió el estudiante. El saldo pendiente actual quedará registrado
-        para mostrarlo cuando se cobre la recuperación.
+        {% if modo_edicion %}
+        Corrige el módulo, la fecha o las observaciones de esta recuperación.
+        {% else %}
+        Indica qué módulo perdió el estudiante. Puedes dejar la recuperación pendiente
+        para cobrarla después o descontarla con un pago Abono + Módulo ya registrado.
+        {% endif %}
     </p>
+
+    {% if modo_edicion and recuperacion.abono %}
+    <div style="background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px; margin-bottom:14px; font-size:12px; color:#555;">
+        Esta recuperación está asociada al recibo <strong>{{ recuperacion.abono.numero_recibo }}</strong>.
+        Editar la marca no borra ese recibo.
+    </div>
+    {% endif %}
 
     <form method="post" novalidate>
         {% csrf_token %}
+        {% if next_url %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        {% endif %}
+
+        {% if form.non_field_errors %}
+        <div class="flash flash-error" style="margin-bottom:14px;">
+            {{ form.non_field_errors }}
+        </div>
+        {% endif %}
 
         <div style="margin-bottom:14px;">
             <label class="form-label">{{ form.numero_modulo.label }} *</label>
             {{ form.numero_modulo }}
             {{ form.numero_modulo.errors }}
         </div>
+
+        {% if permitir_modo_registro %}
+        <div style="margin-bottom:14px;">
+            <label class="form-label">{{ form.modo_registro.label }} *</label>
+            {{ form.modo_registro }}
+            {{ form.modo_registro.errors }}
+            <div id="abono-modulo-ayuda" style="font-size:12px; color:#666; margin-top:6px;">
+                Selecciona un módulo para verificar si tiene Abono + Módulo disponible.
+            </div>
+            <div id="abono-modulo-resumen" style="margin-top:10px; display:grid; gap:6px;"></div>
+        </div>
+        {% elif modo_edicion and recuperacion.abono %}
+        <div style="margin-bottom:14px; background:#fff8e1; border:1px solid #f0ad4e; border-radius:8px; padding:12px; font-size:12px; color:#666;">
+            Esta recuperación ya tiene un cobro de recuperación. Si el monto o método está mal,
+            corrige el recibo desde el historial de pagos.
+        </div>
+        {% endif %}
 
         <div style="margin-bottom:14px;">
             <label class="form-label">{{ form.fecha_marcada.label }} *</label>
@@ -79,9 +201,131 @@
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <a href="{% url 'academia:matricula_abonos' matricula.pk %}" class="btn btn-secondary">Cancelar</a>
             <button type="submit" class="btn btn-warning" style="background:#f0ad4e; color:white; border:none;">
-                ✱ Marcar recuperación
+                ✱ {% if modo_edicion %}Guardar cambios{% else %}Marcar recuperación{% endif %}
             </button>
         </div>
     </form>
 </div>
+
+<details class="recup-method-help">
+    <summary>
+        <span>Cómo usar el descuento con Abono + Módulo</span>
+        <span class="help-chevron">v</span>
+    </summary>
+    <div class="recup-help-body">
+        <p>Este método solo se usa cuando la recuperación se descuenta de un pago ya registrado como Abono + Módulo.</p>
+        <ol>
+            <li>Selecciona el módulo que el estudiante perdió.</li>
+            <li>Si ese módulo tiene un Abono + Módulo disponible, se habilita la opción de descontar.</li>
+            <li>Si la opción aparece gris, registra la recuperación normalmente para cobrarla después.</li>
+            <li>Al descontar, se usa el recibo existente y no se crea un cobro nuevo.</li>
+        </ol>
+        <div class="recup-help-note">
+            Los abonos normales y los pagos Solo Módulo no habilitan este descuento.
+        </div>
+    </div>
+</details>
+</div>
+{{ abonos_modulo_disponibles|json_script:"abonos-modulo-disponibles" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        const moduloSel = document.getElementById('id_numero_modulo');
+        const modoSel = document.getElementById('id_modo_registro');
+        const ayuda = document.getElementById('abono-modulo-ayuda');
+        const dataNode = document.getElementById('abonos-modulo-disponibles');
+        if (!moduloSel || !modoSel || !ayuda || !dataNode) return;
+
+        let disponibles = {};
+        try {
+            disponibles = JSON.parse(dataNode.textContent || '{}');
+        } catch (error) {
+            disponibles = {};
+        }
+
+        function opcionDescontar() {
+            return Array.from(modoSel.options).find(function (option) {
+                return option.value === 'descontar_abono_modulo';
+            });
+        }
+
+        function actualizarDisponibilidad() {
+            const modulo = moduloSel.value;
+            const info = disponibles[String(modulo)];
+            const descontar = opcionDescontar();
+            if (!descontar) return;
+
+            if (!modulo) {
+                descontar.disabled = true;
+                if (modoSel.value === 'descontar_abono_modulo') modoSel.value = 'normal';
+                ayuda.style.color = '#666';
+                ayuda.innerText = 'Selecciona un módulo para verificar si tiene Abono + Módulo disponible.';
+                ayuda.style.display = 'none';
+                const resumen = document.getElementById('abono-modulo-resumen');
+                if (resumen) resumen.style.display = 'none';
+                return;
+            }
+
+            if (info) {
+                descontar.disabled = false;
+                ayuda.style.color = '#2e7d32';
+                ayuda.innerText = `Disponible: ${info.recibo} · $${info.monto} · ${info.fecha} · ${info.metodo}`;
+            } else {
+                descontar.disabled = true;
+                if (modoSel.value === 'descontar_abono_modulo') modoSel.value = 'normal';
+                ayuda.style.color = '#c62828';
+                ayuda.innerText = 'Este módulo no tiene un Abono + Módulo disponible para descontar.';
+            }
+
+            const mostrarBloqueDescuento = modoSel.value === 'descontar_abono_modulo';
+            ayuda.style.display = mostrarBloqueDescuento ? 'block' : 'none';
+            const resumen = document.getElementById('abono-modulo-resumen');
+            if (resumen) resumen.style.display = mostrarBloqueDescuento ? 'grid' : 'none';
+        }
+
+        function renderResumen() {
+            const resumen = document.getElementById('abono-modulo-resumen');
+            if (!resumen) return;
+            if (modoSel.value !== 'descontar_abono_modulo') {
+                resumen.style.display = 'none';
+                return;
+            }
+            resumen.style.display = 'grid';
+            const opcionesModulo = Array.from(moduloSel.options).filter(function (option) {
+                return option.value;
+            });
+            if (!opcionesModulo.length) {
+                resumen.innerHTML = '';
+                return;
+            }
+
+            resumen.innerHTML = opcionesModulo.map(function (option) {
+                const info = disponibles[String(option.value)];
+                if (info) {
+                    return `
+                        <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:8px; padding:8px 10px; font-size:12px;">
+                            <strong style="color:#1b5e20;">${option.textContent}: permite descontar</strong>
+                            <span style="color:#2e7d32;">${info.recibo}</span>
+                        </div>
+                    `;
+                }
+                return `
+                    <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; padding:8px 10px; font-size:12px;">
+                        <strong style="color:#777;">${option.textContent}: no cumple</strong>
+                        <span style="color:#999;">Sin Abono + Módulo</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        moduloSel.addEventListener('change', actualizarDisponibilidad);
+        moduloSel.addEventListener('change', renderResumen);
+        modoSel.addEventListener('change', actualizarDisponibilidad);
+        modoSel.addEventListener('change', renderResumen);
+        actualizarDisponibilidad();
+        renderResumen();
+    })();
+</script>
 {% endblock %}

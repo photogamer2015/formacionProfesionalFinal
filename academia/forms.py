@@ -1125,6 +1125,19 @@ class RecuperacionPendienteForm(forms.ModelForm):
     Formulario para marcar una clase a recuperación.
     Se usa en la edición de matrícula y en el listado de pagos.
     """
+    MODO_NORMAL = 'normal'
+    MODO_DESCONTAR_ABONO_MODULO = 'descontar_abono_modulo'
+
+    modo_registro = forms.ChoiceField(
+        choices=[
+            (MODO_NORMAL, 'Registrar recuperación normalmente'),
+            (MODO_DESCONTAR_ABONO_MODULO, 'Descontar con Abono + Módulo'),
+        ],
+        initial=MODO_NORMAL,
+        label='Forma de registro',
+        widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_modo_registro'}),
+    )
+
     class Meta:
         model = RecuperacionPendiente
         fields = ['numero_modulo', 'fecha_marcada', 'tipo_equipo', 'observaciones']
@@ -1190,12 +1203,19 @@ class RecuperacionPendienteForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         tipo_equipo = cleaned_data.get('tipo_equipo')
+        numero_modulo = cleaned_data.get('numero_modulo')
+        modo_registro = cleaned_data.get('modo_registro') or self.MODO_NORMAL
+        cleaned_data['modo_registro'] = modo_registro
         
         if self.matricula and self.matricula.curso:
             nombre_curso = (self.matricula.curso.nombre or '').lower()
             if 'servicio t' in nombre_curso or 'blanca' in nombre_curso:
                 if not tipo_equipo:
                     self.add_error('tipo_equipo', 'Debes seleccionar la clase a recuperar para este curso.')
+
+        if modo_registro == self.MODO_DESCONTAR_ABONO_MODULO:
+            if not numero_modulo:
+                self.add_error('modo_registro', 'Primero selecciona el módulo que se va a descontar.')
         
         return cleaned_data
         self.fields['observaciones'].required = False

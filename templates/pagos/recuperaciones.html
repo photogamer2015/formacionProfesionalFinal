@@ -163,6 +163,7 @@
                 <td>
                     <div class="recup-pay">
                         {% if r.abono %}
+                            {% if r.abono.tipo_pago == 'recuperacion' %}
                             <strong>${{ r.abono.monto|floatformat:2 }}</strong>
                             <small>{{ r.abono.get_tipo_pago_display }} · {{ r.abono.get_metodo_display }}</small>
                             {% if r.abono.banco %}
@@ -170,6 +171,11 @@
                             {% endif %}
                             {% if not r.abono.cuenta_para_saldo %}
                                 <small>Cobro aparte</small>
+                            {% endif %}
+                            {% else %}
+                            <strong style="color:#6a1b9a;">Descontada</strong>
+                            <small>{{ r.abono.get_tipo_pago_display }} · {{ r.abono.numero_recibo }}</small>
+                            <small>Pago usado: ${{ r.abono.monto|floatformat:2 }}</small>
                             {% endif %}
                         {% else %}
                             <strong style="color:#c62828;">Por cobrar</strong>
@@ -190,16 +196,19 @@
                     <div class="row-actions">
                         <a href="{% url 'academia:matricula_abonos' r.matricula.pk %}"
                             class="btn btn-secondary btn-sm">Ver matrícula</a>
+                        <a href="{% url 'academia:recuperacion_editar' r.pk %}?next={{ request.get_full_path|urlencode }}"
+                            class="btn btn-warning btn-sm">Editar</a>
                         {% if not r.pagada %}
                         <a href="{% url 'academia:recuperacion_cobrar' r.pk %}"
                             class="btn btn-success btn-sm">💵 Cobrar</a>
+                        {% endif %}
                         <form method="post" action="{% url 'academia:recuperacion_eliminar' r.pk %}"
                             style="display:inline;" onsubmit="return false;">
                             {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
                             <button type="button" class="btn btn-danger btn-sm"
-                                onclick="confirmarAccion(this.closest('form'), '¿Eliminar esta recuperación pendiente?', 'danger')">×</button>
+                                onclick="confirmarAccion(this.closest('form'), '¿Eliminar esta marca de recuperación? El recibo asociado se conservará en el historial de pagos.', 'danger')">×</button>
                         </form>
-                        {% endif %}
                     </div>
                 </td>
             </tr>

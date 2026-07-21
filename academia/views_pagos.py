@@ -9,7 +9,7 @@ Diseño:
 
 from collections import defaultdict
 from datetime import date, datetime
-from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from io import BytesIO
 
 from django.contrib import messages
@@ -18,6 +18,7 @@ from django.db import transaction
 from django.db.models import Count, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .forms import AbonoForm, RecuperacionPendienteForm
@@ -39,6 +40,113 @@ MESES_ES = [
 
 CENTAVO = Decimal('0.01')
 MEDIO_DOLAR = Decimal('0.50')
+
+
+def _abonos_abono_modulo_disponibles(matricula, numero_modulo=None, recuperacion_actual=None):
+    """
+    Pagos "Abono + Módulo" que pueden cubrir una recuperación sin registrar
+    un cobro adicional.
+
+    La opción solo aplica cuando existe un pago real con tipo `por_modulo`.
+    Los abonos generales y los pagos "Solo Módulo" no habilitan este descuento.
+    """
+    abonos = list(matricula.abonos.filter(
+        tipo_pago='por_modulo',
+        cuenta_para_saldo=True,
+        numero_modulo__isnull=False,
+    ).order_by('fecha', 'creado', 'pk'))
+    if not abonos:
+        return []
+
+    if recuperacion_actual and recuperacion_actual.pk:
+        recuperaciones_usadas = RecuperacionPendiente.objects.filter(
+            matricula=matricula,
+            abono__isnull=False,
+        ).exclude(pk=recuperacion_actual.pk)
+    else:
+        recuperaciones_usadas = RecuperacionPendiente.objects.filter(
+            matricula=matricula,
+            abono__isnull=False,
+        )
+    usados_por_modulo = set(recuperaciones_usadas.values_list('abono_id', 'numero_modulo'))
+
+    n_mod = (
+        matricula.curso.get_numero_modulos(matricula.modalidad)
+        if matricula.curso_id else 1
+    ) or 1
+    valor_modulo = (
+        (matricula.valor_neto / Decimal(n_mod)).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+        if n_mod > 0 else Decimal('0.00')
+    )
+
+    def modulos_cubiertos(abono):
+        cubiertos = set()
+        inicio = abono.numero_modulo
+        if not inicio or not (1 <= inicio <= n_mod):
+            return cubiertos
+        cubiertos.add(inicio)
+        if valor_modulo > 0:
+            cantidad = int((abono.monto / valor_modulo).to_integral_value(rounding=ROUND_FLOOR))
+            for n in range(inicio, min(n_mod, inicio + max(cantidad, 1) - 1) + 1):
+                cubiertos.add(n)
+        return cubiertos
+
+    candidatos = []
+    for abono in abonos:
+        cubiertos = modulos_cubiertos(abono)
+        if numero_modulo is not None:
+            if numero_modulo not in cubiertos:
+                continue
+            if (abono.pk, numero_modulo) in usados_por_modulo:
+                continue
+        if abono not in candidatos:
+            candidatos.append(abono)
+    return candidatos
+
+
+def _abonos_abono_modulo_context(matricula, recuperacion_actual=None):
+    """Datos livianos para que la plantilla indique si un módulo se puede descontar."""
+    disponibles = {}
+    n_mod = (
+        matricula.curso.get_numero_modulos(matricula.modalidad)
+        if matricula.curso_id else 1
+    ) or 1
+    for numero_modulo in range(1, n_mod + 1):
+        abonos = _abonos_abono_modulo_disponibles(
+            matricula,
+            numero_modulo=numero_modulo,
+            recuperacion_actual=recuperacion_actual,
+        )
+        if not abonos:
+            continue
+        abono = abonos[0]
+        clave = str(numero_modulo)
+        disponibles.setdefault(clave, {
+            'recibo': abono.numero_recibo,
+            'monto': f'{abono.monto:.2f}',
+            'fecha': abono.fecha.strftime('%d/%m/%Y') if abono.fecha else '',
+            'metodo': abono.get_metodo_display(),
+        })
+    return disponibles
+
+
+def _redirect_despues_recuperacion(request, matricula=None):
+    """Vuelve al origen si es una URL local; si no, vuelve a la matrícula o al listado."""
+    next_url = (
+        request.POST.get('next')
+        or request.GET.get('next')
+        or request.META.get('HTTP_REFERER')
+        or ''
+    )
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(next_url)
+    if matricula is not None:
+        return redirect('academia:matricula_abonos', pk=matricula.pk)
+    return redirect('academia:recuperaciones_lista')
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -2177,6 +2285,9 @@ def recuperaciones_export_excel(request):
         estudiante = r.matricula.estudiante
         banco = abono.get_banco_display() if (abono and abono.banco) else '—'
         monto = abono.monto if abono else Decimal('0.00')
+        tipo_pago_label = abono.get_tipo_pago_display() if abono else '—'
+        if abono and abono.tipo_pago != 'recuperacion':
+            tipo_pago_label = f'Descontada con {tipo_pago_label}'
 
         rows.append([
             estado_label,
@@ -2189,7 +2300,7 @@ def recuperaciones_export_excel(request):
             float(r.saldo_pendiente_al_marcar or 0),
             r.fecha_recuperacion.strftime('%d/%m/%Y') if r.fecha_recuperacion else '—',
             abono.numero_recibo if abono else '—',
-            abono.get_tipo_pago_display() if abono else '—',
+            tipo_pago_label,
             float(monto or 0),
             abono.get_metodo_display() if abono else '—',
             banco,
@@ -2198,7 +2309,8 @@ def recuperaciones_export_excel(request):
             '',  # Asistencia: en blanco para firma
         ])
         total_saldo += r.saldo_pendiente_al_marcar or Decimal('0.00')
-        total_pagado += monto or Decimal('0.00')
+        if abono and abono.tipo_pago == 'recuperacion':
+            total_pagado += monto or Decimal('0.00')
 
     totals = {
         7: float(total_saldo),
@@ -2273,6 +2385,10 @@ def recuperaciones_export_pdf(request):
         metodo = abono.get_metodo_display() if abono else '—'
         if abono and abono.banco:
             metodo = f'{metodo} · {abono.get_banco_display()}'
+        if abono and abono.tipo_pago != 'recuperacion':
+            pago_recuperacion = f'Descontada con {abono.numero_recibo} · ${float(monto or 0):.2f}'
+        else:
+            pago_recuperacion = f'{abono.numero_recibo} · ${float(monto or 0):.2f}' if abono else 'Por cobrar'
 
         data.append([
             'Pagada' if r.pagada else 'Pendiente',
@@ -2282,13 +2398,14 @@ def recuperaciones_export_pdf(request):
             r.matricula.curso.nombre,
             f'M{r.numero_modulo}',
             f'${float(r.saldo_pendiente_al_marcar or 0):.2f}',
-            f'{abono.numero_recibo} · ${float(monto or 0):.2f}' if abono else 'Por cobrar',
+            pago_recuperacion,
             metodo,
             (r.observaciones or '—')[:60],
             '',  # Asistencia: vacía para firma a mano
         ])
         total_saldo += r.saldo_pendiente_al_marcar or Decimal('0.00')
-        total_pagado += monto or Decimal('0.00')
+        if abono and abono.tipo_pago == 'recuperacion':
+            total_pagado += monto or Decimal('0.00')
 
     data.append([
         '', '', '', '', 'TOTAL', '',
@@ -2335,6 +2452,7 @@ def recuperacion_marcar(request, matricula_pk):
     Guarda automáticamente el saldo pendiente al momento.
     """
     matricula = get_object_or_404(Matricula, pk=matricula_pk)
+    abonos_modulo_disponibles = _abonos_abono_modulo_context(matricula)
 
     if request.method == 'POST':
         form = RecuperacionPendienteForm(request.POST, matricula=matricula)
@@ -2342,13 +2460,37 @@ def recuperacion_marcar(request, matricula_pk):
             recup = form.save(commit=False)
             recup.matricula = matricula
             recup.saldo_pendiente_al_marcar = matricula.saldo
-            recup.save()
-            messages.success(
-                request,
-                f'Clase de Módulo {recup.numero_modulo} marcada para recuperación. '
-                f'Saldo arrastrado: ${recup.saldo_pendiente_al_marcar:.2f}.'
-            )
-            return redirect('academia:matricula_abonos', pk=matricula.pk)
+            modo_registro = form.cleaned_data.get('modo_registro')
+
+            if modo_registro == RecuperacionPendienteForm.MODO_DESCONTAR_ABONO_MODULO:
+                abonos_modulo = _abonos_abono_modulo_disponibles(
+                    matricula, recup.numero_modulo
+                )
+                abono_modulo = abonos_modulo[0] if abonos_modulo else None
+                if abono_modulo:
+                    recup.pagada = True
+                    recup.fecha_recuperacion = recup.fecha_marcada
+                    recup.abono = abono_modulo
+                    recup.save()
+                    messages.success(
+                        request,
+                        f'Clase de Módulo {recup.numero_modulo} descontada con '
+                        f'{abono_modulo.numero_recibo} (Abono + Módulo por ${abono_modulo.monto}). '
+                        'No se creó un cobro adicional.'
+                    )
+                    return redirect('academia:matricula_abonos', pk=matricula.pk)
+                form.add_error(
+                    'modo_registro',
+                    'Ese pago "Abono + Módulo" ya no está disponible para descontar.'
+                )
+            else:
+                recup.save()
+                messages.success(
+                    request,
+                    f'Clase de Módulo {recup.numero_modulo} marcada para recuperación. '
+                    f'Saldo arrastrado: ${recup.saldo_pendiente_al_marcar:.2f}.'
+                )
+                return redirect('academia:matricula_abonos', pk=matricula.pk)
     else:
         form = RecuperacionPendienteForm(
             initial={'fecha_marcada': date.today()},
@@ -2358,6 +2500,102 @@ def recuperacion_marcar(request, matricula_pk):
     return render(request, 'pagos/recuperacion_marcar.html', {
         'form': form,
         'matricula': matricula,
+        'abonos_modulo_disponibles': abonos_modulo_disponibles,
+        'modo_edicion': False,
+        'permitir_modo_registro': True,
+    })
+
+
+@matricula_requerida
+@transaction.atomic
+def recuperacion_editar(request, recup_pk):
+    """Editar una marca de recuperación sin borrar pagos asociados."""
+    recup = get_object_or_404(
+        RecuperacionPendiente.objects.select_related(
+            'matricula', 'matricula__estudiante', 'matricula__curso', 'abono',
+        ),
+        pk=recup_pk,
+    )
+    matricula = recup.matricula
+    abono_original = recup.abono
+    tiene_cobro_recuperacion = bool(
+        abono_original and abono_original.tipo_pago == 'recuperacion'
+    )
+    modo_inicial = (
+        RecuperacionPendienteForm.MODO_DESCONTAR_ABONO_MODULO
+        if abono_original and abono_original.tipo_pago == 'por_modulo'
+        else RecuperacionPendienteForm.MODO_NORMAL
+    )
+
+    abonos_modulo_disponibles = _abonos_abono_modulo_context(
+        matricula,
+        recuperacion_actual=recup,
+    )
+
+    if request.method == 'POST':
+        post = request.POST.copy()
+        if tiene_cobro_recuperacion:
+            post['modo_registro'] = RecuperacionPendienteForm.MODO_NORMAL
+        form = RecuperacionPendienteForm(post, instance=recup, matricula=matricula)
+        if form.is_valid():
+            recup_editada = form.save(commit=False)
+            recup_editada.matricula = matricula
+            modo_registro = form.cleaned_data.get('modo_registro')
+
+            if tiene_cobro_recuperacion:
+                recup_editada.pagada = True
+                recup_editada.fecha_recuperacion = abono_original.fecha
+                recup_editada.abono = abono_original
+                recup_editada.save()
+                if abono_original.numero_modulo != recup_editada.numero_modulo:
+                    abono_original.numero_modulo = recup_editada.numero_modulo
+                    abono_original.save(update_fields=['numero_modulo', 'actualizado'])
+                messages.success(request, 'Recuperación actualizada. El pago asociado se conservó.')
+                return _redirect_despues_recuperacion(request, matricula)
+
+            if modo_registro == RecuperacionPendienteForm.MODO_DESCONTAR_ABONO_MODULO:
+                abonos_modulo = _abonos_abono_modulo_disponibles(
+                    matricula,
+                    recup_editada.numero_modulo,
+                    recuperacion_actual=recup,
+                )
+                abono_modulo = abonos_modulo[0] if abonos_modulo else None
+                if abono_modulo:
+                    recup_editada.pagada = True
+                    recup_editada.fecha_recuperacion = recup_editada.fecha_marcada
+                    recup_editada.abono = abono_modulo
+                    recup_editada.save()
+                    messages.success(
+                        request,
+                        f'Recuperación actualizada y descontada con {abono_modulo.numero_recibo}.'
+                    )
+                    return _redirect_despues_recuperacion(request, matricula)
+                form.add_error(
+                    'modo_registro',
+                    'Ese pago "Abono + Módulo" ya no está disponible para descontar.'
+                )
+            else:
+                recup_editada.pagada = False
+                recup_editada.fecha_recuperacion = None
+                recup_editada.abono = None
+                recup_editada.save()
+                messages.success(request, 'Recuperación actualizada y dejada como pendiente.')
+                return _redirect_despues_recuperacion(request, matricula)
+    else:
+        form = RecuperacionPendienteForm(
+            instance=recup,
+            initial={'modo_registro': modo_inicial},
+            matricula=matricula,
+        )
+
+    return render(request, 'pagos/recuperacion_marcar.html', {
+        'form': form,
+        'matricula': matricula,
+        'recuperacion': recup,
+        'abonos_modulo_disponibles': abonos_modulo_disponibles,
+        'modo_edicion': True,
+        'permitir_modo_registro': not tiene_cobro_recuperacion,
+        'next_url': request.GET.get('next', ''),
     })
 
 
@@ -2429,14 +2667,19 @@ def recuperacion_cobrar(request, recup_pk):
 @matricula_requerida
 @require_POST
 def recuperacion_eliminar(request, recup_pk):
-    """Eliminar una recuperación pendiente (no pagada)."""
-    recup = get_object_or_404(RecuperacionPendiente, pk=recup_pk)
-    if recup.pagada:
-        messages.error(request, 'No se puede eliminar una recuperación ya pagada. Eliminar el abono asociado.')
-        return redirect('academia:recuperaciones_lista')
+    """Eliminar la marca de recuperación sin eliminar el abono asociado."""
+    recup = get_object_or_404(
+        RecuperacionPendiente.objects.select_related('matricula', 'abono'),
+        pk=recup_pk,
+    )
+    matricula = recup.matricula
+    abono = recup.abono
+    mensaje_extra = ''
+    if abono:
+        mensaje_extra = f' El recibo {abono.numero_recibo} se conservó en el historial de pagos.'
     recup.delete()
-    messages.success(request, 'Recuperación pendiente eliminada.')
-    return redirect('academia:recuperaciones_lista')
+    messages.success(request, f'Marca de recuperación eliminada.{mensaje_extra}')
+    return _redirect_despues_recuperacion(request, matricula)
 
 
 # ═════════════════════════════════════════════════════════════════

@@ -1,0 +1,265 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrar correo — Formación Profesional EC</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1a237e 50%, #283593 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 20px 48px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo-circle {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            background: #ffffff;
+            object-fit: cover;
+            padding: 4px;
+            border: 3px solid #fdae11;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            margin: 0 auto 20px;
+            display: block;
+        }
+
+        h1 {
+            font-size: 22px;
+            color: #1a237e;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .notice {
+            background: #eef4ff;
+            color: #1e293b;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 500;
+            margin-bottom: 22px;
+            border-left: 4px solid #1a237e;
+            line-height: 1.45;
+        }
+
+        .error {
+            background: #fef2f2;
+            color: #991b1b;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 500;
+            margin-bottom: 22px;
+            border-left: 4px solid #ef4444;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 8px;
+        }
+
+        input[type="email"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            font-size: 15px;
+            background: #f8fafc;
+            color: #0f172a;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #1a237e;
+            background: #ffffff;
+            box-shadow: 0 0 0 4px rgba(26, 35, 126, 0.15);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #1a237e;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(26, 35, 126, 0.25);
+        }
+
+        button:hover {
+            background: #d7642f;
+            box-shadow: 0 6px 16px rgba(215, 100, 47, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 28px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .footer a {
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            color: #d7642f;
+        }
+
+        @media (max-width: 480px) {
+            body {
+                align-items: flex-start;
+                min-height: 100dvh;
+                padding: 12px;
+            }
+
+            .login-card {
+                max-width: none;
+                padding: 30px 18px 26px;
+                border-radius: 18px;
+            }
+
+            .logo-area {
+                margin-bottom: 26px;
+            }
+
+            .logo-circle {
+                width: 72px;
+                height: 72px;
+                margin-bottom: 14px;
+            }
+
+            h1 {
+                font-size: 22px;
+                line-height: 1.25;
+            }
+
+            .subtitle {
+                font-size: 13px;
+                line-height: 1.35;
+            }
+
+            .notice,
+            .error {
+                padding: 12px 14px;
+                margin-bottom: 18px;
+                font-size: 13px;
+            }
+
+            .form-group {
+                margin-bottom: 16px;
+            }
+
+            input[type="email"] {
+                min-height: 48px;
+                padding: 13px 14px;
+                font-size: 16px;
+            }
+
+            button {
+                min-height: 48px;
+                padding: 13px;
+            }
+
+            .footer {
+                margin-top: 24px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-card">
+        <div class="logo-area">
+            <img src="{% static 'logo.png' %}" alt="Logo Formación Profesional EC" class="logo-circle">
+            <h1>Registrar correo</h1>
+            <div class="subtitle">Formación Profesional EC</div>
+        </div>
+
+        <div class="notice">
+            Este paso se solicita solo la primera vez{% if pending_username %} para {{ pending_username }}{% endif %}. Luego recibirás el código directamente en este correo.
+        </div>
+
+        {% if form.errors %}
+        <div class="error">
+            {% if form.email.errors %}
+            {{ form.email.errors.0 }}
+            {% elif form.email_confirm.errors %}
+            {{ form.email_confirm.errors.0 }}
+            {% else %}
+            Revisa el correo e inténtalo nuevamente.
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="id_email">Correo electrónico</label>
+                <input type="email" name="email" id="id_email" placeholder="correo@ejemplo.com" autocomplete="email" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="id_email_confirm">Confirmar correo</label>
+                <input type="email" name="email_confirm" id="id_email_confirm" placeholder="repite tu correo" autocomplete="email" required>
+            </div>
+            <button type="submit">Enviar código</button>
+        </form>
+
+        <div class="footer">
+            <a href="{% url 'login' %}">Volver al inicio de sesión</a>
+        </div>
+    </div>
+</body>
+
+</html>

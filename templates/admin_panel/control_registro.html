@@ -204,11 +204,12 @@
                     <tr>
                         <th>Fecha y Hora</th>
                         <th>Estudiante / Curso</th>
-                        <th>Sede</th>
-                        <th>Fecha matrícula</th>
-                        <th>Monto</th>
-                        <th>Método</th>
-                        <th>Registrado por</th>
+	                        <th>Sede</th>
+	                        <th>Fecha matrícula</th>
+	                        <th>Monto</th>
+	                        <th>Tipo</th>
+	                        <th>Método</th>
+	                        <th>Registrado por</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -232,12 +233,20 @@
                         <td>
                             <strong>{{ p.matricula.fecha_matricula|date:"d/m/Y" }}</strong>
                         </td>
-                        <td>
-                            <strong style="color:#2e7d32;">${{ p.monto }}</strong>
-                        </td>
-                        <td>
-                            <span class="badge" style="background:#f5f5f5; color:#333; font-weight:normal;">
-                                {{ p.get_metodo_display }}
+	                        <td>
+	                            <strong style="color:#2e7d32;">${{ p.monto }}</strong>
+	                        </td>
+	                        <td>
+	                            <span class="badge" style="background:{% if p.tipo_pago == 'por_modulo' %}#fff3e0{% elif p.tipo_pago == 'recuperacion' %}#ffebee{% else %}#f5f5f5{% endif %}; color:{% if p.tipo_pago == 'por_modulo' %}#e65100{% elif p.tipo_pago == 'recuperacion' %}#c62828{% else %}#333{% endif %}; font-weight:600;">
+	                                {{ p.get_tipo_pago_display }}
+	                            </span>
+	                            {% if p.numero_modulo %}
+	                            <div style="font-size:11px; color:#666; margin-top:2px;">Mód. {{ p.numero_modulo }}</div>
+	                            {% endif %}
+	                        </td>
+	                        <td>
+	                            <span class="badge" style="background:#f5f5f5; color:#333; font-weight:normal;">
+	                                {{ p.get_metodo_display }}
                             </span>
                         </td>
                         <td>

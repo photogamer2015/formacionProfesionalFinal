@@ -32,7 +32,7 @@ from .forms import EgresoForm
 from .models import (
     Abono, AbonoArchivado, Adicional, AdicionalArchivado, CategoriaEgreso,
     CierreAdministrativo, CierreCurso, Comprobante, Egreso, Matricula, Curso,
-    JornadaCurso, Sede,
+    JornadaCurso, RecuperacionPendiente, Sede,
 )
 from .permisos import admin_requerido
 
@@ -289,7 +289,7 @@ def _adicionales_archivados_periodo(desde, hasta):
 TIPOS_PAGO_INFO = [
     ('abono',          'Abono',                 '#1a237e'),  # azul
     ('pago_completo',  'Pago Completo',         '#2e7d32'),  # verde
-    ('por_modulo',     'Por Módulo',            '#f0ad4e'),  # naranja
+    ('por_modulo',     'Abono + Módulo',        '#f0ad4e'),  # naranja
     ('solo_modulo',    'Solo Módulo',           '#7e57c2'),  # morado
     ('recuperacion',   'Clase de Recuperación', '#c62828'),  # rojo
 ]
@@ -345,6 +345,50 @@ def _recuperaciones_periodo(desde, hasta):
         'cuentan_para_saldo': cuentan,
         'aparte': aparte,
         'count': qs.count(),
+    }
+
+
+def _recuperaciones_abono_modulo_periodo(desde, hasta):
+    """
+    Recuperaciones validadas usando un recibo existente Abono + Módulo.
+
+    No se suman como ingreso nuevo porque el dinero ya está contado dentro de
+    Abonos. El total se calcula por recibos únicos para no duplicar un mismo
+    pago cuando cubre más de un módulo.
+    """
+    qs = (
+        RecuperacionPendiente.objects
+        .filter(
+            pagada=True,
+            abono__tipo_pago='por_modulo',
+        )
+        .filter(
+            Q(fecha_recuperacion__gte=desde, fecha_recuperacion__lte=hasta)
+            | Q(fecha_recuperacion__isnull=True, fecha_marcada__gte=desde, fecha_marcada__lte=hasta)
+        )
+        .select_related('matricula__estudiante', 'matricula__curso', 'abono')
+        .order_by('-fecha_recuperacion', '-fecha_marcada', '-creado')
+    )
+
+    recibos_unicos = {}
+    detalle = []
+    for recup in qs:
+        abono = recup.abono
+        monto = abono.monto if abono else Decimal('0.00')
+        if abono and abono.pk not in recibos_unicos:
+            recibos_unicos[abono.pk] = monto or Decimal('0.00')
+        detalle.append({
+            'recuperacion': recup,
+            'fecha_validacion': recup.fecha_recuperacion or recup.fecha_marcada,
+            'monto_recibo': monto or Decimal('0.00'),
+        })
+
+    total_recibos = sum(recibos_unicos.values(), Decimal('0.00'))
+    return {
+        'total_recibos': total_recibos,
+        'count': len(detalle),
+        'recibos_count': len(recibos_unicos),
+        'detalle': detalle,
     }
 
 
@@ -434,7 +478,7 @@ def admin_dashboard(request):
     balance = ingresos['total'] - egresos_total
     top_categorias = _egresos_por_categoria_periodo(desde, hasta)
 
-    # ── NUEVO: Tipos de pago del mes (Abono / Pago Completo / Por Módulo / Recuperación) ──
+    # ── NUEVO: Tipos de pago del mes (Abono / Pago Completo / Abono + Módulo / Recuperación) ──
     tipos_pago_mes_dict = _tipos_pago_periodo(desde, hasta)
     # Lista ordenada (mismo orden que TIPOS_PAGO_INFO) para iterar en el template
     tipos_pago_mes = [tipos_pago_mes_dict[c] for c, _l, _col in TIPOS_PAGO_INFO]
@@ -455,6 +499,7 @@ def admin_dashboard(request):
 
     # ── NUEVO: Estadísticas de Clases de Recuperación del mes ──
     recuperaciones_mes = _recuperaciones_periodo(desde, hasta)
+    recuperaciones_abono_modulo_mes = _recuperaciones_abono_modulo_periodo(desde, hasta)
 
     # ── NUEVO: Estadísticas de Adicionales del mes ──
     adicionales_mes = _adicionales_periodo(desde, hasta)
@@ -474,6 +519,7 @@ def admin_dashboard(request):
     egr_prev = _egresos_periodo(desde_prev, hasta_prev)
     bal_prev = ing_prev - egr_prev
     recup_prev = _recuperaciones_periodo(desde_prev, hasta_prev)['total']
+    recup_abono_modulo_prev = _recuperaciones_abono_modulo_periodo(desde_prev, hasta_prev)['total_recibos']
     adic_prev = _adicionales_periodo(desde_prev, hasta_prev)['total']
 
     def variacion(actual, anterior):
@@ -803,6 +849,10 @@ def admin_dashboard(request):
         'var_egresos': variacion(egresos_total, egr_prev),
         'var_balance': variacion(balance, bal_prev),
         'var_recuperaciones': variacion(recuperaciones_mes['total'], recup_prev),
+        'var_recuperaciones_abono_modulo': variacion(
+            recuperaciones_abono_modulo_mes['total_recibos'],
+            recup_abono_modulo_prev,
+        ),
         # Histórico
         'total_ingresos_hist': total_ingresos_hist,
         'total_egresos_hist': total_egresos_hist,
@@ -823,6 +873,7 @@ def admin_dashboard(request):
         'total_tipos_pago_mes': total_tipos_pago_mes,
         'pie_tipos_pago_json': json.dumps(pie_tipos_pago),
         'recuperaciones_mes': recuperaciones_mes,
+        'recuperaciones_abono_modulo_mes': recuperaciones_abono_modulo_mes,
         'movimientos_rango': movimientos_rango,
         # ★ NUEVO: Recaudación por Curso
         'recaudacion_cursos_activos': recaudacion_cursos_activos,
@@ -1087,6 +1138,7 @@ def export_reporte_mes(request):
 
     ingresos = _ingresos_periodo(desde, hasta)
     egresos_total = _egresos_periodo(desde, hasta)
+    recuperaciones_abono_modulo = _recuperaciones_abono_modulo_periodo(desde, hasta)
     balance = ingresos['total'] - egresos_total
 
     response = _csv_response(
@@ -1105,6 +1157,12 @@ def export_reporte_mes(request):
     w.writerow(['Concepto', 'Monto (USD)'])
     w.writerow(['Ingresos por abonos (matrículas)', f'{ingresos["abonos"]:.2f}'])
     w.writerow(['Ingresos por ventas (comprobantes)', f'{ingresos["ventas"]:.2f}'])
+    if recuperaciones_abono_modulo['count']:
+        w.writerow([
+            'Recuperaciones con Abono + Módulo (validación, no ingreso nuevo)',
+            f'{recuperaciones_abono_modulo["total_recibos"]:.2f}',
+            f'{recuperaciones_abono_modulo["count"]} recuperación(es)',
+        ])
     w.writerow(['TOTAL INGRESOS', f'{ingresos["total"]:.2f}'])
     w.writerow(['TOTAL EGRESOS', f'{egresos_total:.2f}'])
     w.writerow([
@@ -1281,6 +1339,7 @@ def cierre_admin_preview(request):
     egresos_total = _egresos_periodo(desde, hasta)
     egresos_categorias = _egresos_por_categoria_periodo(desde, hasta)
     cierres_curso = _cierres_curso_periodo(desde, hasta)
+    recuperaciones_abono_modulo = _recuperaciones_abono_modulo_periodo(desde, hasta)
     balance = ingresos['total'] - egresos_total
 
     existente = CierreAdministrativo.objects.filter(
@@ -1312,6 +1371,7 @@ def cierre_admin_preview(request):
         'egresos_total': egresos_total,
         'egresos_categorias': egresos_categorias,
         'cierres_curso': cierres_curso,
+        'recuperaciones_abono_modulo': recuperaciones_abono_modulo,
         'balance': balance,
         'existente': existente,
         'cortes_existentes_count': cortes_existentes_count,
@@ -1443,11 +1503,16 @@ def cierre_admin_detalle(request, pk):
 
     # Cierres de curso que cayeron en el mismo periodo (informativo)
     cierres_curso = _cierres_curso_periodo(cierre.fecha_desde, cierre.fecha_hasta)
+    recuperaciones_abono_modulo = _recuperaciones_abono_modulo_periodo(
+        cierre.fecha_desde,
+        cierre.fecha_hasta,
+    )
 
     return render(request, 'admin_panel/cierre_admin_detalle.html', {
         'cierre': cierre,
         'egresos_detalle': egresos_detalle,
         'cierres_curso': cierres_curso,
+        'recuperaciones_abono_modulo': recuperaciones_abono_modulo,
     })
 
 
@@ -1476,6 +1541,10 @@ def cierre_admin_export_excel(request, pk):
     cierre = get_object_or_404(CierreAdministrativo, pk=pk)
     egresos_detalle = _cierre_admin_egresos_detalle(cierre)
     cierres_curso = _cierres_curso_periodo(cierre.fecha_desde, cierre.fecha_hasta)
+    recuperaciones_abono_modulo = _recuperaciones_abono_modulo_periodo(
+        cierre.fecha_desde,
+        cierre.fecha_hasta,
+    )
 
     wb = Workbook()
     ws = wb.active
@@ -1536,6 +1605,11 @@ def cierre_admin_export_excel(request, pk):
         ('Abonos de cursos cerrados', cierre.ingreso_abonos_archivados, 'money'),
         ('Ventas / comprobantes', cierre.ingreso_ventas, 'money'),
         ('Adicionales', cierre.ingreso_adicionales, 'money'),
+        (
+            'Recuperaciones con Abono + Modulo (validacion, no ingreso nuevo)',
+            recuperaciones_abono_modulo['total_recibos'],
+            'money',
+        ),
         ('TOTAL INGRESOS', cierre.ingreso_total, 'total'),
     ], next_row)
     next_row = write_section('Resumen final', [
@@ -1610,6 +1684,10 @@ def cierre_admin_export_pdf(request, pk):
     cierre = get_object_or_404(CierreAdministrativo, pk=pk)
     egresos_detalle = _cierre_admin_egresos_detalle(cierre)
     cierres_curso = _cierres_curso_periodo(cierre.fecha_desde, cierre.fecha_hasta)
+    recuperaciones_abono_modulo = _recuperaciones_abono_modulo_periodo(
+        cierre.fecha_desde,
+        cierre.fecha_hasta,
+    )
 
     out = BytesIO()
     doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=28, rightMargin=28, topMargin=28, bottomMargin=28)
@@ -1641,6 +1719,10 @@ def cierre_admin_export_pdf(request, pk):
         ['Abonos de cursos cerrados', money(cierre.ingreso_abonos_archivados)],
         ['Ventas / comprobantes', money(cierre.ingreso_ventas)],
         ['Adicionales', money(cierre.ingreso_adicionales)],
+        [
+            'Recuperaciones con Abono + Modulo (validacion, no ingreso nuevo)',
+            money(recuperaciones_abono_modulo['total_recibos']),
+        ],
         ['TOTAL', money(cierre.ingreso_total)],
     ]
 

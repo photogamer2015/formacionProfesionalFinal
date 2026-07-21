@@ -262,6 +262,22 @@ body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
         {% endif %}
     </div>
 
+    {# Recuperaciones descontadas con Abono + Módulo: validación, no ingreso nuevo #}
+    <div class="card-box clickable-card" onclick="openDashboardModal('modal-recuperaciones-abono-modulo')" style="border-top:4px solid #f0ad4e; padding:18px; background:linear-gradient(135deg, #ffffff 0%, #fff8e1 100%);">
+        <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">✓ Recuperación con Abono + Módulo</div>
+        <div style="font-size:28px; font-weight:700; color:#e65100; margin:8px 0 4px;">${{ recuperaciones_abono_modulo_mes.total_recibos|floatformat:2 }}</div>
+        <div style="font-size:11px; color:#666;">
+            {{ recuperaciones_abono_modulo_mes.count }} recuperación{{ recuperaciones_abono_modulo_mes.count|pluralize:"es" }} validada{{ recuperaciones_abono_modulo_mes.count|pluralize }} ·
+            {{ recuperaciones_abono_modulo_mes.recibos_count }} recibo{{ recuperaciones_abono_modulo_mes.recibos_count|pluralize }} único{{ recuperaciones_abono_modulo_mes.recibos_count|pluralize }}
+            <br><strong style="color:#856404;">No suma ingreso nuevo</strong>
+        </div>
+        {% if var_recuperaciones_abono_modulo is not None %}
+            <div style="margin-top:8px; font-size:11px; color:{% if var_recuperaciones_abono_modulo >= 0 %}#e65100{% else %}#c62828{% endif %};">
+                {% if var_recuperaciones_abono_modulo >= 0 %}▲{% else %}▼{% endif %} {{ var_recuperaciones_abono_modulo|floatformat:1 }}% vs mes anterior
+            </div>
+        {% endif %}
+    </div>
+
     {# ★★ NUEVO: Adicionales del mes (KPI con + verde brillante) ★★ #}
     <div class="card-box" style="border-top:4px solid #00838f; padding:18px; background:linear-gradient(135deg, #ffffff 0%, #e0f7fa 100%);">
         <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">➕ Adicionales del mes</div>
@@ -411,7 +427,7 @@ body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
         <div>
             <h3 style="color:#1a237e; font-size:16px; margin-bottom:2px;">🎯 Tipos de Pago — {{ mes_nombre }} {{ anio }}</h3>
             <p style="font-size:11px; color:#666; margin:0;">
-                Cómo se está registrando el dinero: Abono, Pago Completo, Por Módulo y Clase de Recuperación.
+                Cómo se está registrando el dinero: Abono, Pago Completo, Abono + Módulo y Clase de Recuperación.
             </p>
         </div>
         <div style="font-size:13px; color:#1a237e; font-weight:700;">
@@ -459,7 +475,7 @@ body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
         <div style="display:flex; gap:14px; font-size:11px; flex-wrap:wrap;">
             <span><span style="display:inline-block; width:10px; height:10px; background:#1a237e; border-radius:2px; vertical-align:middle;"></span> Abono</span>
             <span><span style="display:inline-block; width:10px; height:10px; background:#2e7d32; border-radius:2px; vertical-align:middle;"></span> Pago Completo</span>
-            <span><span style="display:inline-block; width:10px; height:10px; background:#f0ad4e; border-radius:2px; vertical-align:middle;"></span> Por Módulo</span>
+            <span><span style="display:inline-block; width:10px; height:10px; background:#f0ad4e; border-radius:2px; vertical-align:middle;"></span> Abono + Módulo</span>
             <span><span style="display:inline-block; width:10px; height:10px; background:#c62828; border-radius:2px; vertical-align:middle;"></span> Clase de Recuperación</span>
         </div>
     </div>
@@ -1448,10 +1464,59 @@ window.addEventListener('click', function(e) {
             {% endif %}
         </div>
     </div>
-</div>
+	</div>
 
-<!-- ═══════ Modal Backup S3 ═══════ -->
-<div id="modal-backup" class="dashboard-modal-overlay">
+	{# Modal Recuperaciones descontadas con Abono + Módulo #}
+	<div id="modal-recuperaciones-abono-modulo" class="dashboard-modal-overlay">
+	    <div class="dashboard-modal-box">
+	        <div class="dashboard-modal-header">
+	            <h3 class="dashboard-modal-title">Recuperaciones validadas con Abono + Módulo</h3>
+	            <button class="dashboard-modal-close" onclick="closeDashboardModal('modal-recuperaciones-abono-modulo')">&times;</button>
+	        </div>
+	        <div class="dashboard-modal-body">
+	            <div style="background:#fff8e1; border:1px solid #f0d48a; color:#6b4e00; border-radius:8px; padding:10px 12px; font-size:12px; margin-bottom:12px;">
+	                Estos valores ya están contados como Abono + Módulo en ingresos. Aquí solo se valida qué recuperaciones fueron descontadas con esos recibos, sin crear cobro adicional.
+	            </div>
+	            {% if recuperaciones_abono_modulo_mes.detalle %}
+	                <table class="dashboard-modal-table">
+	                    <thead>
+	                        <tr>
+	                            <th>Fecha</th>
+	                            <th>Estudiante</th>
+	                            <th>Curso</th>
+	                            <th>Módulo</th>
+	                            <th>Recibo</th>
+	                            <th style="text-align:right;">Monto recibo</th>
+	                        </tr>
+	                    </thead>
+	                    <tbody>
+	                        {% for item in recuperaciones_abono_modulo_mes.detalle %}
+	                        <tr>
+	                            <td>{{ item.fecha_validacion|date:"d/m/Y" }}</td>
+	                            <td>{{ item.recuperacion.matricula.estudiante }}</td>
+	                            <td>{{ item.recuperacion.matricula.curso.nombre }}</td>
+	                            <td>Mód. {{ item.recuperacion.numero_modulo }}</td>
+	                            <td>
+	                                <strong>{{ item.recuperacion.abono.numero_recibo }}</strong>
+	                                <div style="font-size:11px; color:#888;">{{ item.recuperacion.abono.get_metodo_display }}</div>
+	                            </td>
+	                            <td style="text-align:right; font-weight:600; color:#e65100;">${{ item.monto_recibo|floatformat:2 }}</td>
+	                        </tr>
+	                        {% endfor %}
+	                    </tbody>
+	                </table>
+	                <div style="margin-top:12px; text-align:right; font-size:13px; color:#1a237e; font-weight:700;">
+	                    Total recibos únicos validados: ${{ recuperaciones_abono_modulo_mes.total_recibos|floatformat:2 }}
+	                </div>
+	            {% else %}
+	                <p style="text-align:center; color:#888; padding:30px;">No hay recuperaciones descontadas con Abono + Módulo en este periodo.</p>
+	            {% endif %}
+	        </div>
+	    </div>
+	</div>
+
+	<!-- ═══════ Modal Backup S3 ═══════ -->
+	<div id="modal-backup" class="dashboard-modal-overlay">
     <div class="dashboard-modal-box" style="max-width:420px; text-align:center; position:relative;">
         <div class="dashboard-modal-header" style="justify-content:center; border-bottom:none; padding-bottom:0;">
             <span style="font-size:42px;">💾</span>

@@ -84,6 +84,8 @@ urlpatterns = [
          views_pagos.recuperaciones_export_pdf, name='recuperaciones_export_pdf'),
     path('recuperaciones/marcar/<int:matricula_pk>/',
          views_pagos.recuperacion_marcar, name='recuperacion_marcar'),
+    path('recuperaciones/<int:recup_pk>/editar/',
+         views_pagos.recuperacion_editar, name='recuperacion_editar'),
     path('recuperaciones/<int:recup_pk>/cobrar/',
          views_pagos.recuperacion_cobrar, name='recuperacion_cobrar'),
     path('recuperaciones/<int:recup_pk>/eliminar/',

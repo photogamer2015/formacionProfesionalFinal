@@ -85,14 +85,26 @@
                     <td style="padding:8px 4px;">Ventas / comprobantes manuales</td>
                     <td style="padding:8px 4px; text-align:right;"><strong>${{ ingresos.ventas|floatformat:2 }}</strong></td>
                 </tr>
-                <tr style="border-bottom:2px solid #e0e0e0;">
-                    <td style="padding:8px 4px;">Adicionales (certif., supletorios, camisas)</td>
-                    <td style="padding:8px 4px; text-align:right;"><strong>${{ ingresos.adicionales|floatformat:2 }}</strong></td>
-                </tr>
-                <tr>
-                    <td style="padding:10px 4px; font-weight:700; color:#2e7d32;">TOTAL INGRESOS</td>
-                    <td style="padding:10px 4px; text-align:right; font-weight:700; color:#2e7d32; font-size:16px;">${{ ingresos.total|floatformat:2 }}</td>
-                </tr>
+	                <tr style="border-bottom:2px solid #e0e0e0;">
+	                    <td style="padding:8px 4px;">Adicionales (certif., supletorios, camisas)</td>
+	                    <td style="padding:8px 4px; text-align:right;"><strong>${{ ingresos.adicionales|floatformat:2 }}</strong></td>
+	                </tr>
+	                {% if recuperaciones_abono_modulo.count %}
+	                <tr style="border-bottom:1px solid #f0f0f0; background:#fff8e1;">
+	                    <td style="padding:8px 4px;">
+	                        Recuperaciones validadas con Abono + Módulo
+	                        <br><small style="color:#856404;">Informativo: ya contado en Abonos, no suma otro ingreso.</small>
+	                    </td>
+	                    <td style="padding:8px 4px; text-align:right;">
+	                        <strong style="color:#e65100;">${{ recuperaciones_abono_modulo.total_recibos|floatformat:2 }}</strong>
+	                        <br><small style="color:#856404;">{{ recuperaciones_abono_modulo.count }} recuperación{{ recuperaciones_abono_modulo.count|pluralize:"es" }}</small>
+	                    </td>
+	                </tr>
+	                {% endif %}
+	                <tr>
+	                    <td style="padding:10px 4px; font-weight:700; color:#2e7d32;">TOTAL INGRESOS</td>
+	                    <td style="padding:10px 4px; text-align:right; font-weight:700; color:#2e7d32; font-size:16px;">${{ ingresos.total|floatformat:2 }}</td>
+	                </tr>
             </tbody>
         </table>
     </div>

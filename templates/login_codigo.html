@@ -1,0 +1,442 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación — Formación Profesional EC</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1a237e 50%, #283593 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 20px 48px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo-circle {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            background: #ffffff;
+            object-fit: cover;
+            padding: 4px;
+            border: 3px solid #fdae11;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            margin: 0 auto 20px;
+            display: block;
+        }
+
+        h1 {
+            font-size: 22px;
+            color: #1a237e;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .notice {
+            background: #eef4ff;
+            color: #1e293b;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 500;
+            margin-bottom: 22px;
+            border-left: 4px solid #1a237e;
+            line-height: 1.45;
+        }
+
+        .error {
+            background: #fef2f2;
+            color: #991b1b;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 500;
+            margin-bottom: 22px;
+            border-left: 4px solid #ef4444;
+        }
+
+        .success {
+            background: #f0fdf4;
+            color: #166534;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 500;
+            margin-bottom: 22px;
+            border-left: 4px solid #22c55e;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 8px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            font-size: 20px;
+            letter-spacing: 4px;
+            background: #f8fafc;
+            color: #0f172a;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            text-align: center;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #1a237e;
+            background: #ffffff;
+            box-shadow: 0 0 0 4px rgba(26, 35, 126, 0.15);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #1a237e;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(26, 35, 126, 0.25);
+        }
+
+        button:hover {
+            background: #d7642f;
+            box-shadow: 0 6px 16px rgba(215, 100, 47, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 28px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .footer a {
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            color: #d7642f;
+        }
+
+        .resend-form {
+            margin-top: 18px;
+            text-align: center;
+        }
+
+        .resend-button {
+            width: auto;
+            padding: 8px 10px;
+            margin-top: 0;
+            background: transparent;
+            color: #1a237e;
+            box-shadow: none;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .resend-button:hover {
+            background: transparent;
+            color: #d7642f;
+            box-shadow: none;
+            transform: none;
+            text-decoration: underline;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.62);
+            z-index: 20;
+        }
+
+        .modal-backdrop.is-open {
+            display: flex;
+        }
+
+        .modal {
+            width: 100%;
+            max-width: 360px;
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+            text-align: left;
+        }
+
+        .modal h2 {
+            color: #1a237e;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .modal p {
+            color: #475569;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .modal-actions button {
+            margin-top: 0;
+            box-shadow: none;
+        }
+
+        .cancel-button {
+            background: #e2e8f0;
+            color: #1e293b;
+        }
+
+        .cancel-button:hover {
+            background: #cbd5e1;
+            color: #1e293b;
+        }
+
+        .confirm-button {
+            background: #1a237e;
+        }
+
+        @media (max-width: 480px) {
+            body {
+                align-items: flex-start;
+                min-height: 100dvh;
+                padding: 12px;
+            }
+
+            .login-card {
+                max-width: none;
+                padding: 30px 18px 26px;
+                border-radius: 18px;
+            }
+
+            .logo-area {
+                margin-bottom: 26px;
+            }
+
+            .logo-circle {
+                width: 72px;
+                height: 72px;
+                margin-bottom: 14px;
+            }
+
+            h1 {
+                font-size: 22px;
+                line-height: 1.25;
+            }
+
+            .subtitle {
+                font-size: 13px;
+                line-height: 1.35;
+            }
+
+            .notice,
+            .error,
+            .success {
+                padding: 12px 14px;
+                margin-bottom: 18px;
+                font-size: 13px;
+            }
+
+            .form-group {
+                margin-bottom: 16px;
+            }
+
+            input[type="text"] {
+                min-height: 52px;
+                padding: 13px 14px;
+                font-size: 22px;
+                letter-spacing: 3px;
+            }
+
+            button {
+                min-height: 48px;
+                padding: 13px;
+            }
+
+            .resend-form {
+                margin-top: 14px;
+            }
+
+            .footer {
+                margin-top: 24px;
+            }
+
+            .modal {
+                max-width: 100%;
+                padding: 20px;
+                border-radius: 14px;
+            }
+
+            .modal-actions {
+                flex-direction: column-reverse;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-card">
+        <div class="logo-area">
+            <img src="{% static 'logo.png' %}" alt="Logo Formación Profesional EC" class="logo-circle">
+            <h1>Verificación de acceso</h1>
+            <div class="subtitle">Formación Profesional EC</div>
+        </div>
+
+        <div class="notice">
+            Ingresa el código de 6 dígitos enviado a {{ masked_email }}.
+        </div>
+
+        {% if code_success_message %}
+        <div class="success">
+            {{ code_success_message }}
+        </div>
+        {% endif %}
+
+        {% if code_error_message %}
+        <div class="error">
+            {{ code_error_message }}
+        </div>
+        {% endif %}
+
+        {% if form.errors %}
+        <div class="error">
+            {% if form.code.errors %}
+            {{ form.code.errors.0 }}
+            {% else %}
+            Código inválido. Inténtalo nuevamente.
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="id_code">Código de verificación</label>
+                <input type="text" name="code" id="id_code" placeholder="000000" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" required autofocus>
+            </div>
+            <button type="submit">Verificar código</button>
+        </form>
+
+        <form method="post" class="resend-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="resend">
+            <button type="button" class="resend-button" id="open-resend-modal">Reenviar código</button>
+        </form>
+
+        <div class="footer">
+            <a href="{% url 'login' %}">Volver al inicio de sesión</a>
+        </div>
+    </div>
+
+    <div class="modal-backdrop" id="resend-modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="resend-modal-title">
+            <h2 id="resend-modal-title">¿Está seguro que desea reenviar el código?</h2>
+            <p>Se generará un código nuevo y el código anterior dejará de funcionar.</p>
+            <div class="modal-actions">
+                <button type="button" class="cancel-button" id="cancel-resend">Cancelar</button>
+                <button type="button" class="confirm-button" id="confirm-resend">Sí, reenviar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const resendForm = document.querySelector('.resend-form');
+        const resendModal = document.getElementById('resend-modal');
+        const openResendModal = document.getElementById('open-resend-modal');
+        const cancelResend = document.getElementById('cancel-resend');
+        const confirmResend = document.getElementById('confirm-resend');
+
+        function showResendModal() {
+            resendModal.classList.add('is-open');
+            resendModal.setAttribute('aria-hidden', 'false');
+            cancelResend.focus();
+        }
+
+        function hideResendModal() {
+            resendModal.classList.remove('is-open');
+            resendModal.setAttribute('aria-hidden', 'true');
+            openResendModal.focus();
+        }
+
+        openResendModal.addEventListener('click', showResendModal);
+        cancelResend.addEventListener('click', hideResendModal);
+        confirmResend.addEventListener('click', () => {
+            confirmResend.disabled = true;
+            resendForm.submit();
+        });
+
+        resendModal.addEventListener('click', (event) => {
+            if (event.target === resendModal) {
+                hideResendModal();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && resendModal.classList.contains('is-open')) {
+                hideResendModal();
+            }
+        });
+    </script>
+</body>
+
+</html>

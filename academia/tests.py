@@ -1,21 +1,246 @@
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import Group, User
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from .authentication import (
+    LOGIN_CAPTCHA_ANSWER_SESSION_KEY, LOGIN_MFA_CODE_HASH_SESSION_KEY,
+    LOGIN_MFA_EMAIL_SESSION_KEY, LOGIN_MFA_EMAIL_TO_SAVE_SESSION_KEY,
+    LOGIN_MFA_USER_ID_SESSION_KEY,
+)
 from .forms import AbonoForm, AdicionalSupletorioRapidoForm, MatriculaForm
 from .models import (
     Abono, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
-    MatriculaArchivada, PersonaExterna, Sede,
+    MatriculaArchivada, PersonaExterna, RecuperacionPendiente, Sede,
 )
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
 from .views_pagos import _hojas_recaudacion_data, _plan_recaudacion_matricula
+
+
+class LoginCaptchaTests(TestCase):
+    def test_login_muestra_captcha_matematico(self):
+        response = self.client.get(reverse('login'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(response.context['captcha_question'], r'^\d+ (\+|x) \d+$')
+        self.assertIn(LOGIN_CAPTCHA_ANSWER_SESSION_KEY, self.client.session)
+        self.assertContains(response, 'Captcha de seguridad')
+
+    def test_login_rechaza_clave_valida_si_captcha_incorrecto(self):
+        User.objects.create_user(username='admin_test', password='clave12345')
+        self.client.get(reverse('login'))
+
+        response = self.client.post(reverse('login'), {
+            'username': 'admin_test',
+            'password': 'clave12345',
+            'captcha': '999',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertContains(response, 'El resultado del captcha no es correcto.')
+
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_login_con_clave_valida_envia_codigo_y_no_autentica_aun(self, enviar_codigo):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+
+        response = self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_code'))
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertEqual(self.client.session[LOGIN_MFA_USER_ID_SESSION_KEY], str(user.pk))
+        self.assertIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+        self.assertIn(LOGIN_MFA_EMAIL_SESSION_KEY, self.client.session)
+        self.assertNotIn(LOGIN_CAPTCHA_ANSWER_SESSION_KEY, self.client.session)
+        enviar_codigo.assert_called_once()
+
+        code_response = self.client.get(reverse('login_code'))
+        self.assertContains(code_response, '¿Está seguro que desea reenviar el código?')
+
+    @patch('academia.authentication.generar_codigo_verificacion', return_value='123456')
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_codigo_correcto_completa_inicio_de_sesion(self, enviar_codigo, generar_codigo):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        response = self.client.post(reverse('login_code'), {'code': '123456'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('_auth_user_id', self.client.session)
+        self.assertNotIn(LOGIN_MFA_USER_ID_SESSION_KEY, self.client.session)
+        self.assertNotIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+
+    @patch('academia.authentication.generar_codigo_verificacion', return_value='123456')
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_codigo_incorrecto_no_autentica(self, enviar_codigo, generar_codigo):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        response = self.client.post(reverse('login_code'), {'code': '000000'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertContains(response, 'Codigo incorrecto.')
+
+    @patch('academia.authentication.generar_codigo_verificacion', return_value='123456')
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_usuario_sin_correo_lo_registra_una_vez_y_luego_solo_pide_codigo(
+        self,
+        enviar_codigo,
+        generar_codigo,
+    ):
+        user = User.objects.create_user(username='admin_test', password='clave12345')
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+
+        response = self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_email'))
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertEqual(self.client.session[LOGIN_MFA_USER_ID_SESSION_KEY], str(user.pk))
+        self.assertNotIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+
+        response = self.client.post(reverse('login_email'), {
+            'email': 'Nuevo@Example.COM',
+            'email_confirm': 'nuevo@example.com',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_code'))
+        self.assertEqual(
+            self.client.session[LOGIN_MFA_EMAIL_TO_SAVE_SESSION_KEY],
+            'nuevo@example.com',
+        )
+        self.assertIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertEqual(enviar_codigo.call_args.args[2], 'nuevo@example.com')
+
+        response = self.client.post(reverse('login_code'), {'code': '123456'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('_auth_user_id', self.client.session)
+        user.refresh_from_db()
+        self.assertEqual(user.email, 'nuevo@example.com')
+
+        self.client.logout()
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+
+        response = self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('login_code'))
+
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_registro_correo_requiere_confirmacion_igual(self, enviar_codigo):
+        user = User.objects.create_user(username='admin_test', password='clave12345')
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+
+        response = self.client.post(reverse('login_email'), {
+            'email': 'uno@example.com',
+            'email_confirm': 'dos@example.com',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Los correos no coinciden.')
+        self.assertNotIn(LOGIN_MFA_CODE_HASH_SESSION_KEY, self.client.session)
+        enviar_codigo.assert_not_called()
+
+    @patch('academia.authentication.generar_codigo_verificacion', side_effect=['111111', '222222'])
+    @patch('academia.authentication.enviar_codigo_login')
+    def test_reenviar_codigo_invalida_el_anterior_y_permite_el_ultimo(
+        self,
+        enviar_codigo,
+        generar_codigo,
+    ):
+        user = User.objects.create_user(
+            username='admin_test',
+            password='clave12345',
+            email='admin@example.com',
+        )
+        self.client.get(reverse('login'))
+        captcha_answer = self.client.session[LOGIN_CAPTCHA_ANSWER_SESSION_KEY]
+        self.client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'clave12345',
+            'captcha': captcha_answer,
+        })
+        self.assertTrue(
+            check_password('111111', self.client.session[LOGIN_MFA_CODE_HASH_SESSION_KEY])
+        )
+
+        response = self.client.post(reverse('login_code'), {'action': 'resend'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Te enviamos un nuevo codigo.')
+        self.assertEqual(enviar_codigo.call_count, 2)
+        self.assertTrue(
+            check_password('222222', self.client.session[LOGIN_MFA_CODE_HASH_SESSION_KEY])
+        )
+
+        response = self.client.post(reverse('login_code'), {'code': '111111'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+        response = self.client.post(reverse('login_code'), {'code': '222222'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('_auth_user_id', self.client.session)
 
 
 class SessionKeepaliveTests(TestCase):
@@ -486,6 +711,62 @@ class JornadaMatriculasAccessTests(TestCase):
         self.assertEqual(response.context['active_tab'], 'pagos')
         pagos = list(response.context['pagos'])
         self.assertEqual(pagos, [pago_objetivo])
+
+    def test_admin_dashboard_valida_recuperaciones_descontadas_con_abono_modulo(self):
+        admin = User.objects.create_superuser(username='admin_control_recup')
+        matricula = Matricula.objects.get(estudiante=self.estudiante_1)
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 9),
+            monto=Decimal('70.00'),
+            tipo_pago='por_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 10),
+            saldo_pendiente_al_marcar=matricula.saldo,
+            pagada=True,
+            fecha_recuperacion=date(2026, 7, 10),
+            abono=abono,
+        )
+
+        self.client.force_login(admin)
+        response = self.client.get(reverse('academia:admin_dashboard'), {'anio': '2026', 'mes': '7'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['recuperaciones_mes']['total'], Decimal('0.00'))
+        self.assertEqual(response.context['recuperaciones_abono_modulo_mes']['count'], 1)
+        self.assertEqual(
+            response.context['recuperaciones_abono_modulo_mes']['total_recibos'],
+            Decimal('70.00'),
+        )
+        self.assertContains(response, 'Recuperación con Abono + Módulo')
+        self.assertContains(response, 'No suma ingreso nuevo')
+
+    def test_control_registro_muestra_tipo_abono_modulo_en_pagos(self):
+        admin = User.objects.create_superuser(username='admin_control_tipo_pago')
+        matricula = Matricula.objects.get(estudiante=self.estudiante_1)
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 9),
+            monto=Decimal('70.00'),
+            tipo_pago='por_modulo',
+            numero_modulo=1,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+
+        self.client.force_login(admin)
+        response = self.client.get(reverse('academia:control_registro'), {'tab': 'pagos'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Abono + Módulo')
+        self.assertContains(response, 'Mód. 1')
 
 
 class BusquedaSinTildesTests(TestCase):
@@ -995,6 +1276,291 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(abono.monto, Decimal('50.00'))
         self.assertEqual(abono.numero_modulo, 1)
         self.assertEqual(abono.tipo_pago, 'por_modulo')
+
+    def test_recuperacion_descuenta_con_abono_modulo_existente(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 5),
+            monto=Decimal('50.00'),
+            tipo_pago='por_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        matricula.refresh_from_db()
+
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse('academia:recuperacion_marcar', kwargs={'matricula_pk': matricula.pk}),
+            {
+                'numero_modulo': '1',
+                'modo_registro': 'descontar_abono_modulo',
+                'fecha_marcada': '2026-07-10',
+                'observaciones': 'Faltó al módulo 1.',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Abono.objects.filter(matricula=matricula).count(), 1)
+        recup = RecuperacionPendiente.objects.get(matricula=matricula)
+        self.assertTrue(recup.pagada)
+        self.assertEqual(recup.abono, abono)
+        self.assertEqual(recup.fecha_recuperacion, date(2026, 7, 10))
+        abono.refresh_from_db()
+        self.assertEqual(abono.tipo_pago, 'por_modulo')
+        matricula.refresh_from_db()
+        self.assertEqual(matricula.valor_pagado, Decimal('50.00'))
+
+    def test_matricula_muestra_acciones_para_recuperacion_descontada(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_acciones',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 5),
+            monto=Decimal('50.00'),
+            tipo_pago='por_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        recup = RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 10),
+            saldo_pendiente_al_marcar=matricula.saldo,
+            pagada=True,
+            fecha_recuperacion=date(2026, 7, 10),
+            abono=abono,
+        )
+
+        self.client.force_login(admin)
+        response = self.client.get(reverse('academia:matricula_abonos', kwargs={'pk': matricula.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('academia:recuperacion_editar', kwargs={'recup_pk': recup.pk}))
+        self.assertContains(response, reverse('academia:recuperacion_eliminar', kwargs={'recup_pk': recup.pk}))
+        self.assertContains(response, 'Eliminar')
+
+    def test_eliminar_recuperacion_descontada_no_borra_abono(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_eliminar',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 5),
+            monto=Decimal('50.00'),
+            tipo_pago='por_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        recup = RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 10),
+            saldo_pendiente_al_marcar=matricula.saldo,
+            pagada=True,
+            fecha_recuperacion=date(2026, 7, 10),
+            abono=abono,
+        )
+
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse('academia:recuperacion_eliminar', kwargs={'recup_pk': recup.pk}),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(RecuperacionPendiente.objects.filter(pk=recup.pk).exists())
+        self.assertTrue(Abono.objects.filter(pk=abono.pk).exists())
+        matricula.refresh_from_db()
+        self.assertEqual(matricula.valor_pagado, Decimal('50.00'))
+
+    def test_recuperacion_descuenta_modulo_posterior_cubierto_por_mismo_abono(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_modulos',
+            password='clave12345',
+        )
+        curso = Curso.objects.create(
+            nombre='Curso Tres Modulos',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('90.00'),
+            numero_modulos=3,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='presencial',
+            descripcion='lun_mie_vie',
+            fecha_inicio=date(2026, 7, 5),
+            sede=self.sede,
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('90.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 5),
+            monto=Decimal('90.00'),
+            tipo_pago='por_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 8),
+            saldo_pendiente_al_marcar=matricula.saldo,
+            pagada=True,
+            fecha_recuperacion=date(2026, 7, 8),
+            abono=abono,
+        )
+
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse('academia:recuperacion_marcar', kwargs={'matricula_pk': matricula.pk}),
+            {
+                'numero_modulo': '3',
+                'modo_registro': 'descontar_abono_modulo',
+                'fecha_marcada': '2026-07-10',
+                'observaciones': 'Faltó al módulo 3.',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        recup_modulo_3 = RecuperacionPendiente.objects.get(
+            matricula=matricula,
+            numero_modulo=3,
+        )
+        self.assertTrue(recup_modulo_3.pagada)
+        self.assertEqual(recup_modulo_3.abono, abono)
+        self.assertEqual(Abono.objects.filter(matricula=matricula).count(), 1)
+
+    def test_recuperacion_no_descuenta_modulo_cubierto_solo_por_abono_general(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_acumulado',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('90.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 5),
+            monto=Decimal('10.00'),
+            tipo_pago='abono',
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 5),
+            monto=Decimal('20.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 5),
+            monto=Decimal('40.00'),
+            tipo_pago='abono',
+            cuenta_para_saldo=True,
+            metodo='transferencia',
+            banco='guayaquil',
+            registrado_por=admin,
+        )
+
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse('academia:recuperacion_marcar', kwargs={'matricula_pk': matricula.pk}),
+            {
+                'numero_modulo': '3',
+                'modo_registro': 'descontar_abono_modulo',
+                'fecha_marcada': '2026-07-10',
+                'observaciones': 'Faltó al módulo 3.',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(RecuperacionPendiente.objects.filter(matricula=matricula).exists())
+        self.assertIn(
+            'modo_registro',
+            response.context['form'].errors,
+        )
+        self.assertEqual(Abono.objects.filter(matricula=matricula).count(), 3)
 
     def test_reserva_modulo_reparte_monto_real_si_hay_varios_modulos(self):
         matricula = Matricula.objects.create(

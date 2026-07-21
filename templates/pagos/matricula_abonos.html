@@ -206,6 +206,15 @@
                 <td>
                     {% if r.pagada %}
                     <span class="badge badge-pagado">✓ Pagada {{ r.fecha_recuperacion|date:"d/m/Y" }}</span>
+                    {% if r.abono %}
+                    <div style="font-size:10px; color:#666; margin-top:3px;">
+                        {% if r.abono.tipo_pago == 'recuperacion' %}
+                        {{ r.abono.numero_recibo }}
+                        {% else %}
+                        Descontada con {{ r.abono.numero_recibo }}
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     {% else %}
                     <span class="badge badge-pendiente">○ Pendiente</span>
                     {% endif %}
@@ -217,16 +226,18 @@
                     {{ r.observaciones|default:"—"|truncatewords:8 }}
                 </td>
                 <td style="text-align:right;">
+                    <a href="{% url 'academia:recuperacion_editar' r.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-warning btn-sm">Editar</a>
                     {% if not r.pagada %}
                     <a href="{% url 'academia:recuperacion_cobrar' r.pk %}" class="btn btn-success btn-sm">Cobrar</a>
+                    {% endif %}
                     <form method="post" action="{% url 'academia:recuperacion_eliminar' r.pk %}" style="display:inline; margin:0 0 0 6px;">
                         {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
                         <button type="button" class="btn btn-outline-danger btn-sm" 
-                            onclick="confirmarAccion(this.closest('form'), '¿Desmarcar esta clase como recuperación? Esta acción eliminará la marca y no podrá recuperarse.', 'warning')">
-                            Desmarcar
+                            onclick="confirmarAccion(this.closest('form'), '¿Eliminar esta marca de recuperación? El recibo asociado se conservará en el historial de pagos.', 'warning')">
+                            Eliminar
                         </button>
                     </form>
-                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

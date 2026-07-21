@@ -1072,9 +1072,9 @@ class RecuperacionPendiente(models.Model):
                     return f"Mód. {self.numero_modulo} - {nombres[self.numero_modulo - 1]}"
         return f"Mód. {self.numero_modulo}"
 
-    abono = models.OneToOneField(
+    abono = models.ForeignKey(
         'Abono', on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='recuperacion',
+        related_name='recuperaciones',
         help_text='Pago asociado a esta recuperación (si ya se cobró).'
     )
     observaciones = models.TextField(blank=True)
