@@ -1537,6 +1537,7 @@ def cierre_admin_export_excel(request, pk):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
+    from .views_pagos import _add_excel_table
 
     cierre = get_object_or_404(CierreAdministrativo, pk=pk)
     egresos_detalle = _cierre_admin_egresos_detalle(cierre)
@@ -1597,6 +1598,7 @@ def cierre_admin_export_excel(request, pk):
                     ws.cell(row=row_idx, column=c).fill = total_fill
                     ws.cell(row=row_idx, column=c).font = Font(bold=True, color='1A237E')
             row_idx += 1
+        _add_excel_table(ws, header_row, 1, row_idx - 1, 2, title)
         return row_idx + 1
 
     next_row = 6
@@ -1634,6 +1636,7 @@ def cierre_admin_export_excel(request, pk):
     for cell in ws2[ws2.max_row]:
         cell.fill = total_fill
         cell.font = Font(bold=True, color='C62828')
+    _add_excel_table(ws2, 1, 1, ws2.max_row, 2, 'Egresos')
     ws2.column_dimensions['A'].width = 34
     ws2.column_dimensions['B'].width = 16
 
@@ -1661,6 +1664,7 @@ def cierre_admin_export_excel(request, pk):
     widths = [30, 14, 30, 18, 12, 14, 14, 14]
     for col, width in enumerate(widths, start=1):
         ws3.column_dimensions[get_column_letter(col)].width = width
+    _add_excel_table(ws3, 1, 1, ws3.max_row, len(headers), 'Cierres de curso')
 
     out = BytesIO()
     wb.save(out)

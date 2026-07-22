@@ -13,7 +13,7 @@
         <p class="page-subtitle">Total: {{ total }} estudiante{{ total|pluralize }} registrado{{ total|pluralize }}.</p>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <a href="{% url 'academia:estudiantes_export' %}?q={{ q }}" class="btn btn-success">📥 Excel (todos)</a>
+        <a href="{% url 'academia:estudiantes_export' %}{% if filtros_query %}?{{ filtros_query }}{% endif %}" class="btn btn-success">📥 Excel (todos)</a>
         <a href="{% url 'academia:estudiantes_por_curso' %}" class="btn btn-secondary">Ver por curso</a>
         <a href="{% url 'academia:archivo_index' %}" class="btn btn-secondary"
            style="background:#455a64; color:white;">🗄️ Archivo</a>
@@ -27,11 +27,17 @@
 </div>
 
 <div class="card-box" style="margin-bottom:18px; padding:14px;">
-    <form method="get" style="display:flex; gap:10px; align-items:center;">
+    <form method="get" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <input type="text" name="q" value="{{ q }}" placeholder="Buscar por cédula, nombre, correo o celular…"
-               class="form-input" style="flex:1;">
+               class="form-input" style="flex:1; min-width:260px;">
+        <select name="sede" class="form-input" style="width:240px; min-width:200px;">
+            <option value="">Sede: Todas</option>
+            {% for item in sedes %}
+                <option value="{{ item }}" {% if sede == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
         <button type="submit" class="btn btn-primary">Buscar</button>
-        {% if q %}
+        {% if q or sede %}
             <a href="{% url 'academia:estudiantes_lista' %}" class="btn btn-secondary">Limpiar</a>
         {% endif %}
     </form>
@@ -92,8 +98,8 @@
     </table>
     {% else %}
         <div class="empty-state">
-            {% if q %}
-                <p style="font-size:15px;">No se encontraron estudiantes con "<strong>{{ q }}</strong>".</p>
+            {% if q or sede %}
+                <p style="font-size:15px;">No se encontraron estudiantes con los filtros aplicados.</p>
                 <a href="{% url 'academia:estudiantes_lista' %}" class="btn btn-secondary" style="margin-top:12px;">Ver todos</a>
             {% else %}
                 <p style="font-size:15px;">Aún no hay estudiantes registrados.</p>

@@ -1,7 +1,9 @@
 import json
 import os
 from decimal import Decimal
+from urllib.parse import urlencode
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -48,6 +50,24 @@ def _filtrar_matriculas_por_busqueda(qs, termino):
         'fact_cedula',
         'fact_nombres',
     ])
+
+
+def _rango_fecha_matricula_desde_request(request):
+    fecha_desde = request.GET.get('fecha_desde', '').strip()
+    fecha_hasta = request.GET.get('fecha_hasta', '').strip()
+    fecha_desde_date = parse_date(fecha_desde) if fecha_desde else None
+    fecha_hasta_date = parse_date(fecha_hasta) if fecha_hasta else None
+
+    if not fecha_desde_date:
+        fecha_desde = ''
+    if not fecha_hasta_date:
+        fecha_hasta = ''
+
+    if fecha_desde_date and fecha_hasta_date and fecha_desde_date > fecha_hasta_date:
+        fecha_desde_date, fecha_hasta_date = fecha_hasta_date, fecha_desde_date
+        fecha_desde, fecha_hasta = fecha_desde_date.isoformat(), fecha_hasta_date.isoformat()
+
+    return fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date
 
 
 def _nombre_usuario(usuario):
@@ -1089,6 +1109,9 @@ def matricula_lista(request, modalidad):
     modalidad_filtro = request.GET.get('modalidad_filtro', '').strip()
     campus = request.GET.get('campus', '').strip()
     registrado_por_id = request.GET.get('registrador', '').strip()
+    fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date = (
+        _rango_fecha_matricula_desde_request(request)
+    )
 
     qs = (Matricula.objects
           .select_related(
@@ -1132,6 +1155,10 @@ def matricula_lista(request, modalidad):
         
     if registrado_por_id.isdigit():
         qs = qs.filter(registrado_por_id=int(registrado_por_id))
+    if fecha_desde_date:
+        qs = qs.filter(fecha_matricula__gte=fecha_desde_date)
+    if fecha_hasta_date:
+        qs = qs.filter(fecha_matricula__lte=fecha_hasta_date)
 
     if modalidad == 'todos':
         cursos_filtro = Curso.objects.filter(activo=True).filter(
@@ -1166,6 +1193,19 @@ def matricula_lista(request, modalidad):
         )
 
     qs = qs.order_by('-creado', '-id')
+    filtros_query = urlencode({
+        key: value for key, value in {
+            'q': q,
+            'curso': curso_id,
+            'descuento': descuento_str,
+            'registrador': registrado_por_id,
+            'jornada': jornada_id if jornada_filtrada else '',
+            'modalidad_filtro': modalidad_filtro,
+            'campus': campus,
+            'fecha_desde': fecha_desde,
+            'fecha_hasta': fecha_hasta,
+        }.items() if value
+    })
 
     return render(request, 'matricula/lista.html', {
         'matriculas': qs,
@@ -1180,6 +1220,10 @@ def matricula_lista(request, modalidad):
         'modalidad_filtro': modalidad_filtro,
         'campus_seleccionado': campus,
         'campus_opciones': campus_opciones,
+        'fecha_desde': fecha_desde,
+        'fecha_hasta': fecha_hasta,
+        'filtros_query': filtros_query,
+        'hay_filtros': bool(filtros_query),
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
         'modalidad_registro': 'presencial' if modalidad == 'todos' else modalidad,
@@ -1926,6 +1970,7 @@ def _matriculas_filtradas_para_export(request, modalidad):
     registrador_id = request.GET.get('registrador', '').strip()
     modalidad_filtro = request.GET.get('modalidad_filtro', '').strip()
     campus = request.GET.get('campus', '').strip()
+    _, _, fecha_desde_date, fecha_hasta_date = _rango_fecha_matricula_desde_request(request)
 
     qs = (Matricula.objects
           .select_related('estudiante', 'curso', 'jornada', 'jornada__sede', 'registrado_por'))
@@ -1955,6 +2000,10 @@ def _matriculas_filtradas_para_export(request, modalidad):
 
     if registrador_id.isdigit():
         qs = qs.filter(registrado_por_id=int(registrador_id))
+    if fecha_desde_date:
+        qs = qs.filter(fecha_matricula__gte=fecha_desde_date)
+    if fecha_hasta_date:
+        qs = qs.filter(fecha_matricula__lte=fecha_hasta_date)
 
     return qs.order_by('-creado', '-id')
 
@@ -1969,7 +2018,7 @@ def matricula_export_excel(request, modalidad):
     qs = _matriculas_filtradas_para_export(request, modalidad)
 
     headers = [
-        'Cédula', 'Apellidos', 'Nombres', 'Edad', 'Correo', 'Celular',
+        'Cédula', 'Estudiante', 'Edad', 'Correo', 'Celular',
         'Nivel formación', 'Título profesional', 'Ciudad',
         'Curso', 'Modalidad', 'Tipo matrícula',
         'Jornada', 'Sede / Plataforma', 'Fecha jornada', 'Horario',
@@ -2001,10 +2050,10 @@ def matricula_export_excel(request, modalidad):
             m.get_tipo_matricula_display(),
             j.descripcion_legible if j else '',
             (j.ciudad if j and j.ciudad else ''),
-            j.fecha_inicio.strftime('%d/%m/%Y') if (j and j.fecha_inicio) else '',
+            j.fecha_inicio if (j and j.fecha_inicio) else '',
             f'{j.hora_inicio.strftime("%H:%M")} - {j.hora_fin.strftime("%H:%M")}' if (j and j.hora_inicio and j.hora_fin) else '',
             m.get_talla_camiseta_display() if m.talla_camiseta else '',
-            m.fecha_matricula.strftime('%d/%m/%Y') if m.fecha_matricula else '',
+            m.fecha_matricula if m.fecha_matricula else '',
             float(m.valor_curso or 0),
             float(m.descuento or 0),
             float(m.valor_neto or 0),
@@ -2025,17 +2074,41 @@ def matricula_export_excel(request, modalidad):
         total_saldo += float(m.saldo or 0)
 
     # Indices 0-based de las columnas numéricas para los totales:
-    # 18=Valor curso, 19=Descuento, 20=Valor neto, 21=Valor pagado, 22=Saldo
+    # 17=Valor curso, 18=Descuento, 19=Valor neto, 20=Valor pagado, 21=Saldo
     totals = {
-        18: round(total_curso, 2),
-        19: round(total_descuento, 2),
-        20: round(total_neto, 2),
-        21: round(total_pagado, 2),
-        22: round(total_saldo, 2),
+        17: round(total_curso, 2),
+        18: round(total_descuento, 2),
+        19: round(total_neto, 2),
+        20: round(total_pagado, 2),
+        21: round(total_saldo, 2),
     }
     filename = f"matriculas_{modalidad}_{_date.today().strftime('%Y%m%d')}.xlsx"
     sheet_name = f"Matrículas {_label_modalidad(modalidad)}"
-    return _build_excel_response(filename, sheet_name, headers, rows, totals=totals)
+    return _build_excel_response(
+        filename,
+        sheet_name,
+        headers,
+        rows,
+        totals=totals,
+        column_formats={
+            13: 'dd/mm/yyyy',
+            16: 'dd/mm/yyyy',
+            17: '"$"#,##0.00',
+            18: '"$"#,##0.00',
+            19: '"$"#,##0.00',
+            20: '"$"#,##0.00',
+            21: '"$"#,##0.00',
+        },
+        text_columns={0, 4, 27},
+        explicit_widths={
+            0: 14, 1: 24, 2: 8, 3: 28, 4: 15,
+            5: 24, 6: 24, 7: 16, 8: 26, 9: 14,
+            10: 20, 11: 22, 12: 18, 13: 15, 14: 16,
+            15: 10, 16: 15, 17: 14, 18: 12, 19: 14,
+            20: 14, 21: 12, 22: 14, 23: 18, 24: 22,
+            25: 10, 26: 24, 27: 16, 28: 28, 29: 36,
+        },
+    )
 
 
 @matricula_requerida

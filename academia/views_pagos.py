@@ -11,6 +11,8 @@ from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from io import BytesIO
+import re
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -153,13 +155,76 @@ def _redirect_despues_recuperacion(request, matricula=None):
 # Helpers de Excel
 # ═════════════════════════════════════════════════════════════════
 
-def _build_excel_response(filename, sheet_name, headers, rows, totals=None):
+def _safe_excel_table_name(base, used_names=None):
+    """Devuelve un nombre válido y único para una tabla de Excel."""
+    used_names = used_names or set()
+    name = re.sub(r'[^A-Za-z0-9_]', '_', str(base or 'Tabla'))
+    name = re.sub(r'_+', '_', name).strip('_') or 'Tabla'
+    if not re.match(r'^[A-Za-z_]', name):
+        name = f'Tabla_{name}'
+    name = f'Tabla_{name}'[:240]
+
+    candidate = name
+    suffix = 1
+    while candidate in used_names:
+        extra = f'_{suffix}'
+        candidate = f'{name[:255 - len(extra)]}{extra}'
+        suffix += 1
+    return candidate
+
+
+def _add_excel_table(ws, header_row, first_col, last_row, last_col, table_name):
+    """
+    Convierte un rango rectangular en tabla real de Excel.
+    Si no hay filas de datos, deja al menos el autofiltro en los encabezados.
+    """
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    if last_col < first_col:
+        return
+
+    header_ref = (
+        f'{get_column_letter(first_col)}{header_row}:'
+        f'{get_column_letter(last_col)}{header_row}'
+    )
+    if last_row <= header_row:
+        ws.auto_filter.ref = header_ref
+        return
+
+    ref = (
+        f'{get_column_letter(first_col)}{header_row}:'
+        f'{get_column_letter(last_col)}{last_row}'
+    )
+    used_names = set()
+    for sheet in ws.parent.worksheets:
+        used_names.update(sheet.tables.keys())
+    display_name = _safe_excel_table_name(table_name, used_names)
+    table = Table(displayName=display_name, ref=ref)
+    table.tableStyleInfo = TableStyleInfo(
+        name='TableStyleMedium2',
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=True,
+        showColumnStripes=False,
+    )
+    ws.add_table(table)
+    ws.auto_filter.ref = ref
+
+
+def _build_excel_response(
+    filename, sheet_name, headers, rows, totals=None,
+    column_formats=None, text_columns=None, explicit_widths=None,
+):
     """
     Genera un .xlsx en memoria y lo devuelve como HttpResponse para descarga.
 
     headers: lista de strings (encabezados de columna)
     rows: lista de listas (datos)
     totals: dict opcional {col_idx_0based: total} para fila final
+    column_formats: dict opcional {col_idx_0based: formato Excel}
+    text_columns: iterable opcional de col_idx_0based que se fuerzan como texto
+    explicit_widths: dict opcional {col_idx_0based: ancho}
     """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -182,6 +247,9 @@ def _build_excel_response(filename, sheet_name, headers, rows, totals=None):
     total_font = Font(bold=True, color='1A237E', size=11)
     total_fill = PatternFill('solid', fgColor='FFF8E1')
     data_align_wrap = Alignment(vertical='center', wrap_text=True)
+    column_formats = column_formats or {}
+    text_columns = set(text_columns or [])
+    explicit_widths = explicit_widths or {}
 
     # ── Título de la hoja en fila 1 ──
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
@@ -201,10 +269,15 @@ def _build_excel_response(filename, sheet_name, headers, rows, totals=None):
 
     # ── Datos a partir de fila 3 ──
     for row_idx, row_data in enumerate(rows, start=3):
-        for col_idx, value in enumerate(row_data, start=1):
+        for col_idx, _header in enumerate(headers, start=1):
+            value = row_data[col_idx - 1] if col_idx - 1 < len(row_data) else ''
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.border = thin_border
             cell.alignment = data_align_wrap
+            if col_idx - 1 in text_columns:
+                cell.number_format = '@'
+            elif col_idx - 1 in column_formats:
+                cell.number_format = column_formats[col_idx - 1]
 
     # ── Fila de totales ──
     if totals:
@@ -222,9 +295,14 @@ def _build_excel_response(filename, sheet_name, headers, rows, totals=None):
             cell.fill = total_fill
             cell.border = thin_border
             cell.alignment = Alignment(vertical='center')
+            if col_idx_0 in column_formats:
+                cell.number_format = column_formats[col_idx_0]
 
     # ── Auto-ancho aproximado por columna (con tope y mínimo razonables) ──
     for col_idx, header in enumerate(headers, start=1):
+        if col_idx - 1 in explicit_widths:
+            ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = explicit_widths[col_idx - 1]
+            continue
         max_length = len(str(header))
         for row_data in rows:
             if col_idx - 1 < len(row_data):
@@ -239,6 +317,8 @@ def _build_excel_response(filename, sheet_name, headers, rows, totals=None):
 
     # ── Congelar encabezados ──
     ws.freeze_panes = 'A3'
+    last_row = len(rows) + (3 if totals else 2)
+    _add_excel_table(ws, 2, 1, last_row, len(headers), sheet_name)
 
     # ── Configuración de impresión profesional ──
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
@@ -546,7 +626,7 @@ def pagos_export(request):
     ).order_by('-creado', '-id')
 
     headers = [
-        'Fecha matrícula', 'Cédula', 'Apellidos', 'Nombres',
+        'Fecha matrícula', 'Cédula', 'Estudiante',
         'Curso', 'Categoría', 'Modalidad', 'Sede / Plataforma',
         'Jornada', 'Día (inicio jornada)', 'Horario',
         'Valor curso', 'Valor pagado', 'Saldo', 'Estado',
@@ -572,7 +652,7 @@ def pagos_export(request):
         # ── Datos de jornada ──
         if m.jornada:
             jornada_txt = m.jornada.descripcion_legible
-            dia_inicio = m.jornada.fecha_inicio.strftime('%d/%m/%Y') if m.jornada.fecha_inicio else '—'
+            dia_inicio = m.jornada.fecha_inicio if m.jornada.fecha_inicio else ''
             if m.jornada.hora_inicio and m.jornada.hora_fin:
                 horario_txt = f"{m.jornada.hora_inicio.strftime('%H:%M')} – {m.jornada.hora_fin.strftime('%H:%M')}"
             else:
@@ -583,9 +663,8 @@ def pagos_export(request):
             horario_txt = '—'
 
         rows.append([
-            m.fecha_matricula.strftime('%d/%m/%Y') if m.fecha_matricula else '',
+            m.fecha_matricula if m.fecha_matricula else '',
             m.estudiante.cedula,
-            
             m.estudiante.nombres,
             m.curso.nombre,
             m.curso.categoria.nombre if m.curso.categoria else '—',
@@ -607,9 +686,9 @@ def pagos_export(request):
         total_saldo += m.saldo or Decimal('0.00')
 
     totals = {
-        11: float(total_curso),
-        12: float(total_pagado),
-        13: float(total_saldo),
+        10: float(total_curso),
+        11: float(total_pagado),
+        12: float(total_saldo),
     }
 
     fecha_str = datetime.now().strftime('%Y%m%d_%H%M')
@@ -626,6 +705,19 @@ def pagos_export(request):
         headers=headers,
         rows=rows,
         totals=totals,
+        column_formats={
+            0: 'dd/mm/yyyy',
+            8: 'dd/mm/yyyy',
+            10: '"$"#,##0.00',
+            11: '"$"#,##0.00',
+            12: '"$"#,##0.00',
+        },
+        text_columns={1},
+        explicit_widths={
+            0: 15, 1: 15, 2: 26, 3: 28, 4: 18, 5: 14,
+            6: 18, 7: 24, 8: 18, 9: 16, 10: 14, 11: 14,
+            12: 12, 13: 14, 14: 34, 15: 34, 16: 16,
+        },
     )
 
 
@@ -1064,6 +1156,61 @@ def historial_export(request):
         'Valor curso', 'Pagado', 'Saldo', 'Estado',
     ]
 
+    # Hoja limpia y filtrable: mantiene el historial agrupado en las hojas por año,
+    # pero ofrece una tabla real para ordenar/filtrar sin mezclar subtotales.
+    ws_data = wb.create_sheet(title='Tabla completa')
+    ws_data.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    title = ws_data.cell(row=1, column=1, value='Historial de matrículas — Tabla completa')
+    title.font = Font(bold=True, size=14, color='1A237E')
+    title.alignment = Alignment(horizontal='center', vertical='center')
+    ws_data.row_dimensions[1].height = 24
+    for col_idx, h in enumerate(headers, start=1):
+        cell = ws_data.cell(row=2, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+    ws_data.row_dimensions[2].height = 30
+
+    todos_ordenados = sorted(
+        todos,
+        key=lambda x: (x.fecha_matricula, getattr(x, '_orden_id', getattr(x, 'id', 0))),
+        reverse=True,
+    )
+    for row_idx, m in enumerate(todos_ordenados, start=3):
+        row_data = [
+            m.fecha_matricula,
+            m.estudiante.cedula,
+            m.estudiante.nombre_completo,
+            m.curso.nombre,
+            m.get_modalidad_display(),
+            m.curso.categoria.nombre if m.curso.categoria else '—',
+            m.sede,
+            float(m.valor_curso or 0),
+            float(m.valor_pagado or 0),
+            float(m.saldo or 0),
+            m.estado_pago,
+        ]
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws_data.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical='center')
+            if col_idx == 1:
+                cell.number_format = 'dd/mm/yyyy'
+            elif col_idx == 2:
+                cell.number_format = '@'
+            elif col_idx in (8, 9, 10):
+                cell.number_format = '"$"#,##0.00'
+    for col_idx in range(1, len(headers) + 1):
+        max_length = len(headers[col_idx - 1])
+        for row_idx in range(3, len(todos_ordenados) + 3):
+            v = ws_data.cell(row=row_idx, column=col_idx).value
+            if v is not None:
+                max_length = max(max_length, len(str(v)))
+        ws_data.column_dimensions[ws_data.cell(row=2, column=col_idx).column_letter].width = min(max_length + 3, 38)
+    _add_excel_table(ws_data, 2, 1, len(todos_ordenados) + 2, len(headers), 'Historial Tabla Completa')
+    ws_data.freeze_panes = 'A3'
+
     for anio in sorted(por_anio.keys(), reverse=True):
         ws = wb.create_sheet(title=f'Año {anio}')
 
@@ -1208,19 +1355,21 @@ def historial_export(request):
 # Estudiantes
 # ═════════════════════════════════════════════════════════════════
 
-@matricula_requerida
-def estudiantes_lista(request):
-    """
-    Listado de estudiantes con búsqueda. Cada estudiante muestra el conteo
-    de cursos matriculados, sus jornadas/sedes y un enlace al detalle.
-    """
-    q = request.GET.get('q', '').strip()
-    qs = Estudiante.objects.annotate(
-        num_matriculas=Count('matriculas')
-    ).prefetch_related(
-        'matriculas__jornada', 'matriculas__jornada__sede', 'matriculas__curso'
-    ).order_by('nombres')
+def _sedes_con_matriculas():
+    """Sedes usadas por matrículas activas, sin valores vacíos."""
+    sedes = (
+        Matricula.objects
+        .filter(jornada__isnull=False)
+        .exclude(jornada__ciudad__isnull=True)
+        .exclude(jornada__ciudad__exact='')
+        .values_list('jornada__ciudad', flat=True)
+        .distinct()
+        .order_by('jornada__ciudad')
+    )
+    return [s for s in sedes if s and s.strip() and s.strip() != '—']
 
+
+def _filtrar_estudiantes_directorio(qs, q='', sede=''):
     if q:
         qs = filtrar_queryset_busqueda(qs, q, [
             'cedula',
@@ -1229,13 +1378,51 @@ def estudiantes_lista(request):
             'celular',
             'ciudad',
         ])
+    if sede:
+        qs = qs.filter(matriculas__jornada__ciudad__iexact=sede).distinct()
+    return qs
+
+
+def _matriculas_estudiante_para_resumen(estudiante, sede=''):
+    matriculas = list(estudiante.matriculas.all())
+    if not sede:
+        return matriculas
+    sede_normalizada = sede.strip().casefold()
+    return [
+        m for m in matriculas
+        if (m.sede or '').strip().casefold() == sede_normalizada
+    ]
+
+
+@matricula_requerida
+def estudiantes_lista(request):
+    """
+    Listado de estudiantes con búsqueda. Cada estudiante muestra el conteo
+    de cursos matriculados, sus jornadas/sedes y un enlace al detalle.
+    """
+    q = request.GET.get('q', '').strip()
+    sede = request.GET.get('sede', '').strip()
+    qs = Estudiante.objects.annotate(
+        num_matriculas=Count('matriculas', distinct=True)
+    ).prefetch_related(
+        'matriculas__jornada', 'matriculas__jornada__sede', 'matriculas__curso'
+    ).order_by('nombres')
+
+    sedes = _sedes_con_matriculas()
+    if sede and sede not in sedes:
+        sede = ''
+
+    qs = _filtrar_estudiantes_directorio(qs, q=q, sede=sede)
 
     # Construir, por estudiante, el resumen de jornada(s) y sede(s) de sus matrículas.
     estudiantes = list(qs)
     for e in estudiantes:
         jornadas_set = []
         sedes_set = []
-        for m in e.matriculas.all():
+        matriculas_resumen = _matriculas_estudiante_para_resumen(e, sede=sede)
+        if sede:
+            e.num_matriculas = len(matriculas_resumen)
+        for m in matriculas_resumen:
             if m.jornada_id:
                 etiqueta_dia = m.jornada.descripcion_legible
                 if etiqueta_dia and etiqueta_dia not in jornadas_set:
@@ -1249,6 +1436,11 @@ def estudiantes_lista(request):
     return render(request, 'estudiantes/lista.html', {
         'estudiantes': estudiantes,
         'q': q,
+        'sede': sede,
+        'sedes': sedes,
+        'filtros_query': urlencode({
+            k: v for k, v in {'q': q, 'sede': sede}.items() if v
+        }),
         'total': len(estudiantes),
     })
 
@@ -1334,8 +1526,12 @@ def estudiantes_export(request):
 
     por_curso = request.GET.get('por_curso', '') == '1'
     q = request.GET.get('q', '').strip()
+    sede = request.GET.get('sede', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     modalidad = request.GET.get('modalidad', '').strip()
+    sedes = _sedes_con_matriculas()
+    if sede and sede not in sedes:
+        sede = ''
 
     if por_curso:
         # Una hoja por curso (solo cursos con matriculados)
@@ -1353,7 +1549,7 @@ def estudiantes_export(request):
         )
 
         headers = [
-            'Cédula', 'Apellidos', 'Nombres', 'Edad',
+            'Cédula', 'Estudiante', 'Edad',
             'Correo', 'Celular', 'Ciudad', 'Nivel',
             'Jornada', 'Sede',
             'Modalidad', 'Fecha matrícula', 'Valor', 'Pagado', 'Saldo', 'Estado',
@@ -1370,6 +1566,8 @@ def estudiantes_export(request):
             )
             if modalidad in ('presencial', 'online'):
                 mat_qs = mat_qs.filter(modalidad=modalidad)
+            if sede:
+                mat_qs = mat_qs.filter(jornada__ciudad__iexact=sede)
             if q:
                 mat_qs = filtrar_queryset_busqueda(mat_qs, q, [
                     'estudiante__cedula',
@@ -1379,7 +1577,8 @@ def estudiantes_export(request):
                     'curso__nombre',
                 ])
 
-            if not mat_qs.exists():
+            matriculas_curso = list(mat_qs)
+            if not matriculas_curso:
                 continue
 
             # Excel limita el nombre de hoja a 31 chars y prohíbe ciertos caracteres
@@ -1389,7 +1588,7 @@ def estudiantes_export(request):
 
             # Título
             ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-            t = ws.cell(row=1, column=1, value=f'{curso.nombre} — {mat_qs.count()} estudiante(s)')
+            t = ws.cell(row=1, column=1, value=f'{curso.nombre} — {len(matriculas_curso)} estudiante(s)')
             t.font = Font(bold=True, size=14, color='1A237E')
             t.alignment = Alignment(horizontal='center', vertical='center')
             ws.row_dimensions[1].height = 24
@@ -1403,7 +1602,7 @@ def estudiantes_export(request):
                 c.border = thin_border
             ws.row_dimensions[2].height = 30
 
-            for row_idx, m in enumerate(mat_qs, start=3):
+            for row_idx, m in enumerate(matriculas_curso, start=3):
                 e = m.estudiante
                 row_data = [
                     e.cedula, e.nombres, e.edad or '',
@@ -1412,7 +1611,7 @@ def estudiantes_export(request):
                     m.jornada.descripcion_legible if m.jornada_id else '',
                     m.sede if m.sede != '—' else '',
                     m.get_modalidad_display(),
-                    m.fecha_matricula.strftime('%d/%m/%Y') if m.fecha_matricula else '',
+                    m.fecha_matricula if m.fecha_matricula else '',
                     float(m.valor_curso or 0),
                     float(m.valor_pagado or 0),
                     float(m.saldo or 0),
@@ -1422,11 +1621,17 @@ def estudiantes_export(request):
                     c = ws.cell(row=row_idx, column=col_idx, value=val)
                     c.border = thin_border
                     c.alignment = Alignment(vertical='center')
+                    if col_idx in (1, 5):
+                        c.number_format = '@'
+                    elif col_idx == 11:
+                        c.number_format = 'dd/mm/yyyy'
+                    elif col_idx in (12, 13, 14):
+                        c.number_format = '"$"#,##0.00'
 
             # Auto-ancho
             for col_idx in range(1, len(headers) + 1):
                 max_length = len(headers[col_idx - 1])
-                for row_idx in range(3, mat_qs.count() + 3):
+                for row_idx in range(3, len(matriculas_curso) + 3):
                     v = ws.cell(row=row_idx, column=col_idx).value
                     if v is not None:
                         max_length = max(max_length, len(str(v)))
@@ -1434,6 +1639,7 @@ def estudiantes_export(request):
                     ws.cell(row=2, column=col_idx).column_letter
                 ].width = min(max_length + 3, 35)
 
+            _add_excel_table(ws, 2, 1, len(matriculas_curso) + 2, len(headers), nombre_hoja)
             ws.freeze_panes = 'A3'
 
         if hojas_creadas == 0:
@@ -1454,35 +1660,29 @@ def estudiantes_export(request):
 
     # Modo plano: una sola hoja con todos los estudiantes
     estudiantes_qs = Estudiante.objects.annotate(
-        num_matriculas=Count('matriculas')
+        num_matriculas=Count('matriculas', distinct=True)
     ).prefetch_related(
         'matriculas__jornada', 'matriculas__jornada__sede', 'matriculas__curso'
     ).order_by('nombres')
 
-    if q:
-        estudiantes_qs = filtrar_queryset_busqueda(estudiantes_qs, q, [
-            'cedula',
-            'nombres',
-            'correo',
-            'celular',
-            'ciudad',
-        ])
+    estudiantes_qs = _filtrar_estudiantes_directorio(estudiantes_qs, q=q, sede=sede)
 
     headers = [
-        'Cédula', 'Apellidos', 'Nombres', 'Edad',
+        'Cédula', 'Estudiante', 'Edad',
         'Correo', 'Celular', 'Ciudad', 'Nivel formación',
         'Título profesional', 'Jornada(s)', 'Sede(s)', '# Matrículas', 'Cursos',
     ]
 
     rows = []
     for e in estudiantes_qs:
+        matriculas_resumen = _matriculas_estudiante_para_resumen(e, sede=sede)
         cursos_str = ', '.join(
-            sorted({m.curso.nombre for m in e.matriculas.all()})
+            sorted({m.curso.nombre for m in matriculas_resumen})
         )
         # Resumen de jornadas y sedes (sin repetir)
         jornadas_set = []
         sedes_set = []
-        for m in e.matriculas.all():
+        for m in matriculas_resumen:
             if m.jornada_id:
                 etiqueta_dia = m.jornada.descripcion_legible
                 if etiqueta_dia and etiqueta_dia not in jornadas_set:
@@ -1497,7 +1697,7 @@ def estudiantes_export(request):
             e.titulo_profesional or '',
             ' · '.join(jornadas_set),
             ' · '.join(sedes_set),
-            e.num_matriculas,
+            len(matriculas_resumen) if sede else e.num_matriculas,
             cursos_str,
         ])
 
@@ -1508,6 +1708,11 @@ def estudiantes_export(request):
         sheet_name='Directorio de Estudiantes',
         headers=headers,
         rows=rows,
+        text_columns={0, 4},
+        explicit_widths={
+            0: 15, 1: 28, 2: 8, 3: 30, 4: 15, 5: 16,
+            6: 24, 7: 24, 8: 32, 9: 22, 10: 14, 11: 36,
+        },
     )
 
 
@@ -1530,9 +1735,9 @@ def estudiante_export(request, pk):
 
     for m in matriculas:
         rows.append([
-            m.fecha_matricula.year,
-            MESES_ES[m.fecha_matricula.month],
-            m.fecha_matricula.strftime('%d/%m/%Y'),
+            m.fecha_matricula.year if m.fecha_matricula else '',
+            MESES_ES[m.fecha_matricula.month] if m.fecha_matricula else '',
+            m.fecha_matricula if m.fecha_matricula else '',
             m.curso.nombre,
             m.get_modalidad_display(),
             m.curso.categoria.nombre if m.curso.categoria else '—',
@@ -1559,6 +1764,12 @@ def estudiante_export(request, pk):
         headers=headers,
         rows=rows,
         totals=totals,
+        column_formats={
+            2: 'dd/mm/yyyy',
+            7: '"$"#,##0.00',
+            8: '"$"#,##0.00',
+            9: '"$"#,##0.00',
+        },
     )
 
 
@@ -1766,7 +1977,7 @@ def abonos_export(request):
         m = a.matricula
         rows.append([
             a.numero_recibo,
-            a.fecha.strftime('%d/%m/%Y'),
+            a.fecha if a.fecha else '',
             m.estudiante.cedula,
             m.estudiante.nombre_completo,
             m.curso.nombre,
@@ -1842,6 +2053,12 @@ def abonos_export(request):
             c = ws.cell(row=row_idx, column=col_idx, value=val)
             c.border = thin
             c.alignment = Alignment(vertical='center')
+            if col_idx in (1, 3):
+                c.number_format = '@'
+            elif col_idx == 2:
+                c.number_format = 'dd/mm/yyyy'
+            elif col_idx in (8, 9, 10):
+                c.number_format = '"$"#,##0.00'
 
     # Total general
     total_row = len(rows) + 3
@@ -1853,6 +2070,7 @@ def abonos_export(request):
     c.font = total_font
     c.fill = total_fill
     c.border = thin
+    c.number_format = '"$"#,##0.00'
 
     # Desglose por método
     metodo_row = total_row + 2
@@ -1870,6 +2088,7 @@ def abonos_export(request):
         c.font = method_font
         c.fill = method_fill
         c.border = thin
+        c.number_format = '"$"#,##0.00'
         metodo_row += 1
 
     # Auto-ancho
@@ -1881,6 +2100,7 @@ def abonos_export(request):
                 max_length = max(max_length, len(str(v)))
         ws.column_dimensions[ws.cell(row=2, column=col_idx).column_letter].width = min(max_length + 3, 38)
 
+    _add_excel_table(ws, 2, 1, len(rows) + 2, len(headers), 'Reporte de Abonos')
     ws.freeze_panes = 'A3'
 
     output = BytesIO()
@@ -2291,14 +2511,14 @@ def recuperaciones_export_excel(request):
 
         rows.append([
             estado_label,
-            r.fecha_marcada.strftime('%d/%m/%Y') if r.fecha_marcada else '',
+            r.fecha_marcada if r.fecha_marcada else '',
             estudiante.cedula,
             estudiante.nombre_completo,
             r.matricula.curso.nombre,
             r.matricula.get_modalidad_display(),
             r.numero_modulo,
             float(r.saldo_pendiente_al_marcar or 0),
-            r.fecha_recuperacion.strftime('%d/%m/%Y') if r.fecha_recuperacion else '—',
+            r.fecha_recuperacion if r.fecha_recuperacion else '',
             abono.numero_recibo if abono else '—',
             tipo_pago_label,
             float(monto or 0),
@@ -2323,6 +2543,13 @@ def recuperaciones_export_excel(request):
         headers=headers,
         rows=rows,
         totals=totals,
+        column_formats={
+            1: 'dd/mm/yyyy',
+            7: '"$"#,##0.00',
+            8: 'dd/mm/yyyy',
+            11: '"$"#,##0.00',
+        },
+        text_columns={2},
     )
 
 
@@ -3396,7 +3623,7 @@ def pagos_por_modulo_export_excel(request):
             f'{estu.nombres}'.strip(),
             x['curso_nombre'],
             x['jornada_dia'],
-            x['jornada_inicio'].strftime('%d/%m/%Y') if x['jornada_inicio'] else '—',
+            x['jornada_inicio'] if x['jornada_inicio'] else '',
             x['tipo_matricula_label'],
             horario_txt,
             (j.ciudad if (j and j.ciudad) else '—'),
@@ -3422,7 +3649,20 @@ def pagos_por_modulo_export_excel(request):
     }
     filename = f'pagos_modulo_{curso_sel.pk}_{date.today().strftime("%Y%m%d")}.xlsx'
     sheet_name = f'Pagos por Módulo - {curso_sel.nombre}'[:31]
-    return _build_excel_response(filename, sheet_name, headers, rows, totals=totals)
+    return _build_excel_response(
+        filename,
+        sheet_name,
+        headers,
+        rows,
+        totals=totals,
+        column_formats={
+            4: 'dd/mm/yyyy',
+            8: '"$"#,##0.00',
+            9: '"$"#,##0.00',
+            10: '"$"#,##0.00',
+        },
+        text_columns={0},
+    )
 
 
 @matricula_requerida
@@ -3731,14 +3971,14 @@ def hoja_recaudacion_export_excel(request):
             rows.append([
                 h['curso'].nombre,
                 h.get('jornada_label') or '—',
-                h['fecha'].strftime('%d/%m/%Y'),
+                h['fecha'],
                 h['dia_semana'],
                 h['ciudad'],
                 h['responsable'],
                 idx,
                 item['estudiante'].nombre_completo if hasattr(item['estudiante'], 'nombre_completo')
                 else f"{item['estudiante'].nombres}".strip(),
-                item['jornada_inicio'].strftime('%d/%m/%Y') if item['jornada_inicio'] else '—',
+                item['jornada_inicio'] if item['jornada_inicio'] else '',
                 item['modulo'],
                 float(item['saldo_pendiente'] or 0),
                 float(item['cuota_sugerida'] or 0),
@@ -3759,7 +3999,20 @@ def hoja_recaudacion_export_excel(request):
     }
     filename = f'hoja_recaudacion_{filtros["fecha"]}.xlsx'
     sheet_name = f'Recaudación {filtros["fecha"]}'[:31]
-    return _build_excel_response(filename, sheet_name, headers, rows, totals=totals)
+    return _build_excel_response(
+        filename,
+        sheet_name,
+        headers,
+        rows,
+        totals=totals,
+        column_formats={
+            2: 'dd/mm/yyyy',
+            8: 'dd/mm/yyyy',
+            10: '"$"#,##0.00',
+            11: '"$"#,##0.00',
+            12: '"$"#,##0.00',
+        },
+    )
 
 
 @matricula_requerida

@@ -1222,6 +1222,7 @@ def archivo_mes_export_excel(request, categoria, anio, mes):
     """Exporta una carpeta mensual del archivo a Excel."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
+    from .views_pagos import _add_excel_table
 
     try:
         titulo = _validar_mes_archivo(categoria, mes)
@@ -1249,6 +1250,7 @@ def archivo_mes_export_excel(request, categoria, anio, mes):
                 ws.cell(row=row_idx, column=col_idx, value=value)
         for col_idx, header in enumerate(headers, start=1):
             ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max(14, min(38, len(header) + 8))
+        _add_excel_table(ws, 1, 1, len(rows) + 1, len(headers), f'{titulo}_{categoria}_{anio}_{mes}')
 
     if categoria == 'estudiantes':
         rows = []
@@ -1521,6 +1523,7 @@ def cierre_export(request, cierre_pk):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
+    from .views_pagos import _add_excel_table
 
     cierre = get_object_or_404(CierreCurso, pk=cierre_pk)
 
@@ -1572,7 +1575,7 @@ def cierre_export(request, cierre_pk):
     ws.title = 'Matrículas'
 
     headers = [
-        'Cédula', 'Apellidos', 'Nombres', 'Edad',
+        'Cédula', 'Estudiante', 'Edad',
         'Correo', 'Celular', 'Ciudad', 'Nivel',
         'Curso', 'Categoría', 'Jornada', 'Sede', 'Modalidad', 'Horario',
         'Tipo matrícula', 'Estado matrícula',
@@ -1614,7 +1617,7 @@ def cierre_export(request, cierre_pk):
             m.curso_nombre, m.curso_categoria, m.jornada_descripcion,
             m.sede, m.get_modalidad_display(), m.jornada_horario,
             m.tipo_matricula, m.estado,
-            m.fecha_matricula.strftime('%d/%m/%Y') if m.fecha_matricula else '',
+            m.fecha_matricula if m.fecha_matricula else '',
             float(m.valor_curso), float(m.descuento), float(m.valor_neto),
             float(m.valor_pagado), float(m.saldo), m.estado_pago,
             m.talla_camiseta, m.tipo_registro, m.factura_realizada,
@@ -1624,8 +1627,12 @@ def cierre_export(request, cierre_pk):
             cell = ws.cell(row=row_idx, column=col_idx, value=v)
             cell.border = thin_border
             cell.alignment = Alignment(vertical='center', wrap_text=False)
+            if col_idx == 1:
+                cell.number_format = '@'
+            elif col_idx == 16:
+                cell.number_format = 'dd/mm/yyyy'
             # Columnas monetarias en negrita verde
-            if col_idx in (18, 19, 20, 21, 22):
+            if col_idx in (17, 18, 19, 20, 21):
                 cell.font = money_font
                 cell.number_format = '"$"#,##0.00'
 
@@ -1634,22 +1641,31 @@ def cierre_export(request, cierre_pk):
         total_row = len(matriculas) + 5
         ws.cell(row=total_row, column=1, value='TOTAL').font = Font(bold=True)
         ws.cell(row=total_row, column=1).fill = total_fill
-        for col in range(1, 18):
+        for col in range(1, 17):
             ws.cell(row=total_row, column=col).fill = total_fill
-        ws.cell(row=total_row, column=18, value=float(sum(m.valor_curso for m in matriculas))).fill = total_fill
-        ws.cell(row=total_row, column=19, value=float(sum(m.descuento for m in matriculas))).fill = total_fill
-        ws.cell(row=total_row, column=20, value=float(sum(m.valor_neto for m in matriculas))).fill = total_fill
-        ws.cell(row=total_row, column=21, value=float(sum(m.valor_pagado for m in matriculas))).fill = total_fill
-        ws.cell(row=total_row, column=22, value=float(sum(m.saldo for m in matriculas))).fill = total_fill
-        for col in range(18, 23):
+        ws.cell(row=total_row, column=17, value=float(sum(m.valor_curso for m in matriculas))).fill = total_fill
+        ws.cell(row=total_row, column=18, value=float(sum(m.descuento for m in matriculas))).fill = total_fill
+        ws.cell(row=total_row, column=19, value=float(sum(m.valor_neto for m in matriculas))).fill = total_fill
+        ws.cell(row=total_row, column=20, value=float(sum(m.valor_pagado for m in matriculas))).fill = total_fill
+        ws.cell(row=total_row, column=21, value=float(sum(m.saldo for m in matriculas))).fill = total_fill
+        for col in range(17, 22):
             c = ws.cell(row=total_row, column=col)
             c.font = Font(bold=True, color='1A237E')
             c.number_format = '"$"#,##0.00'
 
     # Anchos
-    anchos = [14, 18, 18, 6, 26, 14, 14, 14, 24, 14, 22, 14, 12, 14, 16, 14, 13, 12, 12, 12, 12, 12, 12, 6, 14, 8, 30, 18]
+    anchos = [14, 28, 6, 26, 14, 14, 14, 24, 14, 22, 14, 12, 14, 16, 14, 13, 12, 12, 12, 12, 12, 12, 6, 14, 8, 30, 18]
     for i, a in enumerate(anchos, start=1):
         ws.column_dimensions[get_column_letter(i)].width = a
+    _add_excel_table(
+        ws,
+        4,
+        1,
+        len(matriculas) + 5 if matriculas else 4,
+        len(headers),
+        'Cierre Matriculas',
+    )
+    ws.freeze_panes = 'A5'
 
     # ── Hoja 2: Abonos ──
     ws2 = wb.create_sheet('Abonos')
@@ -1681,7 +1697,9 @@ def cierre_export(request, cierre_pk):
             ws2.cell(row=row, column=3, value=m.curso_nombre).border = thin_border
             ws2.cell(row=row, column=4, value=m.jornada_descripcion).border = thin_border
             ws2.cell(row=row, column=5, value=m.get_modalidad_display()).border = thin_border
-            ws2.cell(row=row, column=6, value=a.fecha.strftime('%d/%m/%Y') if a.fecha else '').border = thin_border
+            c6 = ws2.cell(row=row, column=6, value=a.fecha if a.fecha else '')
+            c6.number_format = 'dd/mm/yyyy'
+            c6.border = thin_border
             ws2.cell(row=row, column=7, value=a.numero_recibo).border = thin_border
             c8 = ws2.cell(row=row, column=8, value=float(a.monto))
             c8.font = money_font
@@ -1699,6 +1717,8 @@ def cierre_export(request, cierre_pk):
     anchos2 = [16, 26, 22, 22, 12, 13, 12, 12, 16, 8, 11, 16, 14, 30, 18]
     for i, a in enumerate(anchos2, start=1):
         ws2.column_dimensions[get_column_letter(i)].width = a
+    _add_excel_table(ws2, 3, 1, row - 1, len(headers2), 'Cierre Abonos')
+    ws2.freeze_panes = 'A4'
 
     # ── Respuesta ──
     out = BytesIO()
@@ -1774,6 +1794,7 @@ def estudiantes_archivados_export(request):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
+    from .views_pagos import _add_excel_table
 
     q = request.GET.get('q', '').strip()
     cierre_id = request.GET.get('cierre', '').strip()
@@ -1831,7 +1852,9 @@ def estudiantes_archivados_export(request):
         cell.border = thin
     ws.row_dimensions[3].height = 30
 
+    last_row = 3
     for row_idx, e in enumerate(qs, start=4):
+        last_row = row_idx
         vals = [
             e.cedula, e.nombres, e.edad or '',
             e.correo, e.celular, e.ciudad, e.nivel_formacion, e.titulo_profesional,
@@ -1844,10 +1867,14 @@ def estudiantes_archivados_export(request):
             cell = ws.cell(row=row_idx, column=col_idx, value=v)
             cell.border = thin
             cell.alignment = Alignment(vertical='center')
+            if col_idx in (1, 5):
+                cell.number_format = '@'
 
     anchos = [16, 30, 6, 26, 14, 14, 22, 24, 24, 24, 14, 18, 36]
     for i, a in enumerate(anchos, start=1):
         ws.column_dimensions[get_column_letter(i)].width = a
+    _add_excel_table(ws, 3, 1, last_row, len(headers), 'Estudiantes Archivados')
+    ws.freeze_panes = 'A4'
 
     out = BytesIO()
     wb.save(out)
