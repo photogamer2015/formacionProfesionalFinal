@@ -273,6 +273,412 @@
     }
     /* Encabezado de impresión: oculto en pantalla, visible al imprimir */
     .print-header { display: none; }
+    .payments-filter-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: end;
+    }
+    .payments-filter-form > div {
+        min-width: 0;
+    }
+    .payments-filter-search {
+        flex: 2 1 300px;
+    }
+    .payments-filter-field {
+        flex: 1 1 160px;
+    }
+    .payments-filter-year {
+        flex: 0 1 145px;
+    }
+    .payments-filter-date {
+        flex: 1.2 1 240px;
+    }
+    .payments-filter-actions {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 8px;
+        align-items: center;
+        min-height: 44px;
+        white-space: nowrap;
+    }
+    .payments-filter-form .matricula-date-range {
+        position: relative;
+        min-width: 0;
+        max-width: none;
+    }
+    .date-range-trigger {
+        width: 100%;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 10px 12px;
+        border: 2px solid var(--fp-border);
+        border-radius: 8px;
+        background: var(--fp-surface);
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+        transition: border .15s, box-shadow .15s, background .15s;
+    }
+    .date-range-trigger:hover,
+    .date-range-trigger[aria-expanded="true"],
+    .matricula-date-range.has-value .date-range-trigger {
+        border-color: var(--fp-navy);
+        box-shadow: 0 0 0 3px rgba(27,42,78,.10);
+    }
+    .date-range-trigger-text {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: left;
+    }
+    .date-range-trigger-caret {
+        color: var(--fp-muted);
+        font-size: 12px;
+        flex: 0 0 auto;
+    }
+    .date-range-popover[hidden] {
+        display: none;
+    }
+    .date-range-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 2500;
+        width: min(860px, calc(100vw - 32px));
+        overflow: hidden;
+        border: 1px solid rgba(27,42,78,.12);
+        border-radius: 12px;
+        background: var(--fp-surface);
+        color: var(--fp-ink);
+        box-shadow: 0 22px 56px rgba(27,42,78,.18);
+    }
+    .date-range-layout {
+        display: grid;
+        grid-template-columns: 184px minmax(0, 1fr);
+    }
+    .date-range-presets {
+        padding: 14px 10px;
+        border-right: 1px solid var(--fp-line);
+        background: var(--fp-surface-2);
+    }
+    .date-range-presets-title {
+        padding: 0 10px 9px;
+        color: var(--fp-muted);
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .date-range-preset {
+        width: 100%;
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 10px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+    }
+    .date-range-preset::before {
+        content: "";
+        width: 15px;
+        height: 15px;
+        border: 1.5px solid #c6cfda;
+        border-radius: 50%;
+        background: var(--fp-surface);
+        flex: 0 0 auto;
+    }
+    .date-range-preset:hover {
+        background: rgba(27,42,78,.07);
+    }
+    .date-range-preset.is-active {
+        color: var(--fp-navy);
+        font-weight: 800;
+        background: rgba(27,42,78,.09);
+    }
+    .date-range-preset.is-active::before {
+        border-color: var(--fp-navy);
+        box-shadow: inset 0 0 0 4px var(--fp-surface);
+        background: var(--fp-navy);
+    }
+    .date-range-main {
+        padding: 14px;
+    }
+    .date-range-calendars {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 16px;
+    }
+    .date-range-calendar-head {
+        min-height: 32px;
+        display: grid;
+        grid-template-columns: 32px 1fr 32px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .date-range-calendar-title {
+        text-align: center;
+        color: var(--fp-ink);
+        font-size: 14px;
+        font-weight: 800;
+        text-transform: capitalize;
+    }
+    .date-range-nav {
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-muted);
+        font-size: 23px;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .date-range-nav:hover {
+        background: var(--fp-surface-2);
+        color: var(--fp-navy);
+    }
+    .date-range-weekdays,
+    .date-range-days {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 3px;
+    }
+    .date-range-weekdays {
+        margin-bottom: 4px;
+    }
+    .date-range-weekdays span {
+        color: var(--fp-muted);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: center;
+    }
+    .date-range-day {
+        min-width: 0;
+        aspect-ratio: 1;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .date-range-day:hover {
+        background: var(--fp-surface-2);
+    }
+    .date-range-day.is-today {
+        outline: 1px solid rgba(228,81,3,.72);
+        outline-offset: -2px;
+    }
+    .date-range-day.is-in-range {
+        background: #e8f1ff;
+        color: var(--fp-navy);
+    }
+    .date-range-day.is-selected-start,
+    .date-range-day.is-selected-end {
+        background: var(--fp-navy);
+        color: #ffffff;
+        font-weight: 800;
+        outline: none;
+    }
+    .date-range-empty-day {
+        min-height: 30px;
+    }
+    .date-range-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 14px;
+        border-top: 1px solid var(--fp-line);
+        background: rgba(241,245,251,.72);
+    }
+    .date-range-mode-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 38px;
+        color: var(--fp-ink);
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+        user-select: none;
+    }
+    .date-range-mode-toggle input {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--fp-navy);
+        cursor: pointer;
+    }
+    .date-range-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .date-range-floating[hidden] {
+        display: none;
+    }
+    .date-range-floating {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        bottom: 76px;
+        left: 198px;
+        z-index: 2600;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid rgba(27,42,78,.12);
+        border-radius: 12px;
+        background: var(--fp-surface);
+        box-shadow: 0 20px 54px rgba(27,42,78,.20);
+    }
+    .date-range-floating-calendars {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 16px;
+        align-content: start;
+        min-height: 0;
+        overflow-y: auto;
+    }
+    .date-range-floating-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 12px;
+        border-top: 1px solid var(--fp-line);
+    }
+    body.dark-mode .date-range-trigger,
+    body.dark-mode .date-range-popover,
+    body.dark-mode .date-range-floating {
+        background: #0d1420;
+        color: var(--fp-dark-text);
+        border-color: var(--fp-dark-line);
+    }
+    body.dark-mode .date-range-popover {
+        background: #121925;
+        box-shadow: 0 24px 56px rgba(0,0,0,.48);
+    }
+    body.dark-mode .date-range-presets,
+    body.dark-mode .date-range-footer,
+    body.dark-mode .date-range-floating-actions {
+        background: #0d1420;
+        border-color: var(--fp-dark-line);
+    }
+    body.dark-mode .date-range-preset,
+    body.dark-mode .date-range-calendar-title,
+    body.dark-mode .date-range-day {
+        color: var(--fp-dark-text);
+    }
+    body.dark-mode .date-range-preset:hover,
+    body.dark-mode .date-range-nav:hover,
+    body.dark-mode .date-range-day:hover {
+        background: rgba(126,167,255,.10);
+    }
+    body.dark-mode .date-range-day.is-in-range {
+        background: rgba(126,167,255,.18);
+        color: #dfe8ff;
+    }
+    body.dark-mode .date-range-preset.is-active {
+        color: #dfe8ff;
+        background: rgba(126,167,255,.16);
+    }
+    @media (min-width: 1500px) {
+        .payments-filter-form {
+            flex-wrap: nowrap;
+        }
+    }
+    @media (max-width: 1280px) {
+        .payments-filter-search {
+            flex-basis: 100%;
+        }
+        .payments-filter-field,
+        .payments-filter-year {
+            flex: 1 1 180px;
+        }
+        .payments-filter-date {
+            flex: 1 1 260px;
+        }
+        .payments-filter-actions {
+            flex: 1 1 100%;
+        }
+    }
+    @media (max-width: 760px) {
+        .payments-filter-search,
+        .payments-filter-field,
+        .payments-filter-year,
+        .payments-filter-date,
+        .payments-filter-actions {
+            flex: 1 1 100%;
+            width: 100%;
+        }
+        .payments-filter-actions .btn {
+            flex: 1;
+        }
+        .date-range-popover {
+            position: fixed;
+            top: 72px;
+            right: 12px;
+            left: 12px !important;
+            width: auto;
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+        }
+        .date-range-layout {
+            grid-template-columns: 1fr;
+        }
+        .date-range-presets {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px;
+            border-right: 0;
+            border-bottom: 1px solid var(--fp-line);
+        }
+        .date-range-presets-title {
+            grid-column: 1 / -1;
+        }
+        .date-range-calendars {
+            grid-template-columns: 1fr;
+        }
+        .date-range-footer {
+            align-items: stretch;
+            flex-direction: column;
+        }
+        .date-range-actions {
+            width: 100%;
+            margin-left: 0;
+        }
+        .date-range-actions .btn {
+            flex: 1;
+        }
+        .date-range-floating {
+            position: fixed;
+            inset: 72px 12px auto 12px;
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+        }
+        .date-range-floating-calendars {
+            grid-template-columns: 1fr;
+            overflow: visible;
+        }
+        .date-range-floating-actions {
+            flex-wrap: wrap;
+        }
+        .date-range-floating-actions .btn {
+            flex: 1;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -299,11 +705,11 @@
         <a href="{% url 'academia:hoja_recaudacion' %}" class="btn btn-secondary, card-box2">
             🖨️ Hoja Recaudación
         </a>
-        <a href="{% url 'academia:pagos_export' %}?estado={{ filtros.estado }}&curso={{ filtros.curso }}&modalidad={{ filtros.modalidad }}&anio={{ filtros.anio }}&q={{ filtros.q }}"
+        <a href="{% url 'academia:pagos_export' %}{% if filtros_query %}?{{ filtros_query }}{% endif %}"
            class="btn btn-success, card-box2">
             📥 Excel
         </a>
-        <a href="{% url 'academia:pagos_export_pdf' %}?estado={{ filtros.estado }}&curso={{ filtros.curso }}&modalidad={{ filtros.modalidad }}&anio={{ filtros.anio }}&q={{ filtros.q }}"
+        <a href="{% url 'academia:pagos_export_pdf' %}{% if filtros_query %}?{{ filtros_query }}{% endif %}"
            class="btn btn-secondary, card-box2">
             📄 PDF
         </a>
@@ -384,15 +790,15 @@
 
 {# ─── Filtros ──────────────────────────────────────────── #}
 <div class="card-box" style="margin-bottom:18px; padding:16px;">
-    <form method="get" style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap:10px; align-items:end;">
+    <form method="get" class="payments-filter-form">
 
-        <div>
+        <div class="payments-filter-search">
             <label class="form-label" style="font-size:11px;">Buscar por curso, cédula o nombre</label>
             <input type="text" name="q" value="{{ filtros.q }}"
                    placeholder="Ej.: Excel, 0102030405…" class="form-input">
         </div>
 
-        <div>
+        <div class="payments-filter-field">
             <label class="form-label" style="font-size:11px;">Estado</label>
             <select name="estado" class="form-input">
                 <option value="">— Todos —</option>
@@ -404,7 +810,7 @@
             </select>
         </div>
 
-        <div>
+        <div class="payments-filter-field">
             <label class="form-label" style="font-size:11px;">Curso</label>
             <select name="curso" class="form-input">
                 <option value="">— Todos —</option>
@@ -416,7 +822,7 @@
             </select>
         </div>
 
-        <div>
+        <div class="payments-filter-field">
             <label class="form-label" style="font-size:11px;">Modalidad</label>
             <select name="modalidad" class="form-input">
                 <option value="">— Todas —</option>
@@ -425,7 +831,7 @@
             </select>
         </div>
 
-        <div>
+        <div class="payments-filter-year">
             <label class="form-label" style="font-size:11px;">Año</label>
             <select name="anio" class="form-input">
                 <option value="">— Todos —</option>
@@ -435,7 +841,64 @@
             </select>
         </div>
 
-        <div style="display:flex; gap:6px;">
+        <div class="payments-filter-date">
+            <label class="form-label" style="font-size:11px;">Fecha</label>
+            <div class="matricula-date-range" data-date-range-picker>
+                <input type="hidden" name="fecha_desde" value="{{ filtros.fecha_desde }}">
+                <input type="hidden" name="fecha_hasta" value="{{ filtros.fecha_hasta }}">
+                <button type="button" class="date-range-trigger" data-date-range-trigger aria-haspopup="dialog" aria-expanded="false">
+                    <span aria-hidden="true">📅</span>
+                    <span class="date-range-trigger-text" data-date-range-label>Fecha</span>
+                    <span class="date-range-trigger-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="date-range-popover" data-date-range-popover hidden>
+                    <div class="date-range-layout">
+                        <div class="date-range-presets">
+                            <div class="date-range-presets-title">Fecha</div>
+                            <button type="button" class="date-range-preset" data-preset="all">Sin filtro</button>
+                            <button type="button" class="date-range-preset" data-preset="today">Hoy</button>
+                            <button type="button" class="date-range-preset" data-preset="yesterday">Ayer</button>
+                            <button type="button" class="date-range-preset" data-preset="last7">Últimos 7 días</button>
+                            <button type="button" class="date-range-preset" data-preset="last14">Últimos 14 días</button>
+                            <button type="button" class="date-range-preset" data-preset="last30">Últimos 30 días</button>
+                            <button type="button" class="date-range-preset" data-preset="thisWeek">Esta semana</button>
+                            <button type="button" class="date-range-preset" data-preset="thisMonth">Este mes</button>
+                            <button type="button" class="date-range-preset" data-preset="lastMonth">El mes pasado</button>
+                        </div>
+                        <div class="date-range-main">
+                            <div class="date-range-calendars">
+                                <div class="date-range-calendar" data-calendar-offset="0"></div>
+                                <div class="date-range-calendar" data-calendar-offset="1"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="date-range-footer">
+                        <label class="date-range-mode-toggle">
+                            <input type="checkbox" data-range-mode>
+                            <span>Ver por rango</span>
+                        </label>
+                        <div class="date-range-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" data-date-range-clear>Limpiar</button>
+                            <button type="button" class="btn btn-secondary btn-sm" data-date-range-cancel>Cancelar</button>
+                            <button type="button" class="btn btn-primary btn-sm" data-date-range-apply>Aceptar</button>
+                        </div>
+                    </div>
+                    <div class="date-range-floating" data-range-floating hidden>
+                        <div class="date-range-floating-calendars">
+                            <div class="date-range-calendar" data-range-calendar-offset="0"></div>
+                            <div class="date-range-calendar" data-range-calendar-offset="1"></div>
+                        </div>
+                        <div class="date-range-floating-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" data-range-clear>Limpiar</button>
+                            <button type="button" class="btn btn-secondary btn-sm" data-range-cancel>Cancelar</button>
+                            <button type="button" class="btn btn-primary btn-sm" data-range-accept>Aceptar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="payments-filter-actions">
             <button type="submit" class="btn btn-primary">Filtrar</button>
             <a href="{% url 'academia:pagos_lista' %}" class="btn btn-secondary">Limpiar</a>
         </div>
@@ -449,6 +912,7 @@
         Generado: {% now "d/m/Y H:i" %}
         {% if filtros.estado %} · Estado: {{ filtros.estado }}{% endif %}
         {% if filtros.anio %} · Año: {{ filtros.anio }}{% endif %}
+        {% if filtros.fecha_desde or filtros.fecha_hasta %} · Fecha: {{ filtros.fecha_desde|default:"…" }} - {{ filtros.fecha_hasta|default:"…" }}{% endif %}
         · Total registros: {{ matriculas|length }}
     </div>
 </div>
@@ -605,4 +1069,455 @@
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        const pickers = document.querySelectorAll('[data-date-range-picker]');
+        if (!pickers.length) return;
+
+        const monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const fullMonthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        const weekDays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+        function pad(value) {
+            return String(value).padStart(2, '0');
+        }
+
+        function toISO(date) {
+            if (!date) return '';
+            return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+        }
+
+        function parseISO(value) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+            const parts = value.split('-').map(Number);
+            const date = new Date(parts[0], parts[1] - 1, parts[2]);
+            if (
+                date.getFullYear() !== parts[0] ||
+                date.getMonth() !== parts[1] - 1 ||
+                date.getDate() !== parts[2]
+            ) {
+                return null;
+            }
+            return date;
+        }
+
+        function today() {
+            const date = new Date();
+            return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        }
+
+        function cloneDate(date) {
+            return date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()) : null;
+        }
+
+        function addDays(date, days) {
+            const next = cloneDate(date);
+            next.setDate(next.getDate() + days);
+            return next;
+        }
+
+        function compareDates(a, b) {
+            return toISO(a).localeCompare(toISO(b));
+        }
+
+        function sameDate(a, b) {
+            return Boolean(a && b && toISO(a) === toISO(b));
+        }
+
+        function startOfWeek(date) {
+            const result = cloneDate(date);
+            const day = (result.getDay() + 6) % 7;
+            result.setDate(result.getDate() - day);
+            return result;
+        }
+
+        function endOfWeek(date) {
+            return addDays(startOfWeek(date), 6);
+        }
+
+        function formatDate(date) {
+            return date.getDate() + ' ' + monthNames[date.getMonth()] + ' ' + date.getFullYear();
+        }
+
+        function presetRange(key) {
+            const current = today();
+            if (key === 'all') return { start: null, end: null };
+            if (key === 'today') return { start: current, end: current };
+            if (key === 'yesterday') {
+                const yesterday = addDays(current, -1);
+                return { start: yesterday, end: yesterday };
+            }
+            if (key === 'last7') return { start: addDays(current, -6), end: current };
+            if (key === 'last14') return { start: addDays(current, -13), end: current };
+            if (key === 'last30') return { start: addDays(current, -29), end: current };
+            if (key === 'thisWeek') return { start: startOfWeek(current), end: endOfWeek(current) };
+            if (key === 'thisMonth') {
+                return {
+                    start: new Date(current.getFullYear(), current.getMonth(), 1),
+                    end: new Date(current.getFullYear(), current.getMonth() + 1, 0),
+                };
+            }
+            if (key === 'lastMonth') {
+                return {
+                    start: new Date(current.getFullYear(), current.getMonth() - 1, 1),
+                    end: new Date(current.getFullYear(), current.getMonth(), 0),
+                };
+            }
+            return { start: null, end: null };
+        }
+
+        pickers.forEach(function (picker) {
+            const form = picker.closest('form');
+            const trigger = picker.querySelector('[data-date-range-trigger]');
+            const popover = picker.querySelector('[data-date-range-popover]');
+            const label = picker.querySelector('[data-date-range-label]');
+            const startHidden = picker.querySelector('input[name="fecha_desde"]');
+            const endHidden = picker.querySelector('input[name="fecha_hasta"]');
+            const applyButton = picker.querySelector('[data-date-range-apply]');
+            const cancelButton = picker.querySelector('[data-date-range-cancel]');
+            const clearButton = picker.querySelector('[data-date-range-clear]');
+            const rangeMode = picker.querySelector('[data-range-mode]');
+            const rangeFloating = picker.querySelector('[data-range-floating]');
+            const rangeClearButton = picker.querySelector('[data-range-clear]');
+            const rangeCancelButton = picker.querySelector('[data-range-cancel]');
+            const rangeAcceptButton = picker.querySelector('[data-range-accept]');
+            const presetButtons = picker.querySelectorAll('[data-preset]');
+            const calendars = picker.querySelectorAll('[data-calendar-offset]');
+            const rangeCalendars = picker.querySelectorAll('[data-range-calendar-offset]');
+            let draftStart = null;
+            let draftEnd = null;
+            let rangeStart = null;
+            let rangeEnd = null;
+            let viewYear = today().getFullYear();
+            let viewMonth = today().getMonth();
+            let rangeViewYear = today().getFullYear();
+            let rangeViewMonth = today().getMonth();
+
+            function orderDates(start, end) {
+                if (start && end && compareDates(start, end) > 0) {
+                    return [end, start];
+                }
+                return [start, end];
+            }
+
+            function normalizeDraft() {
+                const ordered = orderDates(draftStart, draftEnd);
+                draftStart = ordered[0];
+                draftEnd = ordered[1];
+            }
+
+            function normalizeRangeDraft() {
+                const ordered = orderDates(rangeStart, rangeEnd);
+                rangeStart = ordered[0];
+                rangeEnd = ordered[1];
+            }
+
+            function setViewFromDraft() {
+                const reference = draftStart || draftEnd || today();
+                viewYear = reference.getFullYear();
+                viewMonth = reference.getMonth();
+            }
+
+            function setRangeViewFromDraft() {
+                const reference = rangeStart || rangeEnd || draftStart || draftEnd || today();
+                rangeViewYear = reference.getFullYear();
+                rangeViewMonth = reference.getMonth();
+            }
+
+            function updateLabel() {
+                const appliedStart = parseISO(startHidden.value);
+                const appliedEnd = parseISO(endHidden.value);
+                let text = 'Fecha';
+                if (appliedStart && appliedEnd) {
+                    text = sameDate(appliedStart, appliedEnd)
+                        ? 'Fecha: ' + formatDate(appliedStart)
+                        : 'Fecha: ' + formatDate(appliedStart) + ' - ' + formatDate(appliedEnd);
+                } else if (appliedStart) {
+                    text = 'Desde ' + formatDate(appliedStart);
+                } else if (appliedEnd) {
+                    text = 'Hasta ' + formatDate(appliedEnd);
+                }
+                label.textContent = text;
+                picker.classList.toggle('has-value', Boolean(appliedStart || appliedEnd));
+            }
+
+            function renderPresetState() {
+                presetButtons.forEach(function (button) {
+                    const range = presetRange(button.dataset.preset);
+                    const active = (
+                        (!draftStart && !draftEnd && !range.start && !range.end) ||
+                        (sameDate(draftStart, range.start) && sameDate(draftEnd, range.end))
+                    );
+                    button.classList.toggle('is-active', active);
+                });
+            }
+
+            function renderMonth(container, offset, start, end, baseYear, baseMonth, dayAttr, navAttr) {
+                const monthDate = new Date(baseYear, baseMonth + offset, 1);
+                const year = monthDate.getFullYear();
+                const month = monthDate.getMonth();
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0).getDate();
+                const leading = (firstDay.getDay() + 6) % 7;
+                const todayISO = toISO(today());
+                let html = '<div class="date-range-calendar-head">';
+                html += offset === 0
+                    ? '<button type="button" class="date-range-nav" ' + navAttr + '="-1" aria-label="Mes anterior">‹</button>'
+                    : '<span></span>';
+                html += '<div class="date-range-calendar-title">' + fullMonthNames[month] + ' ' + year + '</div>';
+                html += offset === 1
+                    ? '<button type="button" class="date-range-nav" ' + navAttr + '="1" aria-label="Mes siguiente">›</button>'
+                    : '<span></span>';
+                html += '</div>';
+                html += '<div class="date-range-weekdays">' + weekDays.map(function (day) {
+                    return '<span>' + day + '</span>';
+                }).join('') + '</div>';
+                html += '<div class="date-range-days">';
+                for (let i = 0; i < leading; i += 1) {
+                    html += '<span class="date-range-empty-day"></span>';
+                }
+                for (let day = 1; day <= lastDay; day += 1) {
+                    const date = new Date(year, month, day);
+                    const iso = toISO(date);
+                    const selectedStart = start && iso === toISO(start);
+                    const selectedEnd = end && iso === toISO(end);
+                    const inRange = start && end && compareDates(date, start) >= 0 && compareDates(date, end) <= 0;
+                    const classes = [
+                        'date-range-day',
+                        iso === todayISO ? 'is-today' : '',
+                        inRange ? 'is-in-range' : '',
+                        selectedStart ? 'is-selected-start' : '',
+                        selectedEnd ? 'is-selected-end' : '',
+                    ].filter(Boolean).join(' ');
+                    html += '<button type="button" class="' + classes + '" ' + dayAttr + '="' + iso + '">' + day + '</button>';
+                }
+                html += '</div>';
+                container.innerHTML = html;
+            }
+
+            function render() {
+                normalizeDraft();
+                calendars.forEach(function (calendar) {
+                    renderMonth(
+                        calendar,
+                        Number(calendar.dataset.calendarOffset || 0),
+                        draftStart,
+                        draftEnd,
+                        viewYear,
+                        viewMonth,
+                        'data-date-day',
+                        'data-month-nav'
+                    );
+                });
+                renderPresetState();
+            }
+
+            function renderRange() {
+                normalizeRangeDraft();
+                rangeCalendars.forEach(function (calendar) {
+                    renderMonth(
+                        calendar,
+                        Number(calendar.dataset.rangeCalendarOffset || 0),
+                        rangeStart,
+                        rangeEnd,
+                        rangeViewYear,
+                        rangeViewMonth,
+                        'data-range-day',
+                        'data-range-month-nav'
+                    );
+                });
+            }
+
+            function positionPopover() {
+                popover.style.left = '0px';
+                const rect = popover.getBoundingClientRect();
+                const maxRight = window.innerWidth - 16;
+                if (rect.right > maxRight) {
+                    popover.style.left = '-' + (rect.right - maxRight) + 'px';
+                }
+                const adjusted = popover.getBoundingClientRect();
+                if (adjusted.left < 12) {
+                    const currentLeft = Number.parseFloat(popover.style.left || '0') || 0;
+                    popover.style.left = (currentLeft + 12 - adjusted.left) + 'px';
+                }
+            }
+
+            function closeRangeWindow() {
+                rangeFloating.hidden = true;
+                rangeMode.checked = false;
+            }
+
+            function openRangeWindow() {
+                rangeStart = cloneDate(draftStart);
+                rangeEnd = cloneDate(draftEnd);
+                setRangeViewFromDraft();
+                rangeMode.checked = true;
+                rangeFloating.hidden = false;
+                renderRange();
+            }
+
+            function openPicker() {
+                draftStart = parseISO(startHidden.value);
+                draftEnd = parseISO(endHidden.value);
+                setViewFromDraft();
+                closeRangeWindow();
+                popover.hidden = false;
+                trigger.setAttribute('aria-expanded', 'true');
+                render();
+                positionPopover();
+            }
+
+            function closePicker() {
+                popover.hidden = true;
+                trigger.setAttribute('aria-expanded', 'false');
+                closeRangeWindow();
+            }
+
+            function submitDraft() {
+                if (draftStart && !draftEnd) draftEnd = cloneDate(draftStart);
+                if (!draftStart && draftEnd) draftStart = cloneDate(draftEnd);
+                normalizeDraft();
+                startHidden.value = toISO(draftStart);
+                endHidden.value = toISO(draftEnd);
+                updateLabel();
+                closePicker();
+                if (form && typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else if (form) {
+                    form.submit();
+                }
+            }
+
+            trigger.addEventListener('click', function () {
+                if (popover.hidden) {
+                    openPicker();
+                } else {
+                    closePicker();
+                }
+            });
+
+            popover.addEventListener('click', function (event) {
+                event.stopPropagation();
+                const dayButton = event.target.closest('[data-date-day]');
+                const navButton = event.target.closest('[data-month-nav]');
+                const presetButton = event.target.closest('[data-preset]');
+
+                if (dayButton) {
+                    const selected = parseISO(dayButton.dataset.dateDay);
+                    draftStart = selected;
+                    draftEnd = selected;
+                    render();
+                    return;
+                }
+
+                if (navButton) {
+                    const next = new Date(viewYear, viewMonth + Number(navButton.dataset.monthNav || 0), 1);
+                    viewYear = next.getFullYear();
+                    viewMonth = next.getMonth();
+                    render();
+                    return;
+                }
+
+                if (presetButton) {
+                    const range = presetRange(presetButton.dataset.preset);
+                    draftStart = range.start;
+                    draftEnd = range.end;
+                    setViewFromDraft();
+                    render();
+                }
+            });
+
+            rangeFloating.addEventListener('click', function (event) {
+                event.stopPropagation();
+                const dayButton = event.target.closest('[data-range-day]');
+                const navButton = event.target.closest('[data-range-month-nav]');
+
+                if (dayButton) {
+                    const selected = parseISO(dayButton.dataset.rangeDay);
+                    if (!rangeStart || (rangeStart && rangeEnd)) {
+                        rangeStart = selected;
+                        rangeEnd = null;
+                    } else if (compareDates(selected, rangeStart) < 0) {
+                        rangeEnd = rangeStart;
+                        rangeStart = selected;
+                    } else {
+                        rangeEnd = selected;
+                    }
+                    renderRange();
+                    return;
+                }
+
+                if (navButton) {
+                    const next = new Date(
+                        rangeViewYear,
+                        rangeViewMonth + Number(navButton.dataset.rangeMonthNav || 0),
+                        1
+                    );
+                    rangeViewYear = next.getFullYear();
+                    rangeViewMonth = next.getMonth();
+                    renderRange();
+                }
+            });
+
+            cancelButton.addEventListener('click', closePicker);
+
+            clearButton.addEventListener('click', function () {
+                draftStart = null;
+                draftEnd = null;
+                setViewFromDraft();
+                render();
+            });
+
+            applyButton.addEventListener('click', submitDraft);
+
+            rangeMode.addEventListener('change', function () {
+                if (rangeMode.checked) {
+                    openRangeWindow();
+                } else {
+                    closeRangeWindow();
+                }
+            });
+
+            rangeClearButton.addEventListener('click', function () {
+                rangeStart = null;
+                rangeEnd = null;
+                renderRange();
+            });
+
+            rangeCancelButton.addEventListener('click', closeRangeWindow);
+
+            rangeAcceptButton.addEventListener('click', function () {
+                if (rangeStart && !rangeEnd) rangeEnd = cloneDate(rangeStart);
+                if (!rangeStart && rangeEnd) rangeStart = cloneDate(rangeEnd);
+                normalizeRangeDraft();
+                draftStart = cloneDate(rangeStart);
+                draftEnd = cloneDate(rangeEnd);
+                submitDraft();
+            });
+
+            document.addEventListener('click', function (event) {
+                if (!popover.hidden && !picker.contains(event.target)) {
+                    closePicker();
+                }
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && !rangeFloating.hidden) {
+                    closeRangeWindow();
+                } else if (event.key === 'Escape' && !popover.hidden) {
+                    closePicker();
+                }
+            });
+
+            window.addEventListener('resize', function () {
+                if (!popover.hidden) positionPopover();
+            });
+
+            updateLabel();
+        });
+    })();
+</script>
 {% endblock %}

@@ -20,6 +20,7 @@ from django.db import transaction
 from django.db.models import Count, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
@@ -353,6 +354,24 @@ def _build_excel_response(
     return response
 
 
+def _rango_fecha_matricula_desde_request(request):
+    fecha_desde = request.GET.get('fecha_desde', '').strip()
+    fecha_hasta = request.GET.get('fecha_hasta', '').strip()
+    fecha_desde_date = parse_date(fecha_desde) if fecha_desde else None
+    fecha_hasta_date = parse_date(fecha_hasta) if fecha_hasta else None
+
+    if not fecha_desde_date:
+        fecha_desde = ''
+    if not fecha_hasta_date:
+        fecha_hasta = ''
+
+    if fecha_desde_date and fecha_hasta_date and fecha_desde_date > fecha_hasta_date:
+        fecha_desde_date, fecha_hasta_date = fecha_hasta_date, fecha_desde_date
+        fecha_desde, fecha_hasta = fecha_desde_date.isoformat(), fecha_hasta_date.isoformat()
+
+    return fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date
+
+
 def _filtrar_matriculas(request):
     """
     Aplica filtros comunes a una queryset de Matricula según los GET params.
@@ -369,6 +388,9 @@ def _filtrar_matriculas(request):
     mes = request.GET.get('mes', '').strip()
     q = request.GET.get('q', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
+    fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date = (
+        _rango_fecha_matricula_desde_request(request)
+    )
 
     if curso_id:
         qs = qs.filter(curso_id=curso_id)
@@ -378,6 +400,10 @@ def _filtrar_matriculas(request):
         qs = qs.filter(fecha_matricula__year=int(anio))
     if mes.isdigit() and 1 <= int(mes) <= 12:
         qs = qs.filter(fecha_matricula__month=int(mes))
+    if fecha_desde_date:
+        qs = qs.filter(fecha_matricula__gte=fecha_desde_date)
+    if fecha_hasta_date:
+        qs = qs.filter(fecha_matricula__lte=fecha_hasta_date)
     if q:
         qs = filtrar_queryset_busqueda(qs, q, [
             'estudiante__cedula',
@@ -418,6 +444,8 @@ def _filtrar_matriculas(request):
         'mes': mes,
         'q': q,
         'descuento': descuento_str,
+        'fecha_desde': fecha_desde,
+        'fecha_hasta': fecha_hasta,
     }
 
 
@@ -551,6 +579,12 @@ def pagos_lista(request):
         qs_sin_estado = qs_sin_estado.filter(fecha_matricula__year=int(filtros['anio']))
     if filtros['mes'].isdigit() and 1 <= int(filtros['mes']) <= 12:
         qs_sin_estado = qs_sin_estado.filter(fecha_matricula__month=int(filtros['mes']))
+    fecha_desde_date = parse_date(filtros['fecha_desde']) if filtros['fecha_desde'] else None
+    fecha_hasta_date = parse_date(filtros['fecha_hasta']) if filtros['fecha_hasta'] else None
+    if fecha_desde_date:
+        qs_sin_estado = qs_sin_estado.filter(fecha_matricula__gte=fecha_desde_date)
+    if fecha_hasta_date:
+        qs_sin_estado = qs_sin_estado.filter(fecha_matricula__lte=fecha_hasta_date)
     if filtros['q']:
         qs_sin_estado = filtrar_queryset_busqueda(qs_sin_estado.select_related('estudiante', 'curso'), filtros['q'], [
             'estudiante__cedula',
@@ -605,12 +639,17 @@ def pagos_lista(request):
         set(Matricula.objects.dates('fecha_matricula', 'year').values_list('fecha_matricula__year', flat=True)),
         reverse=True
     )
+    filtros_query = urlencode({
+        key: value for key, value in filtros.items() if value
+    })
 
     return render(request, 'pagos/lista.html', {
         'matriculas': matriculas,
         'cursos': cursos,
         'anios': anios,
         'filtros': filtros,
+        'filtros_query': filtros_query,
+        'hay_filtros': bool(filtros_query),
         'totales': totales,
         'conteo_estado': conteo_estado,
         'conteo_modulos_pendientes': conteo_modulos_pendientes,

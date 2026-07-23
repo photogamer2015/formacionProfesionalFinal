@@ -1235,6 +1235,9 @@ def matricula_facturas(request):
     estudiante_q = request.GET.get('estudiante', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     modalidad_filtro = request.GET.get('modalidad', '').strip()
+    fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date = (
+        _rango_fecha_matricula_desde_request(request)
+    )
 
     qs = (
         Matricula.objects
@@ -1270,6 +1273,11 @@ def matricula_facturas(request):
     else:
         modalidad_filtro = ''
 
+    if fecha_desde_date:
+        qs = qs.filter(fecha_matricula__gte=fecha_desde_date)
+    if fecha_hasta_date:
+        qs = qs.filter(fecha_matricula__lte=fecha_hasta_date)
+
     matriculas = list(qs.order_by('-fecha_matricula', '-creado', '-id'))
     for matricula in matriculas:
         matricula.factura_resumen_pagos = _resumen_pagos_factura(
@@ -1290,6 +1298,15 @@ def matricula_facturas(request):
         {'value': modalidad, 'label': _label_modalidad(modalidad)}
         for modalidad in MODALIDADES_VALIDAS
     ]
+    filtros_query = urlencode({
+        key: value for key, value in {
+            'estudiante': estudiante_q,
+            'curso': curso_id,
+            'modalidad': modalidad_filtro,
+            'fecha_desde': fecha_desde,
+            'fecha_hasta': fecha_hasta,
+        }.items() if value
+    })
 
     return render(request, 'matricula/facturas.html', {
         'matriculas': matriculas,
@@ -1299,6 +1316,10 @@ def matricula_facturas(request):
         'estudiante_q': estudiante_q,
         'curso_seleccionado': curso_id,
         'modalidad_seleccionada': modalidad_filtro,
+        'fecha_desde': fecha_desde,
+        'fecha_hasta': fecha_hasta,
+        'filtros_query': filtros_query,
+        'hay_filtros': bool(filtros_query),
         'total_neto': total_neto,
         'total_pagado': total_pagado,
         'total_saldo': total_saldo,
