@@ -22,7 +22,10 @@ from .models import (
 )
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
-from .views_pagos import _hojas_recaudacion_data, _plan_recaudacion_matricula
+from .views_pagos import (
+    _construir_matriz_pagos, _hojas_recaudacion_data,
+    _plan_recaudacion_matricula,
+)
 
 
 class LoginCaptchaTests(TestCase):
@@ -2007,6 +2010,123 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(form.cleaned_data['tipo_cobro'], 'mixto')
         self.assertEqual(form.cleaned_data['monto_pago_1'], Decimal('10.00'))
         self.assertEqual(form.cleaned_data['monto_pago_2'], Decimal('10.00'))
+
+
+class PagosPorModuloFiltroTests(TestCase):
+    def setUp(self):
+        self.curso = Curso.objects.create(
+            nombre='Curso Filtro Modulos',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('90.00'),
+            numero_modulos=3,
+        )
+        self.jornada = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='lun_mie_vie',
+            fecha_inicio=date(2026, 7, 5),
+        )
+
+    def _crear_matricula(self, cedula, nombres, modulo_pagado=None):
+        estudiante = Estudiante.objects.create(
+            cedula=cedula,
+            nombres=nombres,
+        )
+        matricula = Matricula.objects.create(
+            estudiante=estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('90.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+        )
+        if modulo_pagado:
+            Abono.objects.create(
+                matricula=matricula,
+                fecha=date(2026, 7, 5),
+                monto=Decimal('30.00'),
+                tipo_pago='por_modulo',
+                numero_modulo=modulo_pagado,
+                cuenta_para_saldo=True,
+            )
+            matricula.refresh_from_db()
+        return matricula
+
+    def test_filtro_estado_modulo_muestra_solo_el_modulo_filtrado(self):
+        matricula_modulo_1 = self._crear_matricula(
+            '0911111111', 'Estudiante Modulo 1', modulo_pagado=1
+        )
+        matricula_modulo_2 = self._crear_matricula(
+            '0922222222', 'Estudiante Modulo 2', modulo_pagado=2
+        )
+
+        matriculas, modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
+            self.curso,
+            filtro_modulo_estado='1_Pagado',
+        )
+
+        self.assertEqual(modulos, [1, 2, 3])
+        self.assertEqual(modulos_visibles, [1])
+        self.assertEqual(
+            [x['matricula'].pk for x in matriculas],
+            [matricula_modulo_1.pk],
+        )
+        self.assertEqual(
+            [mod['numero'] for mod in matriculas[0]['modulos_visibles_data']],
+            [1],
+        )
+
+        matriculas, _modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
+            self.curso,
+            filtro_modulo_estado='1_Pendiente',
+        )
+
+        self.assertEqual(modulos_visibles, [1])
+        self.assertEqual(
+            [x['matricula'].pk for x in matriculas],
+            [matricula_modulo_2.pk],
+        )
+        self.assertEqual(
+            [mod['numero'] for mod in matriculas[0]['modulos_visibles_data']],
+            [1],
+        )
+
+    def test_vista_pagos_por_modulo_renderiza_solo_columna_filtrada(self):
+        self._crear_matricula(
+            '0933333333', 'Estudiante Vista Modulo 1', modulo_pagado=1
+        )
+        self._crear_matricula(
+            '0944444444', 'Estudiante Vista Modulo 2', modulo_pagado=2
+        )
+        admin = User.objects.create_superuser(
+            username='admin_filtro_modulos',
+            password='clave12345',
+        )
+
+        self.client.force_login(admin)
+        response = self.client.get(
+            reverse('academia:pagos_por_modulo'),
+            {
+                'curso': str(self.curso.pk),
+                'filtro_modulo_estado': '1_Pagado',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['modulos'], [1, 2, 3])
+        self.assertEqual(response.context['modulos_visibles'], [1])
+        self.assertEqual(len(response.context['matriculas_data']), 1)
+        self.assertEqual(
+            [
+                mod['numero']
+                for mod in response.context['matriculas_data'][0]['modulos_visibles_data']
+            ],
+            [1],
+        )
 
 
 class PlanRecaudacionTests(TestCase):

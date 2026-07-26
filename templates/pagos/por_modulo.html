@@ -360,7 +360,7 @@
                 <th style="padding:12px 8px; text-align:center; min-width:110px;">Valor curso</th>
                 <th style="padding:12px 8px; text-align:center; min-width:90px;">Pagado</th>
                 <th style="padding:12px 8px; text-align:center; min-width:90px;">Saldo</th>
-                {% for n in modulos %}
+                {% for n in modulos_visibles %}
                 <th style="padding:12px 8px; text-align:center; min-width:90px; background:#283593;">
                     Mód. {{ n }}
                 </th>
@@ -424,7 +424,7 @@
                 <td style="padding:10px; text-align:center; font-weight:700; color:{% if row.matricula.saldo > 0 %}#c62828{% else %}#2e7d32{% endif %};">
                     ${{ row.matricula.saldo|floatformat:2 }}
                 </td>
-                {% for mod in row.modulos_data %}
+                {% for mod in row.modulos_visibles_data %}
                 {% comment %}
                 Visual en la matriz:
                   - "No aplica" (gris claro) → la matrícula no llega a este
@@ -477,7 +477,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="{{ modulos|length|add:10 }}" style="padding:30px; text-align:center; color:#888;">
+                <td colspan="{{ modulos_visibles|length|add:10 }}" style="padding:30px; text-align:center; color:#888;">
                     No hay estudiantes matriculados en este curso con los filtros aplicados.
                 </td>
             </tr>

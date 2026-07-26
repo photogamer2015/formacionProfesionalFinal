@@ -2196,6 +2196,7 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
     else:
         n_mod = max(curso_sel.numero_modulos, curso_sel.numero_modulos_online)
     modulos = list(range(1, n_mod + 1))
+    modulos_visibles = list(modulos)
 
     qs = Matricula.objects.filter(
         curso=curso_sel
@@ -2339,6 +2340,8 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
         if len(partes) == 2 and partes[0].isdigit() and partes[1] in ('Pagado', 'Parcial', 'Pendiente'):
             num_filtro = int(partes[0])
             est_filtro = partes[1]
+            if num_filtro in modulos:
+                modulos_visibles = [num_filtro]
             if est_filtro == 'Pagado':
                 estados_match = ('Pagado', 'Parcial')
             else:
@@ -2350,6 +2353,12 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                     for mod in x['modulos_data']
                 )
             ]
+
+    for x in matriculas:
+        x['modulos_visibles_data'] = [
+            mod for mod in x['modulos_data']
+            if mod['numero'] in modulos_visibles
+        ]
 
     # ── Resumen por módulo ──
     # Importante: cada matrícula tiene `modulos_data` con n_mod elementos,
@@ -2382,7 +2391,7 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
             'total_estudiantes': len(modulos_n),
         })
 
-    return matriculas, modulos, resumen_lista
+    return matriculas, modulos, resumen_lista, modulos_visibles
 
 
 @matricula_requerida
@@ -2421,6 +2430,7 @@ def pagos_por_modulo(request):
     curso_sel = None
     matriculas = []
     modulos = []
+    modulos_visibles = []
     resumen_por_modulo = []
 
     if curso_id and curso_id.isdigit():
@@ -2430,7 +2440,7 @@ def pagos_por_modulo(request):
             curso_sel = None
 
     if curso_sel:
-        matriculas, modulos, resumen_por_modulo = _construir_matriz_pagos(
+        matriculas, modulos, resumen_por_modulo, modulos_visibles = _construir_matriz_pagos(
             curso_sel,
             modalidad=modalidad,
             ciudad=ciudad,
@@ -2442,6 +2452,7 @@ def pagos_por_modulo(request):
         'cursos': cursos,
         'curso_sel': curso_sel,
         'modulos': modulos,
+        'modulos_visibles': modulos_visibles,
         'matriculas_data': matriculas,
         'resumen_por_modulo': resumen_por_modulo,
         'tipos_matricula': [
@@ -3629,7 +3640,7 @@ def pagos_por_modulo_export_excel(request):
         messages.error(request, 'Selecciona un curso para exportar la matriz.')
         return redirect('academia:pagos_por_modulo')
 
-    matriculas, modulos, _resumen = _construir_matriz_pagos(
+    matriculas, _modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
         curso_sel,
         modalidad=filtros['modalidad'],
         ciudad=filtros['ciudad'],
@@ -3643,7 +3654,7 @@ def pagos_por_modulo_export_excel(request):
         'Tipo matrícula', 'Horario', 'Sede',
         'Valor neto', 'Pagado', 'Saldo',
     ]
-    for n in modulos:
+    for n in modulos_visibles:
         headers.append(f'Mód. {n} (estado / pagado)')
     headers.append('Asistencia')
 
@@ -3670,7 +3681,7 @@ def pagos_por_modulo_export_excel(request):
             float(m.valor_pagado or 0),
             float(m.saldo or 0),
         ]
-        for mod in x['modulos_data']:
+        for mod in x['modulos_visibles_data']:
             if mod.get('aplica', True):
                 fila.append(f"{mod['estado']} – ${float(mod['pagado']):.2f} / ${float(mod['esperado']):.2f}")
             else:
@@ -3726,7 +3737,7 @@ def pagos_por_modulo_export_pdf(request):
         messages.error(request, 'Selecciona un curso para exportar la matriz.')
         return redirect('academia:pagos_por_modulo')
 
-    matriculas, modulos, _resumen = _construir_matriz_pagos(
+    matriculas, _modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
         curso_sel,
         modalidad=filtros['modalidad'],
         ciudad=filtros['ciudad'],
@@ -3735,7 +3746,7 @@ def pagos_por_modulo_export_pdf(request):
     )
 
     # ── Elegir tamaño de página según número de módulos ──
-    n_mod = len(modulos)
+    n_mod = len(modulos_visibles)
     # 9 columnas fijas + n_mod + 1 (asistencia)
     n_cols_total = 9 + n_mod + 1
     if n_cols_total > 13:
@@ -3781,7 +3792,7 @@ def pagos_por_modulo_export_pdf(request):
     headers = [
         'Cédula', 'Estudiante', 'Curso', 'Jornada', 'Día',
         'Tipo matrícula', 'Valor', 'Pagado', 'Saldo',
-    ] + [f'Mód. {n}' for n in modulos] + ['Asistencia']
+    ] + [f'Mód. {n}' for n in modulos_visibles] + ['Asistencia']
 
     data = [[Paragraph(h, header_st) for h in headers]]
     total_neto = total_pagado = total_saldo = 0.0
@@ -3799,7 +3810,7 @@ def pagos_por_modulo_export_pdf(request):
             Paragraph(f'<font color="#2e7d32"><b>${float(m.valor_pagado or 0):.2f}</b></font>', cell_st),
             Paragraph(f'<font color="{"#c62828" if (m.saldo or 0) > 0 else "#2e7d32"}"><b>${float(m.saldo or 0):.2f}</b></font>', cell_st),
         ]
-        for mod in x['modulos_data']:
+        for mod in x['modulos_visibles_data']:
             if not mod.get('aplica', True):
                 fila.append(Paragraph('<font color="#bbbbbb">—</font>', cell_st))
                 continue
@@ -3823,7 +3834,7 @@ def pagos_por_modulo_export_pdf(request):
         Paragraph(f'<b>${total_pagado:.2f}</b>', cell_bold_st),
         Paragraph(f'<b>${total_saldo:.2f}</b>', cell_bold_st),
     ]
-    fila_total += [Paragraph('', cell_st)] * len(modulos)
+    fila_total += [Paragraph('', cell_st)] * len(modulos_visibles)
     fila_total.append('')
     data.append(fila_total)
 
