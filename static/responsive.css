@@ -1,0 +1,533 @@
+/*
+ * Capa responsive compartida de Formación Profesional EC.
+ * Solo afecta la presentación: no modifica rutas, formularios ni lógica.
+ */
+
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+body {
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+img,
+video,
+canvas,
+iframe {
+    max-width: 100%;
+}
+
+img,
+video {
+    height: auto;
+}
+
+button,
+input,
+select,
+textarea {
+    max-width: 100%;
+    min-width: 0;
+}
+
+button,
+.btn,
+a.btn,
+[role="button"] {
+    touch-action: manipulation;
+}
+
+.container,
+.container > *,
+.card-box,
+.toolbar,
+.form-grid {
+    min-width: 0;
+}
+
+.table-wrap,
+.responsive-table-shell,
+[style*="overflow-x:auto"],
+[style*="overflow-x: auto"] {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+}
+
+.responsive-table-shell {
+    position: relative;
+}
+
+.responsive-table-shell:focus-visible {
+    outline: 3px solid rgba(228, 81, 3, 0.42);
+    outline-offset: 3px;
+}
+
+.responsive-table-shell.is-overflowing {
+    background-image:
+        linear-gradient(to right, rgba(27, 42, 78, 0.09), transparent 18px),
+        linear-gradient(to left, rgba(27, 42, 78, 0.09), transparent 18px);
+    background-position: left center, right center;
+    background-repeat: no-repeat;
+    background-size: 18px 100%;
+}
+
+.responsive-table-shell table {
+    max-width: none;
+}
+
+.row-actions {
+    flex-wrap: wrap;
+}
+
+.crumb,
+.page-subtitle,
+.flash,
+.readonly-banner,
+.alert-box {
+    overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 1024px) {
+    .container {
+        width: 100%;
+        max-width: none;
+        padding: 26px 18px;
+    }
+
+    header.top {
+        padding-inline: 18px;
+    }
+
+    header.top nav {
+        min-width: 0;
+    }
+
+    .top-profile-link,
+    .nav-link,
+    .icon-btn,
+    .logout-button {
+        min-height: 44px;
+    }
+
+    .form-grid {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+    }
+
+    form[style*="display:grid"],
+    form[style*="display: grid"] {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .folder-grid {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)) !important;
+    }
+
+    .dashboard-modal-box,
+    [role="dialog"] {
+        max-width: calc(100vw - 32px);
+        max-height: calc(100dvh - 32px);
+    }
+
+    .dashboard-modal-body {
+        min-width: 0;
+        overflow: auto;
+    }
+
+    .card-box:has(> table) {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .container {
+        padding: 20px 12px calc(84px + env(safe-area-inset-bottom));
+    }
+
+    h2.page-title {
+        font-size: clamp(20px, 6vw, 23px);
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+    }
+
+    .page-subtitle {
+        margin-bottom: 18px;
+        line-height: 1.5;
+    }
+
+    .card-box {
+        max-width: 100% !important;
+    }
+
+    .form-grid,
+    form[style*="display:grid"],
+    form[style*="display: grid"],
+    .container [style*="display:grid"][style*="grid-template-columns"],
+    .container [style*="display: grid"][style*="grid-template-columns"],
+    .container > [style*="display:grid"],
+    .container > [style*="display: grid"],
+    .card-box > [style*="display:grid"],
+    .card-box > [style*="display: grid"] {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .form-grid > [style*="grid-column"],
+    .container [style*="grid-column: span"] {
+        grid-column: 1 / -1 !important;
+    }
+
+    .hoja-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .toolbar,
+    .toolbar form {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .toolbar form,
+    form[method="get"][style*="display:flex"],
+    form[method="get"][style*="display: flex"] {
+        flex-wrap: wrap !important;
+    }
+
+    .toolbar form > input,
+    .toolbar form > select,
+    form[method="get"] > input,
+    form[method="get"] > select {
+        flex: 1 1 180px;
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    .modalidad-tabs {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .modalidad-tabs a {
+        flex: 0 0 auto;
+        min-height: 44px;
+    }
+
+    .btn {
+        min-height: 44px;
+        white-space: normal;
+        text-align: center;
+    }
+
+    .btn-sm {
+        min-height: 40px;
+        padding: 8px 11px;
+    }
+
+    input,
+    select,
+    textarea,
+    .form-input {
+        font-size: 16px;
+    }
+
+    textarea {
+        resize: vertical;
+    }
+
+    .table-wrap,
+    .responsive-table-shell {
+        border-radius: 9px;
+    }
+
+    table {
+        font-size: 12px;
+    }
+
+    th,
+    td {
+        padding: 10px 11px;
+    }
+
+    #notif-panel {
+        position: absolute !important;
+        top: calc(100% + 8px) !important;
+        right: 12px !important;
+        left: 12px !important;
+        width: auto !important;
+        max-width: none !important;
+        max-height: min(70dvh, 520px);
+    }
+
+    .notif-bell {
+        position: static !important;
+    }
+
+    .dashboard-modal-overlay,
+    #confirm-modal-overlay,
+    #whatsapp-modal-overlay {
+        padding: 12px !important;
+    }
+
+    .dashboard-modal-box,
+    #confirm-modal-box,
+    .whatsapp-modal-box,
+    [role="dialog"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: calc(100dvh - 24px);
+    }
+
+    #confirm-modal-box,
+    .whatsapp-modal-box {
+        overflow-y: auto;
+        padding: 26px 18px 20px !important;
+    }
+
+    .dashboard-modal-header {
+        padding: 14px 16px;
+    }
+
+    .dashboard-modal-body {
+        padding: 16px;
+    }
+
+    #assistant-widget {
+        right: max(12px, env(safe-area-inset-right)) !important;
+        bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    }
+
+    #assistant-panel {
+        max-height: calc(100dvh - 96px);
+    }
+
+    body > .actions + .recibo,
+    body > .recibo {
+        width: 100%;
+        max-width: 600px;
+    }
+
+    .recibo .header,
+    .recibo .body,
+    .recibo .footer {
+        padding-inline: 20px;
+    }
+}
+
+@media screen and (max-width: 640px) {
+    header.top {
+        padding-top: max(10px, env(safe-area-inset-top));
+    }
+
+    .container :not(th):not(td)[style*="min-width:"] {
+        min-width: 0 !important;
+    }
+
+    .container > form[style*="display:flex"],
+    .container > form[style*="display: flex"],
+    .card-box > form[style*="display:flex"],
+    .card-box > form[style*="display: flex"] {
+        flex-wrap: wrap !important;
+    }
+
+    .toolbar form,
+    form[method="get"][style*="display:flex"],
+    form[method="get"][style*="display: flex"] {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    .toolbar form > *,
+    form[method="get"][style*="display:flex"] > *,
+    form[method="get"][style*="display: flex"] > * {
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    .folder-head {
+        padding: 20px 18px 16px;
+    }
+
+    .folder-body {
+        padding: 10px 10px 12px;
+    }
+
+    .month-desc,
+    .month-days,
+    .month-actions,
+    .month-tools {
+        margin-left: 0 !important;
+    }
+
+    .recibo .grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+    }
+
+    .recibo .field[style*="grid-column"] {
+        grid-column: 1;
+    }
+
+    .recibo .monto-valor {
+        font-size: clamp(30px, 11vw, 38px);
+        overflow-wrap: anywhere;
+    }
+
+    body > .actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    body > .actions .btn {
+        margin: 0;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .container {
+        padding-inline: 10px;
+    }
+
+    header.top nav {
+        gap: 7px;
+    }
+
+    .card-box {
+        border-radius: 10px;
+    }
+
+    .flash,
+    .readonly-banner,
+    .alert-box {
+        padding: 11px 12px;
+        font-size: 13px;
+    }
+
+    .hoja-meta,
+    .hoja-totales {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .row-actions,
+    .whatsapp-modal-actions {
+        width: 100%;
+    }
+
+    .row-actions .btn,
+    .row-actions form,
+    .row-actions form .btn,
+    .whatsapp-modal-actions .whatsapp-btn {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    #confirm-modal-box > div:last-child {
+        flex-direction: column-reverse;
+    }
+
+    #confirm-modal-cancel,
+    #confirm-modal-confirm {
+        width: 100%;
+        max-width: none !important;
+        min-height: 46px;
+    }
+
+    #assistant-toggle {
+        min-height: 46px;
+    }
+
+    #assistant-panel {
+        border-radius: 16px !important;
+    }
+
+    body:has(> .recibo) {
+        padding: 12px 10px;
+    }
+
+    body > .actions .btn {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    .recibo .header {
+        align-items: flex-start;
+        padding: 18px 16px;
+    }
+
+    .recibo .body {
+        padding: 20px 16px;
+    }
+
+    .recibo .footer {
+        padding: 16px;
+    }
+
+    .recibo .resumen-row {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+    }
+}
+
+/* Acceso: las tres pantallas independientes comparten estas mejoras. */
+@media screen and (max-width: 480px) {
+    body > .login-card {
+        width: 100%;
+        max-width: none;
+        padding: 28px 18px 24px;
+        border-radius: 18px;
+    }
+
+    body > .theme-selector {
+        top: max(12px, env(safe-area-inset-top));
+        right: max(12px, env(safe-area-inset-right));
+    }
+}
+
+@media screen and (max-height: 620px) {
+    body:has(> .login-card) {
+        align-items: flex-start;
+        min-height: 100dvh;
+        overflow-y: auto;
+    }
+
+    body > .login-card {
+        max-height: none;
+        overflow: visible;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+@media print {
+    body {
+        overflow: visible !important;
+    }
+
+    .responsive-table-shell {
+        overflow: visible !important;
+        background: none !important;
+    }
+
+    .responsive-table-shell table {
+        max-width: 100%;
+    }
+}
