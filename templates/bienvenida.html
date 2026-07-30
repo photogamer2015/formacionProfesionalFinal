@@ -350,6 +350,7 @@
 	    .card-matriculas { --card-accent: #2f7df6; --card-accent-soft: rgba(47,125,246,.10); --card-accent-glow: rgba(47,125,246,.18); }
 	    .card-cursos { --card-accent: #1B2A4E; --card-accent-soft: rgba(27,42,78,.10); --card-accent-glow: rgba(27,42,78,.16); }
 	    .card-pagos { --card-accent: #0e7c6b; --card-accent-soft: rgba(14,124,107,.10); --card-accent-glow: rgba(14,124,107,.16); }
+	    .card-recuperaciones { --card-accent: #d97706; --card-accent-soft: rgba(217,119,6,.11); --card-accent-glow: rgba(217,119,6,.18); }
 	    .card-historial,
 	    .card-archivo { --card-accent: #6d5dfc; --card-accent-soft: rgba(109,93,252,.10); --card-accent-glow: rgba(109,93,252,.16); }
 	    .card-adicional,
@@ -881,9 +882,13 @@
     .gm-chip.pendiente { background: #fff4e5; color: #b26a00; }
     .gm-chip.modulo    { background: #eaf3ff; color: #2b6cb0; }
     .gm-chip.jornada   { background: #f0f2f5; color: #566579; }
+    .gm-chip.sede      { background: #e8f5f2; color: #0f766e; }
+    .gm-chip.modalidad { background: #edf7ed; color: #2e7d32; }
     body.dark-mode .gm-chip.pendiente { background: #3a2e1a; color: #e0b060; }
     body.dark-mode .gm-chip.modulo    { background: #22344d; color: #7fb0e8; }
     body.dark-mode .gm-chip.jornada   { background: #2a3040; color: #9aabc0; }
+    body.dark-mode .gm-chip.sede      { background: #143832; color: #83d4c4; }
+    body.dark-mode .gm-chip.modalidad { background: #1e3626; color: #9bd39b; }
 
     /* Acciones */
     .gm-acciones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
@@ -978,22 +983,26 @@
    - Cada tarjeta muestra el MÓDULO faltante y el MONTO pendiente.
 {% endcomment %}
 <div class="gm-panel" id="gm-panel">
-    <div class="gm-head" onclick="document.getElementById('gm-panel').classList.toggle('abierto');">
+    <div class="gm-head" onclick="if(!event.target.closest('.gm-search-wrapper')) document.getElementById('gm-panel').classList.toggle('abierto');">
         <span class="gm-ico">🎓</span>
         <h3 class="gm-titulo">
             Gestión de Matrículas
             <span class="gm-count">{{ alertas_pago|length }}</span>
         </h3>
+        <div class="gm-search-wrapper" style="display: flex; align-items: center; margin-right: 12px;" onclick="event.stopPropagation();">
+            <input type="text" id="gm-search-input" placeholder="Buscar..." style="display: none; padding: 4px 10px; border: 1px solid #c2d5f2; border-radius: 20px; font-size: 13px; outline: none; width: 140px; background: transparent; color: inherit;" onkeyup="filterGmCards(this.value)">
+            <span class="gm-search-icon" style="cursor: pointer; font-size: 15px; margin-left: 6px; opacity: 0.8;" onclick="toggleGmSearch(event)" title="Buscar estudiante">🔍</span>
+        </div>
         <span class="gm-flecha">▾</span>
     </div>
 
     <div class="gm-body">
         <div class="gm-body-inner">
             <p class="gm-resumen">
-                Estudiantes con un pago vencido según su modalidad: presencial paga al iniciar
-                la jornada y cada 7 días; online paga un día antes del inicio y el saldo
-                restante a los 13 días; ciclo corto online es un solo pago un día antes.
-                Coordina el pago o consulta su asistencia con un clic.
+                Estudiantes con saldo pendiente según su modalidad: presencial se gestiona
+                desde el inicio de la jornada y cada 7 días; online se gestiona un día antes
+                del inicio y el saldo restante a los 13 días; ciclo corto online es un solo
+                pago un día antes. Coordina el pago o consulta su asistencia con un clic.
             </p>
 
             {% for a in alertas_pago|slice:":3" %}
@@ -1009,26 +1018,22 @@
                     <div class="gm-estado">
                         <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                         <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
-                        <span class="gm-chip pendiente">⏰ Venció: {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>
-                        <span class="gm-chip jornada">📅 {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
+                        <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
+                        <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
+                        <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
                         {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
                     </div>
                 </div>
                 <div class="gm-acciones">
                     {% if a.celular_wa %}
-                    <a href="https://web.whatsapp.com/send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Nos+comunicamos+con+usted+para+coordinar+los+detalles+pendientes+de+su+inscripci%C3%B3n+en+el+curso+de+{{ a.curso.nombre|urlencode }}.+%C2%BFPodr%C3%ADa+ayudarnos+confirmando+su+pago%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                    <a href="https://web.whatsapp.com/send?phone={{ a.celular_wa }}&amp;text=Buenos+d%C3%ADa%2C+estimado%2Fa+estudiante+%2A{{ a.estudiante.nombres|urlencode }}%2A+%F0%9F%93%9A%F0%9F%91%A9%F0%9F%8F%BB%E2%80%8D%F0%9F%8F%AB%0A%0ALe+escribimos+de+parte+de+la+Escuela+de+Formaci%C3%B3n+Profesional+para+confirmar+el+motivo+de+su+inasistencia+o+si+ha+decidido+retirarse+del+programa+de+%2A{{ a.curso.nombre|urlencode }}%2A%0A%0ASi+decide+continuar%2C+le+recordamos+que+tiene+que+cancelar+la+cuota+correspondiente+al+m%C3%B3dulo+del+d%C3%ADa+de+hoy+al+cual+no+pudo+asistir+dentro+de+las+pr%C3%B3ximas+24+horas%2C+para+que+el+sistema+no+anule+la+matr%C3%ADcula+por+inasistencia+e+incumplimiento+al+plan+de+financiamiento+y+no+se+vea+afectado+su+progreso.+Una+vez+efectuado+el+pago%2C+se+le+asignar%C3%A1+una+fecha+para+recuperar+la+clase.+%F0%9F%98%8A%0A%0ASi+decide+retirarse%2C+le+agradecemos+nos+notifique+y+le+deseamos+%C3%A9xitos+en+sus+futuros+proyectos.%F0%9F%8C%9F%0A%0APor+favor%2C+confirme+su+decisi%C3%B3n+respondiendo+a+este+mensaje.%0A%0AAtentamente%0AAdministraci%C3%B3n"
                        data-whatsapp-choice
-                       data-whatsapp-desktop="whatsapp://send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Nos+comunicamos+con+usted+para+coordinar+los+detalles+pendientes+de+su+inscripci%C3%B3n+en+el+curso+de+{{ a.curso.nombre|urlencode }}.+%C2%BFPodr%C3%ADa+ayudarnos+confirmando+su+pago%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                       data-whatsapp-desktop="whatsapp://send?phone={{ a.celular_wa }}&amp;text=Buenos+d%C3%ADa%2C+estimado%2Fa+estudiante+%2A{{ a.estudiante.nombres|urlencode }}%2A+%F0%9F%93%9A%F0%9F%91%A9%F0%9F%8F%BB%E2%80%8D%F0%9F%8F%AB%0A%0ALe+escribimos+de+parte+de+la+Escuela+de+Formaci%C3%B3n+Profesional+para+confirmar+el+motivo+de+su+inasistencia+o+si+ha+decidido+retirarse+del+programa+de+%2A{{ a.curso.nombre|urlencode }}%2A%0A%0ASi+decide+continuar%2C+le+recordamos+que+tiene+que+cancelar+la+cuota+correspondiente+al+m%C3%B3dulo+del+d%C3%ADa+de+hoy+al+cual+no+pudo+asistir+dentro+de+las+pr%C3%B3ximas+24+horas%2C+para+que+el+sistema+no+anule+la+matr%C3%ADcula+por+inasistencia+e+incumplimiento+al+plan+de+financiamiento+y+no+se+vea+afectado+su+progreso.+Una+vez+efectuado+el+pago%2C+se+le+asignar%C3%A1+una+fecha+para+recuperar+la+clase.+%F0%9F%98%8A%0A%0ASi+decide+retirarse%2C+le+agradecemos+nos+notifique+y+le+deseamos+%C3%A9xitos+en+sus+futuros+proyectos.%F0%9F%8C%9F%0A%0APor+favor%2C+confirme+su+decisi%C3%B3n+respondiendo+a+este+mensaje.%0A%0AAtentamente%0AAdministraci%C3%B3n"
                        target="_blank" rel="noopener"
-                       class="btn btn-sm gm-btn-wa" title="Coordinar pago por WhatsApp">💬 Pago</a>
-                    <a href="https://web.whatsapp.com/send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ a.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
-                       data-whatsapp-choice
-                       data-whatsapp-desktop="whatsapp://send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ a.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
-                       target="_blank" rel="noopener"
-                       class="btn btn-sm gm-btn-asis" title="Consultar asistencia">🗓 Asistencia</a>
+                       class="btn btn-sm gm-btn-asis" title="Contactar por WhatsApp">💬 WhatsApp</a>
                     {% endif %}
                     <a href="{% url 'academia:matricula_abonos' a.matricula.pk %}"
-                       class="btn btn-sm btn-secondary" title="Ver detalle del estudiante">👁 Detalle</a>
+                       class="btn btn-sm btn-secondary" title="Ver pagos del estudiante">💵 Pagos</a>
                     <form method="post" action="{% url 'academia:alerta_marcar_revisada' a.matricula.pk %}"
                           class="form-revisar-alerta" style="display:inline;">
                         {% csrf_token %}
@@ -1058,26 +1063,22 @@
                         <div class="gm-estado">
                             <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                             <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
-                            <span class="gm-chip pendiente">⏰ Venció: {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>
-                            <span class="gm-chip jornada">📅 {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
+                            <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
+                            <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
+                            <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
                             {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
                         </div>
                     </div>
                     <div class="gm-acciones">
                         {% if a.celular_wa %}
-                        <a href="https://web.whatsapp.com/send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Nos+comunicamos+con+usted+para+coordinar+los+detalles+pendientes+de+su+inscripci%C3%B3n+en+el+curso+de+{{ a.curso.nombre|urlencode }}.+%C2%BFPodr%C3%ADa+ayudarnos+confirmando+su+pago%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                        <a href="https://web.whatsapp.com/send?phone={{ a.celular_wa }}&amp;text=Buenos+d%C3%ADa%2C+estimado%2Fa+estudiante+%2A{{ a.estudiante.nombres|urlencode }}%2A+%F0%9F%93%9A%F0%9F%91%A9%F0%9F%8F%BB%E2%80%8D%F0%9F%8F%AB%0A%0ALe+escribimos+de+parte+de+la+Escuela+de+Formaci%C3%B3n+Profesional+para+confirmar+el+motivo+de+su+inasistencia+o+si+ha+decidido+retirarse+del+programa+de+%2A{{ a.curso.nombre|urlencode }}%2A%0A%0ASi+decide+continuar%2C+le+recordamos+que+tiene+que+cancelar+la+cuota+correspondiente+al+m%C3%B3dulo+del+d%C3%ADa+de+hoy+al+cual+no+pudo+asistir+dentro+de+las+pr%C3%B3ximas+24+horas%2C+para+que+el+sistema+no+anule+la+matr%C3%ADcula+por+inasistencia+e+incumplimiento+al+plan+de+financiamiento+y+no+se+vea+afectado+su+progreso.+Una+vez+efectuado+el+pago%2C+se+le+asignar%C3%A1+una+fecha+para+recuperar+la+clase.+%F0%9F%98%8A%0A%0ASi+decide+retirarse%2C+le+agradecemos+nos+notifique+y+le+deseamos+%C3%A9xitos+en+sus+futuros+proyectos.%F0%9F%8C%9F%0A%0APor+favor%2C+confirme+su+decisi%C3%B3n+respondiendo+a+este+mensaje.%0A%0AAtentamente%0AAdministraci%C3%B3n"
                            data-whatsapp-choice
-                           data-whatsapp-desktop="whatsapp://send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Nos+comunicamos+con+usted+para+coordinar+los+detalles+pendientes+de+su+inscripci%C3%B3n+en+el+curso+de+{{ a.curso.nombre|urlencode }}.+%C2%BFPodr%C3%ADa+ayudarnos+confirmando+su+pago%3F+Quedamos+atentos.+%F0%9F%99%8F"
+                           data-whatsapp-desktop="whatsapp://send?phone={{ a.celular_wa }}&amp;text=Buenos+d%C3%ADa%2C+estimado%2Fa+estudiante+%2A{{ a.estudiante.nombres|urlencode }}%2A+%F0%9F%93%9A%F0%9F%91%A9%F0%9F%8F%BB%E2%80%8D%F0%9F%8F%AB%0A%0ALe+escribimos+de+parte+de+la+Escuela+de+Formaci%C3%B3n+Profesional+para+confirmar+el+motivo+de+su+inasistencia+o+si+ha+decidido+retirarse+del+programa+de+%2A{{ a.curso.nombre|urlencode }}%2A%0A%0ASi+decide+continuar%2C+le+recordamos+que+tiene+que+cancelar+la+cuota+correspondiente+al+m%C3%B3dulo+del+d%C3%ADa+de+hoy+al+cual+no+pudo+asistir+dentro+de+las+pr%C3%B3ximas+24+horas%2C+para+que+el+sistema+no+anule+la+matr%C3%ADcula+por+inasistencia+e+incumplimiento+al+plan+de+financiamiento+y+no+se+vea+afectado+su+progreso.+Una+vez+efectuado+el+pago%2C+se+le+asignar%C3%A1+una+fecha+para+recuperar+la+clase.+%F0%9F%98%8A%0A%0ASi+decide+retirarse%2C+le+agradecemos+nos+notifique+y+le+deseamos+%C3%A9xitos+en+sus+futuros+proyectos.%F0%9F%8C%9F%0A%0APor+favor%2C+confirme+su+decisi%C3%B3n+respondiendo+a+este+mensaje.%0A%0AAtentamente%0AAdministraci%C3%B3n"
                            target="_blank" rel="noopener"
-                           class="btn btn-sm gm-btn-wa" title="Coordinar pago por WhatsApp">💬 Pago</a>
-                        <a href="https://web.whatsapp.com/send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ a.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
-                           data-whatsapp-choice
-                           data-whatsapp-desktop="whatsapp://send?phone={{ a.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ a.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ a.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
-                           target="_blank" rel="noopener"
-                           class="btn btn-sm gm-btn-asis" title="Consultar asistencia">🗓 Asistencia</a>
+                           class="btn btn-sm gm-btn-asis" title="Contactar por WhatsApp">💬 WhatsApp</a>
                         {% endif %}
                         <a href="{% url 'academia:matricula_abonos' a.matricula.pk %}"
-                           class="btn btn-sm btn-secondary" title="Ver detalle del estudiante">👁 Detalle</a>
+                           class="btn btn-sm btn-secondary" title="Ver pagos del estudiante">💵 Pagos</a>
                         <form method="post" action="{% url 'academia:alerta_marcar_revisada' a.matricula.pk %}"
                               class="form-revisar-alerta" style="display:inline;">
                             {% csrf_token %}
@@ -1095,6 +1096,40 @@
         </div>
     </div>
 </div>
+
+<script>
+function toggleGmSearch(e) {
+    if (e) e.stopPropagation();
+    const input = document.getElementById('gm-search-input');
+    if (input.style.display === 'none' || input.style.display === '') {
+        input.style.display = 'block';
+        input.focus();
+    } else {
+        input.style.display = 'none';
+        input.value = '';
+        filterGmCards('');
+    }
+}
+
+function filterGmCards(query) {
+    query = query.toLowerCase();
+    const panel = document.getElementById('gm-panel');
+    const cards = panel.querySelectorAll('.gm-card');
+    cards.forEach(card => {
+        const text = card.innerText.toLowerCase();
+        if (text.includes(query)) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    const details = panel.querySelector('.gm-vermas');
+    if (details && query.trim() !== '') {
+        details.open = true;
+    }
+}
+</script>
 
 {# ── Modal de confirmación para "Ya revisado" (reemplaza al confirm() nativo) ── #}
 <div id="modal-revisar-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-revisar-titulo"
@@ -1229,7 +1264,21 @@
         </div>
     </a>
 
-    <a href="{% url 'academia:historial_lista' %}" class="card-box card-historial" style="animation-delay:.2s;">
+    <a href="{% url 'academia:recuperaciones_lista' %}" class="card-box card-recuperaciones" style="animation-delay:.2s;">
+        <div class="card-header">
+            <div class="card-title">Recuperaciones</div>
+            <div class="card-icon-wrap">✱</div>
+        </div>
+        <div class="card-desc">
+            Control de clases pendientes, fechas programadas y recuperaciones realizadas.
+        </div>
+        <div class="card-footer">
+            <span class="status-ok">Disponible</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+
+    <a href="{% url 'academia:historial_lista' %}" class="card-box card-historial" style="animation-delay:.25s;">
         <div class="card-header">
             <div class="card-title">Historial</div>
             <div class="card-icon-wrap">📚</div>
@@ -1243,7 +1292,7 @@
         </div>
     </a>
 
-    <a href="{% url 'academia:archivo_index' %}" class="card-box card-archivo" style="animation-delay:.25s;">
+    <a href="{% url 'academia:archivo_index' %}" class="card-box card-archivo" style="animation-delay:.3s;">
         <div class="card-header">
             <div class="card-title">Archivo</div>
             <div class="card-icon-wrap">🗄️</div>
@@ -1259,7 +1308,7 @@
     {% endif %}
 
     {% if puede_gestionar_matriculas %}
-    <a href="{% url 'academia:adicional_menu' %}" class="card-box card-adicional" style="animation-delay:.3s;">
+    <a href="{% url 'academia:adicional_menu' %}" class="card-box card-adicional" style="animation-delay:.35s;">
         <div class="card-header">
             <div class="card-title">Adicional</div>
             <div class="card-icon-wrap">➕</div>

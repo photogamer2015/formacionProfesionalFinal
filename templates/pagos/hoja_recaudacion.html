@@ -7,6 +7,261 @@
 <style>
     /* Estilos solo de pantalla (no se imprimen) */
     .no-print { /* se oculta al imprimir */ }
+    .recaudacion-date-picker {
+        position: relative;
+        min-width: 0;
+    }
+    .date-picker-trigger {
+        width: 100%;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 10px 12px;
+        border: 2px solid var(--fp-border);
+        border-radius: 8px;
+        background: var(--fp-surface);
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+        transition: border .15s, box-shadow .15s, background .15s;
+    }
+    .date-picker-trigger:hover,
+    .date-picker-trigger[aria-expanded="true"],
+    .recaudacion-date-picker.has-value .date-picker-trigger {
+        border-color: var(--fp-navy);
+        box-shadow: 0 0 0 3px rgba(27,42,78,.10);
+    }
+    .date-picker-trigger-text {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: left;
+    }
+    .date-picker-trigger-caret {
+        color: var(--fp-muted);
+        font-size: 12px;
+        flex: 0 0 auto;
+    }
+    .date-picker-popover[hidden] {
+        display: none;
+    }
+    .date-picker-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 2500;
+        width: min(860px, calc(100vw - 32px));
+        overflow: hidden;
+        border: 1px solid rgba(27,42,78,.12);
+        border-radius: 12px;
+        background: var(--fp-surface);
+        color: var(--fp-ink);
+        box-shadow: 0 22px 56px rgba(27,42,78,.18);
+    }
+    .date-picker-layout {
+        display: grid;
+        grid-template-columns: 184px minmax(0, 1fr);
+    }
+    .date-picker-presets {
+        padding: 14px 10px;
+        border-right: 1px solid var(--fp-line);
+        background: var(--fp-surface-2);
+    }
+    .date-picker-presets-title {
+        padding: 0 10px 9px;
+        color: var(--fp-muted);
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .date-picker-preset {
+        width: 100%;
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 10px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+    }
+    .date-picker-preset::before {
+        content: "";
+        width: 15px;
+        height: 15px;
+        border: 1.5px solid #c6cfda;
+        border-radius: 50%;
+        background: var(--fp-surface);
+        flex: 0 0 auto;
+    }
+    .date-picker-preset:hover {
+        background: rgba(27,42,78,.07);
+    }
+    .date-picker-preset.is-active {
+        color: var(--fp-navy);
+        font-weight: 800;
+        background: rgba(27,42,78,.09);
+    }
+    .date-picker-preset.is-active::before {
+        border-color: var(--fp-navy);
+        box-shadow: inset 0 0 0 4px var(--fp-surface);
+        background: var(--fp-navy);
+    }
+    .date-picker-main {
+        padding: 14px;
+    }
+    .date-picker-calendars {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 16px;
+    }
+    .date-picker-calendar-head {
+        min-height: 32px;
+        display: grid;
+        grid-template-columns: 32px 1fr 32px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .date-picker-calendar-title {
+        text-align: center;
+        color: var(--fp-ink);
+        font-size: 14px;
+        font-weight: 800;
+        text-transform: capitalize;
+    }
+    .date-picker-nav {
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-muted);
+        font-size: 23px;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .date-picker-nav:hover {
+        background: var(--fp-surface-2);
+        color: var(--fp-navy);
+    }
+    .date-picker-weekdays,
+    .date-picker-days {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 3px;
+    }
+    .date-picker-weekdays {
+        margin-bottom: 4px;
+    }
+    .date-picker-weekdays span {
+        color: var(--fp-muted);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: center;
+    }
+    .date-picker-day {
+        min-width: 0;
+        aspect-ratio: 1;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .date-picker-day:hover {
+        background: var(--fp-surface-2);
+    }
+    .date-picker-day.is-today {
+        outline: 1px solid rgba(228,81,3,.72);
+        outline-offset: -2px;
+    }
+    .date-picker-day.is-selected {
+        background: var(--fp-navy);
+        color: #ffffff;
+        font-weight: 800;
+        outline: none;
+    }
+    .date-picker-empty-day {
+        min-height: 30px;
+    }
+    .date-picker-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 13px 14px;
+        border-top: 1px solid var(--fp-line);
+        background: rgba(241,245,251,.72);
+    }
+    body.dark-mode .date-picker-trigger,
+    body.dark-mode .date-picker-popover {
+        background: #0d1420;
+        color: var(--fp-dark-text);
+        border-color: var(--fp-dark-line);
+    }
+    body.dark-mode .date-picker-popover {
+        background: #121925;
+        box-shadow: 0 24px 56px rgba(0,0,0,.48);
+    }
+    body.dark-mode .date-picker-presets,
+    body.dark-mode .date-picker-footer {
+        background: #0d1420;
+        border-color: var(--fp-dark-line);
+    }
+    body.dark-mode .date-picker-preset,
+    body.dark-mode .date-picker-calendar-title,
+    body.dark-mode .date-picker-day {
+        color: var(--fp-dark-text);
+    }
+    body.dark-mode .date-picker-preset:hover,
+    body.dark-mode .date-picker-nav:hover,
+    body.dark-mode .date-picker-day:hover {
+        background: rgba(126,167,255,.10);
+    }
+    body.dark-mode .date-picker-preset.is-active {
+        color: #dfe8ff;
+        background: rgba(126,167,255,.16);
+    }
+    @media (max-width: 760px) {
+        .date-picker-popover {
+            position: fixed;
+            top: 72px;
+            right: 12px;
+            left: 12px !important;
+            width: auto;
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+        }
+        .date-picker-layout {
+            grid-template-columns: 1fr;
+        }
+        .date-picker-presets {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px;
+            border-right: 0;
+            border-bottom: 1px solid var(--fp-line);
+        }
+        .date-picker-presets-title {
+            grid-column: 1 / -1;
+        }
+        .date-picker-calendars {
+            grid-template-columns: 1fr;
+        }
+        .date-picker-footer .btn {
+            flex: 1;
+        }
+    }
 
     @media print {
         body { background: white !important; }
@@ -14,7 +269,11 @@
         .hoja-recaudacion { page-break-after: always; box-shadow: none !important; border: none !important; padding: 14px !important; }
         .hoja-recaudacion:last-of-type { page-break-after: auto; }
         .hoja-tabla th { background:#f0ad4e !important; color:white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .hoja-totales { background:#fff8e1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .hoja-tabla th:nth-child(5),
+        .hoja-tabla td:nth-child(5),
+        .hoja-tabla th:nth-child(6),
+        .hoja-tabla td:nth-child(6) { display: none !important; }
+        .hoja-totales { display: none !important; }
     }
 
     .hoja-recaudacion {
@@ -161,7 +420,35 @@
     <form method="get" style="display:grid; grid-template-columns: 1fr 1fr 1fr 2fr 2fr auto; gap:10px; align-items:end;">
         <div>
             <label class="form-label" style="font-size:11px;">Fecha *</label>
-            <input type="date" name="fecha" value="{{ filtros.fecha }}" class="form-input" required>
+            <div class="recaudacion-date-picker" data-single-date-picker>
+                <input type="hidden" name="fecha" value="{{ filtros.fecha }}" data-date-value>
+                <button type="button" class="date-picker-trigger" data-date-trigger aria-haspopup="dialog" aria-expanded="false">
+                    <span aria-hidden="true">📅</span>
+                    <span class="date-picker-trigger-text" data-date-label>Fecha</span>
+                    <span class="date-picker-trigger-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="date-picker-popover" data-date-popover hidden>
+                    <div class="date-picker-layout">
+                        <div class="date-picker-presets">
+                            <div class="date-picker-presets-title">Fecha</div>
+                            <button type="button" class="date-picker-preset" data-date-preset="all">Sin filtro</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="today">Hoy</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="yesterday">Ayer</button>
+                        </div>
+                        <div class="date-picker-main">
+                            <div class="date-picker-calendars">
+                                <div class="date-picker-calendar" data-calendar-offset="0"></div>
+                                <div class="date-picker-calendar" data-calendar-offset="1"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="date-picker-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-date-clear>Limpiar</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-date-cancel>Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm" data-date-apply>Aceptar</button>
+                    </div>
+                </div>
+            </div>
         </div>
         <div>
             <label class="form-label" style="font-size:11px;">Modalidad</label>
@@ -210,6 +497,246 @@
 <script>
 (function () {
     'use strict';
+
+    var picker = document.querySelector('[data-single-date-picker]');
+    if (picker) {
+        var monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        var fullMonthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        var weekDays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+        var hiddenDate = picker.querySelector('[data-date-value]');
+        var trigger = picker.querySelector('[data-date-trigger]');
+        var popover = picker.querySelector('[data-date-popover]');
+        var label = picker.querySelector('[data-date-label]');
+        var dateForm = picker.closest('form');
+        var calendars = picker.querySelectorAll('[data-calendar-offset]');
+        var presets = picker.querySelectorAll('[data-date-preset]');
+        var clearButton = picker.querySelector('[data-date-clear]');
+        var cancelButton = picker.querySelector('[data-date-cancel]');
+        var applyButton = picker.querySelector('[data-date-apply]');
+        var draftDate = null;
+        var viewYear;
+        var viewMonth;
+
+        function pad(value) {
+            return String(value).padStart(2, '0');
+        }
+
+        function toISO(date) {
+            if (!date) return '';
+            return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+        }
+
+        function parseISO(value) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+            var parts = value.split('-').map(Number);
+            var date = new Date(parts[0], parts[1] - 1, parts[2]);
+            if (
+                date.getFullYear() !== parts[0] ||
+                date.getMonth() !== parts[1] - 1 ||
+                date.getDate() !== parts[2]
+            ) {
+                return null;
+            }
+            return date;
+        }
+
+        function today() {
+            var date = new Date();
+            return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        }
+
+        function cloneDate(date) {
+            return date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()) : null;
+        }
+
+        function addDays(date, days) {
+            var next = cloneDate(date);
+            next.setDate(next.getDate() + days);
+            return next;
+        }
+
+        function sameDate(a, b) {
+            return Boolean(a && b && toISO(a) === toISO(b));
+        }
+
+        function formatDate(date) {
+            return date.getDate() + ' ' + monthNames[date.getMonth()] + ' ' + date.getFullYear();
+        }
+
+        function presetDate(key) {
+            if (key === 'all') return null;
+            if (key === 'today') return today();
+            if (key === 'yesterday') return addDays(today(), -1);
+            return null;
+        }
+
+        function setViewFromDraft() {
+            var reference = draftDate || today();
+            viewYear = reference.getFullYear();
+            viewMonth = reference.getMonth();
+        }
+
+        function updateLabel() {
+            var current = parseISO(hiddenDate.value);
+            label.textContent = current ? 'Fecha: ' + formatDate(current) : 'Fecha';
+            picker.classList.toggle('has-value', Boolean(current));
+        }
+
+        function renderPresetState() {
+            presets.forEach(function (button) {
+                var selected = presetDate(button.dataset.datePreset);
+                var active = (!draftDate && !selected) || sameDate(draftDate, selected);
+                button.classList.toggle('is-active', active);
+            });
+        }
+
+        function renderMonth(container, offset) {
+            var monthDate = new Date(viewYear, viewMonth + offset, 1);
+            var year = monthDate.getFullYear();
+            var month = monthDate.getMonth();
+            var firstDay = new Date(year, month, 1);
+            var lastDay = new Date(year, month + 1, 0).getDate();
+            var leading = (firstDay.getDay() + 6) % 7;
+            var todayISO = toISO(today());
+            var selectedISO = toISO(draftDate);
+            var html = '<div class="date-picker-calendar-head">';
+            html += offset === 0
+                ? '<button type="button" class="date-picker-nav" data-month-nav="-1" aria-label="Mes anterior">‹</button>'
+                : '<span></span>';
+            html += '<div class="date-picker-calendar-title">' + fullMonthNames[month] + ' ' + year + '</div>';
+            html += offset === 1
+                ? '<button type="button" class="date-picker-nav" data-month-nav="1" aria-label="Mes siguiente">›</button>'
+                : '<span></span>';
+            html += '</div>';
+            html += '<div class="date-picker-weekdays">' + weekDays.map(function (day) {
+                return '<span>' + day + '</span>';
+            }).join('') + '</div>';
+            html += '<div class="date-picker-days">';
+            for (var i = 0; i < leading; i += 1) {
+                html += '<span class="date-picker-empty-day"></span>';
+            }
+            for (var dayNum = 1; dayNum <= lastDay; dayNum += 1) {
+                var date = new Date(year, month, dayNum);
+                var iso = toISO(date);
+                var classes = [
+                    'date-picker-day',
+                    iso === todayISO ? 'is-today' : '',
+                    iso === selectedISO ? 'is-selected' : '',
+                ].filter(Boolean).join(' ');
+                html += '<button type="button" class="' + classes + '" data-date-day="' + iso + '">' + dayNum + '</button>';
+            }
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function render() {
+            calendars.forEach(function (calendar) {
+                renderMonth(calendar, Number(calendar.dataset.calendarOffset || 0));
+            });
+            renderPresetState();
+        }
+
+        function positionPopover() {
+            popover.style.left = '0px';
+            var rect = popover.getBoundingClientRect();
+            var maxRight = window.innerWidth - 16;
+            if (rect.right > maxRight) {
+                popover.style.left = '-' + (rect.right - maxRight) + 'px';
+            }
+            var adjusted = popover.getBoundingClientRect();
+            if (adjusted.left < 12) {
+                var currentLeft = Number.parseFloat(popover.style.left || '0') || 0;
+                popover.style.left = (currentLeft + 12 - adjusted.left) + 'px';
+            }
+        }
+
+        function openPicker() {
+            draftDate = parseISO(hiddenDate.value);
+            setViewFromDraft();
+            popover.hidden = false;
+            trigger.setAttribute('aria-expanded', 'true');
+            render();
+            positionPopover();
+        }
+
+        function closePicker() {
+            popover.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+
+        trigger.addEventListener('click', function () {
+            if (popover.hidden) {
+                openPicker();
+            } else {
+                closePicker();
+            }
+        });
+
+        popover.addEventListener('click', function (event) {
+            event.stopPropagation();
+            var dayButton = event.target.closest('[data-date-day]');
+            var navButton = event.target.closest('[data-month-nav]');
+            var presetButton = event.target.closest('[data-date-preset]');
+
+            if (dayButton) {
+                draftDate = parseISO(dayButton.dataset.dateDay);
+                render();
+                return;
+            }
+
+            if (navButton) {
+                var next = new Date(viewYear, viewMonth + Number(navButton.dataset.monthNav || 0), 1);
+                viewYear = next.getFullYear();
+                viewMonth = next.getMonth();
+                render();
+                return;
+            }
+
+            if (presetButton) {
+                draftDate = presetDate(presetButton.dataset.datePreset);
+                setViewFromDraft();
+                render();
+            }
+        });
+
+        clearButton.addEventListener('click', function () {
+            draftDate = null;
+            render();
+        });
+        cancelButton.addEventListener('click', closePicker);
+        applyButton.addEventListener('click', function () {
+            hiddenDate.value = toISO(draftDate);
+            trigger.removeAttribute('aria-invalid');
+            updateLabel();
+            closePicker();
+        });
+        if (dateForm) {
+            dateForm.addEventListener('submit', function (event) {
+                if (!hiddenDate.value) {
+                    event.preventDefault();
+                    trigger.setAttribute('aria-invalid', 'true');
+                    openPicker();
+                    trigger.focus();
+                }
+            });
+        }
+
+        document.addEventListener('click', function (event) {
+            if (!popover.hidden && !picker.contains(event.target)) {
+                closePicker();
+            }
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !popover.hidden) {
+                closePicker();
+            }
+        });
+        window.addEventListener('resize', function () {
+            if (!popover.hidden) positionPopover();
+        });
+
+        updateLabel();
+    }
 
     var curso = document.getElementById('id-curso-recaudacion');
     var jornada = document.getElementById('id-jornada-recaudacion');

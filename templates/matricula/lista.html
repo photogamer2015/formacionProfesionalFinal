@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Lista de Matriculados — {{ modalidad_label }}{% endblock %}
+{% block title %}{% if solo_retirados %}Estudiantes retirados{% else %}Lista de Matriculados{% endif %} — {{ modalidad_label }}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -358,18 +358,26 @@
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
     <a href="{% url 'academia:matricula_menu' modalidad=modalidad_registro %}">Matrícula</a> &nbsp;›&nbsp;
-    Lista
+    {% if solo_retirados %}Estudiantes retirados{% else %}Lista{% endif %}
 </div>
 
 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
     <div>
         <h2 class="page-title">
-            {% if modalidad == 'todos' %}📋{% elif modalidad == 'online' %}🟢{% else %}🏫{% endif %}
-            Matriculados {{ modalidad_label }}
+            {% if solo_retirados %}↩️ Estudiantes retirados{% else %}
+                {% if modalidad == 'todos' %}📋{% elif modalidad == 'online' %}🟢{% else %}🏫{% endif %}
+                Matriculados {{ modalidad_label }}
+            {% endif %}
         </h2>
         <p class="page-subtitle">
-            Total: {{ matriculas.count }} estudiante{{ matriculas.count|pluralize }} matriculado{{ matriculas.count|pluralize }}
-            {% if modalidad == 'todos' %}entre presencial y online.{% else %}en esta modalidad.{% endif %}
+            {% if solo_retirados %}
+                Total: {{ matriculas.count }} estudiante{{ matriculas.count|pluralize }}
+                con retiro voluntario
+                {% if modalidad == 'todos' %}entre presencial y online.{% else %}en modalidad {{ modalidad_label|lower }}.{% endif %}
+            {% else %}
+                Total: {{ matriculas.count }} estudiante{{ matriculas.count|pluralize }} matriculado{{ matriculas.count|pluralize }}
+                {% if modalidad == 'todos' %}entre presencial y online.{% else %}en esta modalidad.{% endif %}
+            {% endif %}
         </p>
         {% if jornada_filtrada %}
         <p class="page-subtitle" style="margin-top:4px;">
@@ -384,15 +392,15 @@
 
 {# ── Tabs Todos / Presencial / Online ──────────────────────── #}
 <div class="modalidad-tabs" style="margin-bottom: 24px;">
-    <a href="{% url 'academia:matricula_lista' modalidad='todos' %}"
+    <a href="{% if solo_retirados %}{% url 'academia:matricula_retirados' modalidad='todos' %}{% else %}{% url 'academia:matricula_lista' modalidad='todos' %}{% endif %}"
        class="{% if modalidad == 'todos' %}active{% endif %}">
         📋 Todos
     </a>
-    <a href="{% url 'academia:matricula_lista' modalidad='presencial' %}"
+    <a href="{% if solo_retirados %}{% url 'academia:matricula_retirados' modalidad='presencial' %}{% else %}{% url 'academia:matricula_lista' modalidad='presencial' %}{% endif %}"
        class="{% if modalidad == 'presencial' %}active{% endif %}">
         🏫 Presencial
     </a>
-    <a href="{% url 'academia:matricula_lista' modalidad='online' %}"
+    <a href="{% if solo_retirados %}{% url 'academia:matricula_retirados' modalidad='online' %}{% else %}{% url 'academia:matricula_lista' modalidad='online' %}{% endif %}"
        class="{% if modalidad == 'online' %}active{% endif %}">
         🟢 Online
     </a>
@@ -496,7 +504,7 @@
         </select>
         <button type="submit" class="btn btn-primary">Filtrar</button>
         {% if hay_filtros %}
-        <a href="{% url 'academia:matricula_lista' modalidad=modalidad %}" class="btn btn-secondary">Limpiar</a>
+        <a href="{% if solo_retirados %}{% url 'academia:matricula_retirados' modalidad=modalidad %}{% else %}{% url 'academia:matricula_lista' modalidad=modalidad %}{% endif %}" class="btn btn-secondary">Limpiar</a>
         {% endif %}
     </form>
 
@@ -509,9 +517,11 @@
             class="btn btn-secondary" title="Exportar a PDF">
             📄 PDF
         </a>
-        <a href="{% url 'academia:matricula_registrar' modalidad=modalidad_registro %}" class="btn btn-success">
-            + Nueva matrícula
-        </a>
+        {% if not solo_retirados %}
+            <a href="{% url 'academia:matricula_registrar' modalidad=modalidad_registro %}" class="btn btn-success">
+                + Nueva matrícula
+            </a>
+        {% endif %}
     </div>
 </div>
 
@@ -636,6 +646,17 @@
                 </td>
                 <td>
                     <div class="row-actions">
+                        {% if solo_retirados and es_admin %}
+                        <form method="post" action="{% url 'academia:matricula_revertir_retiro' pk=m.pk %}"
+                            style="display:inline;"
+                            onsubmit="return false;">
+                            {% csrf_token %}
+                            <button type="button" class="btn btn-success btn-sm"
+                                onclick="confirmarAccion(this.closest('form'), '¿Revertir el retiro voluntario de {{ m.estudiante.nombres|escapejs }}? La matrícula volverá a estar activa y recuperará su saldo pendiente según todos sus pagos registrados.', 'warning')">
+                                REVERTIR
+                            </button>
+                        </form>
+                        {% endif %}
                         <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}"
                             class="btn btn-warning btn-sm"
                             onclick="event.preventDefault(); abrirModalEditar(this.href);">Editar</a>
@@ -655,10 +676,18 @@
     {% else %}
     <div class="empty-state">
         <p style="font-size:15px; margin-bottom:12px;">
-            No hay matrículas {% if modalidad == 'todos' %}registradas{% else %}{{ modalidad_label|lower }} registradas{% endif %}
-            todavía.</p>
-        <a href="{% url 'academia:matricula_registrar' modalidad=modalidad %}" class="btn btn-primary">Registrar la
-            primera</a>
+            {% if solo_retirados %}
+                No hay estudiantes con retiro voluntario
+                {% if modalidad != 'todos' %}en modalidad {{ modalidad_label|lower }}{% endif %}.
+            {% else %}
+                No hay matrículas {% if modalidad == 'todos' %}registradas{% else %}{{ modalidad_label|lower }} registradas{% endif %}
+                todavía.
+            {% endif %}
+        </p>
+        {% if not solo_retirados %}
+            <a href="{% url 'academia:matricula_registrar' modalidad=modalidad %}" class="btn btn-primary">Registrar la
+                primera</a>
+        {% endif %}
     </div>
     {% endif %}
 </div>

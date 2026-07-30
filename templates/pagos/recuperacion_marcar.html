@@ -141,6 +141,16 @@
             <label class="form-label">{{ form.numero_modulo.label }} *</label>
             {{ form.numero_modulo }}
             {{ form.numero_modulo.errors }}
+            {% if not modo_edicion and not form.modulos_pendientes %}
+            <div class="flash flash-info" style="margin-top:10px;">
+                Todos los módulos ya tienen un pago registrado. No quedan módulos
+                pendientes para marcar.
+            </div>
+            {% elif not modo_edicion %}
+            <div style="font-size:12px; color:#666; margin-top:6px;">
+                Solo aparecen los módulos que todavía no tienen un pago registrado.
+            </div>
+            {% endif %}
         </div>
 
         {% if permitir_modo_registro %}
@@ -164,6 +174,15 @@
             <label class="form-label">{{ form.fecha_marcada.label }} *</label>
             {{ form.fecha_marcada }}
             {{ form.fecha_marcada.errors }}
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <label class="form-label">{{ form.fecha_programada.label }}</label>
+            {{ form.fecha_programada }}
+            {{ form.fecha_programada.errors }}
+            <div style="font-size:12px; color:#666; margin-top:6px;">
+                Fecha acordada para que el estudiante recupere la clase.
+            </div>
         </div>
 
         {% if 'servicio t' in matricula.curso.nombre|lower or 'blanca' in matricula.curso.nombre|lower %}
@@ -200,7 +219,9 @@
 
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <a href="{% url 'academia:matricula_abonos' matricula.pk %}" class="btn btn-secondary">Cancelar</a>
-            <button type="submit" class="btn btn-warning" style="background:#f0ad4e; color:white; border:none;">
+            <button type="submit" class="btn btn-warning"
+                {% if not modo_edicion and not form.modulos_pendientes %}disabled{% endif %}
+                style="background:#f0ad4e; color:white; border:none;">
                 ✱ {% if modo_edicion %}Guardar cambios{% else %}Marcar recuperación{% endif %}
             </button>
         </div>

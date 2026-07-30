@@ -5,7 +5,7 @@ from django.db.models import Q
 from .models import (
     Abono, Adicional, CategoriaEgreso, Categoria, Comprobante, Curso, Egreso,
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
-    PersonaExterna, RecuperacionPendiente, Sede,
+    MONTO_RESERVA_MATRICULA, PersonaExterna, RecuperacionPendiente, Sede,
 )
 
 
@@ -314,7 +314,7 @@ class MatriculaForm(forms.ModelForm):
     - Acepta TODOS los cursos activos (no filtra por modalidad de URL).
       La modalidad final se infiere de la jornada elegida.
     - Acepta TODAS las jornadas activas del curso (presenciales + online).
-    - Incluye `tipo_matricula` (Reserva/Abono, Reserva + Módulo 1, Programa Completo).
+    - Incluye `tipo_matricula` (Reserva/Abono y Programa Completo).
     - Incluye los datos de Comprobante: tipo_registro, factura, datos de factura,
       link al comprobante. La vendedora se asigna automáticamente desde
       request.user en la vista (no es un campo del form).
@@ -360,10 +360,8 @@ class MatriculaForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_banco_2'})
     )
 
-    # --- Reserva + Módulo: cuántos módulos se pagan (acumulativo desde el 1) ---
-    # Valor k = módulos 1..k quedan pagados. Solo aplica cuando
-    # tipo_matricula = 'reserva_modulo_1'. Las opciones (1..n) se llenan por JS
-    # según el número de módulos del curso/modalidad elegidos.
+    # Campo heredado para poder editar matrículas antiguas registradas como
+    # "Reserva + Módulo". Las matrículas nuevas ya no ofrecen ese flujo.
     modulos_a_pagar = forms.IntegerField(
         required=False, min_value=1,
         widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_modulos_a_pagar'})
@@ -453,10 +451,20 @@ class MatriculaForm(forms.ModelForm):
             self.fields['metodo_pago'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
             self.fields['metodo_pago_1'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
             self.fields['metodo_pago_2'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
-        # Añadir opción vacía para que "Matrícula *" no venga preseleccionado
+        # "Reserva + Módulo 1" se retiró del registro nuevo. Se conserva solo
+        # al editar una matrícula antigua para no volver inválido su historial.
         if 'tipo_matricula' in self.fields:
             from .models import TIPO_MATRICULA
-            self.fields['tipo_matricula'].choices = [('', '---------')] + list(TIPO_MATRICULA)
+            conservar_reserva_modulo = bool(
+                self.instance
+                and self.instance.pk
+                and self.instance.tipo_matricula == 'reserva_modulo_1'
+            )
+            tipo_choices = [
+                choice for choice in TIPO_MATRICULA
+                if choice[0] != 'reserva_modulo_1' or conservar_reserva_modulo
+            ]
+            self.fields['tipo_matricula'].choices = [('', '---------')] + tipo_choices
             self.fields['tipo_matricula'].initial = ''
 
         self.modalidad = modalidad
@@ -472,8 +480,8 @@ class MatriculaForm(forms.ModelForm):
             self.fields['valor_pagado'].label = 'Valor pagado (USD)'
             self.fields['valor_pagado'].help_text = (
                 'Debe ser un valor mayor a $0.00 para poder matricular. '
-                'Se calcula según la forma de pago elegida. En "Abono" puedes '
-                'escribir el monto parcial; el resto se cobra después.'
+                'En Reserva / Abono empieza con $10.00 y puedes registrar un '
+                'abono mayor; el saldo se cobra después según los módulos del curso.'
             )
         else:
             self.fields['valor_pagado'].required = False
@@ -521,9 +529,15 @@ class MatriculaForm(forms.ModelForm):
         self.fields['forma_pago'].initial = ''
         self.fields['forma_pago'].label = 'Forma de pago'
         if hasattr(self.fields['forma_pago'], 'choices'):
+            conservar_abono_modulo = bool(
+                self.instance
+                and self.instance.pk
+                and self.instance.forma_pago == 'abono_modulo'
+            )
             fp_choices = [
                 c for c in self.fields['forma_pago'].choices
                 if c[0] not in ('', None)
+                and (c[0] != 'abono_modulo' or conservar_abono_modulo)
             ]
             self.fields['forma_pago'].choices = (
                 [('', '---------')] + fp_choices
@@ -636,6 +650,11 @@ class MatriculaForm(forms.ModelForm):
                     cleaned['banco_2'] = ''
 
             vp = cleaned.get('valor_pagado')
+            tipo_matricula = cleaned.get('tipo_matricula')
+            es_reserva_nueva = bool(
+                not self.instance.pk
+                and tipo_matricula == 'reserva_abono'
+            )
 
             if vp is None:
                 if forma == 'pago_completo':
@@ -646,6 +665,23 @@ class MatriculaForm(forms.ModelForm):
                     vp = (neto / Decimal(n)).quantize(Decimal('0.01'))
                 else:
                     vp = Decimal('0.00')
+
+            if es_reserva_nueva:
+                if forma != 'abono':
+                    self.add_error(
+                        'forma_pago',
+                        'La matrícula con reserva utiliza la forma de pago Abono.'
+                    )
+                if neto < MONTO_RESERVA_MATRICULA:
+                    self.add_error(
+                        'valor_curso',
+                        'El valor a pagar no puede ser menor a la reserva fija de $10.00.'
+                    )
+                if vp < MONTO_RESERVA_MATRICULA:
+                    self.add_error(
+                        'valor_pagado',
+                        'La reserva inicial debe ser de al menos $10.00.'
+                    )
 
             if vp < 0:
                 vp = Decimal('0.00')
@@ -801,6 +837,18 @@ class AbonoForm(forms.ModelForm):
         self.fields['banco'].required = False
         self.fields['banco'].empty_label = '— Selecciona un banco —'
         self.fields['numero_modulo'].required = False
+
+        # "Abono + Módulo" se retiró del registro de pagos nuevos. Se conserva
+        # solo al editar recibos antiguos de ese tipo para no romper historial.
+        conservar_abono_modulo = bool(
+            self.instance
+            and self.instance.pk
+            and self.instance.tipo_pago == 'por_modulo'
+        )
+        self.fields['tipo_pago'].choices = [
+            choice for choice in Abono.TIPOS_PAGO
+            if choice[0] != 'por_modulo' or conservar_abono_modulo
+        ]
 
         # Construir choices de módulos según el curso de la matrícula
         modulo_choices = [('', '— Selecciona módulo —')]
@@ -1140,41 +1188,79 @@ class RecuperacionPendienteForm(forms.ModelForm):
 
     class Meta:
         model = RecuperacionPendiente
-        fields = ['numero_modulo', 'fecha_marcada', 'tipo_equipo', 'observaciones']
+        fields = [
+            'numero_modulo', 'fecha_marcada', 'fecha_programada',
+            'tipo_equipo', 'observaciones',
+        ]
         widgets = {
             'numero_modulo': forms.Select(attrs={'class': 'form-input'}),
             'fecha_marcada': forms.DateInput(attrs={
                 'class': 'form-input', 'type': 'date',
             }),
+            'fecha_programada': forms.DateInput(attrs={
+                'class': 'form-input', 'type': 'date',
+            }),
             'tipo_equipo': forms.RadioSelect(attrs={'class': 'tipo-equipo-radio'}),
             'observaciones': forms.Textarea(attrs={
                 'class': 'form-input', 'rows': 2,
-                'placeholder': 'Motivo de la falta, fecha de recuperación pactada, etc.',
+                'placeholder': 'Motivo de la falta u otra información relevante.',
             }),
         }
         labels = {
             'numero_modulo': 'Módulo de la clase a recuperar',
             'fecha_marcada': 'Fecha de la falta',
+            'fecha_programada': 'Fecha para recuperar',
             'tipo_equipo': '¿Qué clase va a recuperar?',
         }
 
     def __init__(self, *args, matricula=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.matricula = matricula
-        # Construir choices según el curso
+        self.modulos_pendientes = []
+        self.modulos_seleccionables = set()
+
+        # Construir las opciones según el curso. Al crear una recuperación,
+        # solo se muestran módulos que todavía no tienen un pago válido
+        # asociado. En edición se conserva además el módulo del registro actual
+        # para poder corregir su fecha u observaciones sin invalidarlo.
         choices = [('', '— Selecciona módulo —')]
         if matricula and matricula.curso_id:
             n = matricula.curso.get_numero_modulos(matricula.modalidad)
+            modulos_con_pago = set(
+                matricula.abonos.filter(
+                    cuenta_para_saldo=True,
+                    monto__gt=0,
+                    numero_modulo__gte=1,
+                    numero_modulo__lte=n,
+                ).values_list('numero_modulo', flat=True)
+            )
+            self.modulos_pendientes = [
+                i for i in range(1, n + 1)
+                if i not in modulos_con_pago
+            ]
+            modulo_actual = (
+                self.instance.numero_modulo
+                if self.instance and self.instance.pk
+                else None
+            )
+            modulos_mostrados = [
+                i for i in range(1, n + 1)
+                if i in self.modulos_pendientes or i == modulo_actual
+            ]
+            self.modulos_seleccionables = set(modulos_mostrados)
+
             if matricula.curso.nombrar_modulos and matricula.curso.nombres_modulos:
                 nombres = matricula.curso.nombres_modulos.get(matricula.modalidad, [])
             else:
                 nombres = []
-            for i in range(1, n + 1):
+            for i in modulos_mostrados:
                 nombre_per = nombres[i-1] if i - 1 < len(nombres) else None
                 label = f'Módulo {i} - {nombre_per}' if nombre_per else f'Módulo {i}'
                 choices.append((i, label))
         else:
-            choices += [(i, f'Módulo {i}') for i in range(1, 6)]
+            self.modulos_pendientes = list(range(1, 6))
+            self.modulos_seleccionables = set(self.modulos_pendientes)
+            choices += [(i, f'Módulo {i}') for i in self.modulos_pendientes]
         self.fields['numero_modulo'].widget.choices = choices
         
         # El tipo_equipo no es obligatorio por defecto porque no todos los cursos lo usan.
@@ -1204,8 +1290,31 @@ class RecuperacionPendienteForm(forms.ModelForm):
         cleaned_data = super().clean()
         tipo_equipo = cleaned_data.get('tipo_equipo')
         numero_modulo = cleaned_data.get('numero_modulo')
+        fecha_marcada = cleaned_data.get('fecha_marcada')
+        fecha_programada = cleaned_data.get('fecha_programada')
         modo_registro = cleaned_data.get('modo_registro') or self.MODO_NORMAL
         cleaned_data['modo_registro'] = modo_registro
+
+        if (
+            fecha_marcada
+            and fecha_programada
+            and fecha_programada < fecha_marcada
+        ):
+            self.add_error(
+                'fecha_programada',
+                'La fecha para recuperar no puede ser anterior a la fecha de la falta.',
+            )
+
+        if (
+            self.matricula
+            and numero_modulo
+            and numero_modulo not in self.modulos_seleccionables
+        ):
+            self.add_error(
+                'numero_modulo',
+                'Ese módulo ya tiene un pago registrado. Selecciona únicamente '
+                'uno de los módulos pendientes.',
+            )
         
         if self.matricula and self.matricula.curso:
             nombre_curso = (self.matricula.curso.nombre or '').lower()

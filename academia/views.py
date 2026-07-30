@@ -21,10 +21,11 @@ from .forms import (
 from .models import (
     Abono, Categoria, Curso, Estudiante, JornadaCurso, Matricula,
     AssistantQueryLog, Sede, EstudianteArchivado, MatriculaArchivada,
-    FORMA_PAGO_A_TIPO_ABONO,
+    FORMA_PAGO_A_TIPO_ABONO, MONTO_RESERVA_MATRICULA,
 )
 from .permisos import (
     admin_requerido,
+    es_admin,
     jornadas_requeridas,
     matricula_requerida,
     permiso_jornada_requerido,
@@ -537,8 +538,14 @@ def matricula_menu(request, modalidad):
     if bloqueo:
         return bloqueo
     total = Matricula.objects.filter(modalidad=modalidad).count()
+    # Las listas de matriculados y retirados abren por defecto en "Todos",
+    # por lo que el contador de la tarjeta también reúne ambas modalidades.
+    total_retirados = Matricula.objects.filter(
+        estado='retiro_voluntario',
+    ).count()
     return render(request, 'matricula/menu.html', {
         'total': total,
+        'total_retirados': total_retirados,
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
     })
@@ -631,7 +638,11 @@ def _registrar_pago_inicial(matricula, usuario, mat_form=None,
         n_mod = matricula.curso.get_numero_modulos(matricula.modalidad) if matricula.curso_id else 1
         n_mod = n_mod or 1
         k = min(modulos_k, n_mod)
-        reserva_base = Decimal('10.00') if matricula.tipo_matricula in ('reserva_abono', 'reserva_modulo_1') else Decimal('0.00')
+        reserva_base = (
+            MONTO_RESERVA_MATRICULA
+            if matricula.tipo_matricula in ('reserva_abono', 'reserva_modulo_1')
+            else Decimal('0.00')
+        )
         valor_modulo = (
             ((matricula.valor_neto - reserva_base) / Decimal(n_mod)).quantize(Decimal('0.01'))
             if n_mod > 0 else Decimal('0.00')
@@ -904,6 +915,17 @@ def matricula_editar(request, modalidad, pk):
                 captura_pago=False,
             )
 
+        if matricula.estado == 'retiro_voluntario' and not es_admin(request.user):
+            # Un asesor puede corregir otros datos, pero nunca reactivar una
+            # matrícula retirada. `disabled` hace que Django ignore cualquier
+            # valor manipulado en el POST y conserve el estado de la instancia.
+            mat_form.fields['estado'].disabled = True
+            if request.POST.get('mat-estado') == 'activa':
+                messages.error(
+                    request,
+                    'Solo un administrador puede revertir un retiro voluntario.',
+                )
+
         vendedora_id = request.POST.get('vendedora_id', '').strip()
         asesor = None
         if vendedora_id:
@@ -1065,6 +1087,9 @@ def matricula_editar(request, modalidad, pk):
                 captura_pago=False,
             )
 
+        if matricula.estado == 'retiro_voluntario' and not es_admin(request.user):
+            mat_form.fields['estado'].disabled = True
+
     comprobante_existente = getattr(matricula, 'comprobante', None)
     if request.method == 'POST':
         vendedora_id_selected = request.POST.get('vendedora_id', '')
@@ -1100,7 +1125,7 @@ def matricula_editar(request, modalidad, pk):
 
 
 @matricula_requerida
-def matricula_lista(request, modalidad):
+def matricula_lista(request, modalidad, solo_retirados=False):
     modalidad = _modalidad_o_404(modalidad, incluir_todos=True)
     q = request.GET.get('q', '').strip()
     curso_id = request.GET.get('curso', '').strip()
@@ -1118,6 +1143,11 @@ def matricula_lista(request, modalidad):
               'estudiante', 'curso', 'jornada', 'jornada__sede',
               'registrado_por', 'comprobante',
           ))
+    if solo_retirados:
+        # Este apartado es exclusivo para retiros voluntarios. El filtro se
+        # aplica en servidor para impedir que se mezclen matrículas activas.
+        qs = qs.filter(estado='retiro_voluntario')
+
     if modalidad != 'todos':
         qs = qs.filter(modalidad=modalidad)
         modalidad_filtro = ''
@@ -1193,7 +1223,7 @@ def matricula_lista(request, modalidad):
         )
 
     qs = qs.order_by('-creado', '-id')
-    filtros_query = urlencode({
+    filtros_aplicados = {
         key: value for key, value in {
             'q': q,
             'curso': curso_id,
@@ -1205,7 +1235,11 @@ def matricula_lista(request, modalidad):
             'fecha_desde': fecha_desde,
             'fecha_hasta': fecha_hasta,
         }.items() if value
-    })
+    }
+    filtros_exportacion = dict(filtros_aplicados)
+    if solo_retirados:
+        filtros_exportacion['solo_retirados'] = '1'
+    filtros_query = urlencode(filtros_exportacion)
 
     return render(request, 'matricula/lista.html', {
         'matriculas': qs,
@@ -1223,7 +1257,8 @@ def matricula_lista(request, modalidad):
         'fecha_desde': fecha_desde,
         'fecha_hasta': fecha_hasta,
         'filtros_query': filtros_query,
-        'hay_filtros': bool(filtros_query),
+        'hay_filtros': bool(filtros_aplicados),
+        'solo_retirados': solo_retirados,
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
         'modalidad_registro': 'presencial' if modalidad == 'todos' else modalidad,
@@ -1991,10 +2026,13 @@ def _matriculas_filtradas_para_export(request, modalidad):
     registrador_id = request.GET.get('registrador', '').strip()
     modalidad_filtro = request.GET.get('modalidad_filtro', '').strip()
     campus = request.GET.get('campus', '').strip()
+    solo_retirados = request.GET.get('solo_retirados', '').strip() == '1'
     _, _, fecha_desde_date, fecha_hasta_date = _rango_fecha_matricula_desde_request(request)
 
     qs = (Matricula.objects
           .select_related('estudiante', 'curso', 'jornada', 'jornada__sede', 'registrado_por'))
+    if solo_retirados:
+        qs = qs.filter(estado='retiro_voluntario')
     if modalidad != 'todos':
         qs = qs.filter(modalidad=modalidad)
     else:
@@ -2037,6 +2075,7 @@ def matricula_export_excel(request, modalidad):
 
     modalidad = _modalidad_o_404(modalidad, incluir_todos=True)
     qs = _matriculas_filtradas_para_export(request, modalidad)
+    solo_retirados = request.GET.get('solo_retirados', '').strip() == '1'
 
     headers = [
         'Cédula', 'Estudiante', 'Edad', 'Correo', 'Celular',
@@ -2103,8 +2142,13 @@ def matricula_export_excel(request, modalidad):
         20: round(total_pagado, 2),
         21: round(total_saldo, 2),
     }
-    filename = f"matriculas_{modalidad}_{_date.today().strftime('%Y%m%d')}.xlsx"
-    sheet_name = f"Matrículas {_label_modalidad(modalidad)}"
+    prefijo_archivo = 'estudiantes_retirados' if solo_retirados else 'matriculas'
+    filename = f"{prefijo_archivo}_{modalidad}_{_date.today().strftime('%Y%m%d')}.xlsx"
+    sheet_name = (
+        f"Retirados {_label_modalidad(modalidad)}"
+        if solo_retirados
+        else f"Matrículas {_label_modalidad(modalidad)}"
+    )
     return _build_excel_response(
         filename,
         sheet_name,
@@ -2155,12 +2199,18 @@ def matricula_export_pdf(request, modalidad):
 
     modalidad = _modalidad_o_404(modalidad, incluir_todos=True)
     qs = _matriculas_filtradas_para_export(request, modalidad)
+    solo_retirados = request.GET.get('solo_retirados', '').strip() == '1'
+    titulo_documento = (
+        f'Estudiantes retirados — {_label_modalidad(modalidad)}'
+        if solo_retirados
+        else f'Matrículas {_label_modalidad(modalidad)}'
+    )
 
     buf = BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=landscape(A4),
         leftMargin=1*cm, rightMargin=1*cm, topMargin=1.2*cm, bottomMargin=1*cm,
-        title=f'Matrículas {_label_modalidad(modalidad)}',
+        title=titulo_documento,
     )
     styles = getSampleStyleSheet()
     titulo_st = ParagraphStyle('titulo', parent=styles['Title'],
@@ -2171,7 +2221,7 @@ def matricula_export_pdf(request, modalidad):
                             fontSize=9, alignment=1, spaceAfter=12)
 
     elements = [
-        Paragraph(f'Lista de Matrículas — {_label_modalidad(modalidad)}', titulo_st),
+        Paragraph(titulo_documento, titulo_st),
         Paragraph(
             f'Formación Técnica y Profesional EC · Generado el '
             f'{_date.today().strftime("%d/%m/%Y")} · {qs.count()} matrícula(s)',

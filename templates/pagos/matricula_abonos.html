@@ -116,7 +116,7 @@
                 onsubmit="return false;">
                 {% csrf_token %}
                 <button type="button" class="btn btn-warning" style="background:#f0ad4e; color:white; border:none;"
-                    onclick="confirmarAccion(this.closest('form'), '¿Seguro de marcar esta matrícula como Retiro Voluntario? El saldo pendiente quedará en $0.00 y no se podrá deshacer.', 'warning')">
+                    onclick="confirmarAccion(this.closest('form'), '¿Seguro de marcar esta matrícula como Retiro Voluntario? El saldo pendiente quedará temporalmente en $0.00. Solo un administrador podrá revertir esta acción.', 'warning')">
                     Activar retiro voluntario
                 </button>
             </form>
@@ -191,6 +191,7 @@
             <tr>
                 <th>Módulo</th>
                 <th>Fecha falta</th>
+                <th>Fecha para recuperar</th>
                 <th>Saldo arrastrado</th>
                 <th>Estado</th>
                 <th>Observaciones</th>
@@ -202,6 +203,7 @@
             <tr>
                 <td><strong>{{ r.get_modulo_display }}</strong></td>
                 <td>{{ r.fecha_marcada|date:"d/m/Y" }}</td>
+                <td>{{ r.fecha_programada|date:"d/m/Y"|default:"—" }}</td>
                 <td style="color:#c62828; font-weight:600;">${{ r.saldo_pendiente_al_marcar|floatformat:2 }}</td>
                 <td>
                     {% if r.pagada %}
@@ -441,6 +443,14 @@
                 </div>
             </div>
 
+            <div id="aviso-abono-inicial"
+                style="margin-bottom:12px; display:none; background:#fff8e1; border:1px solid #f0ad4e; border-left:4px solid #f0ad4e; border-radius:8px; padding:10px 12px; color:#6d4c41; font-size:12px; line-height:1.35;">
+                <strong style="color:#8a5a00;">Aviso:</strong>
+                El abono inicial ya fue pagado en el registro de matrícula.
+                Puedes usar <strong>Abono</strong> solo si estás registrando un pago adicional libre.
+                Para cobrar una cuota semanal del curso, usa <strong>Solo Módulo</strong>.
+            </div>
+
             {# ── Bloque Recuperación: ¿suma al saldo o cobrar aparte? ── #}
             <div id="bloque-recuperacion"
                 style="margin-bottom:12px; display:none; background:#fff8e1; border:1px solid #f0ad4e; border-radius:8px; padding:12px;">
@@ -640,10 +650,14 @@
     const tipoSel = document.getElementById('id_tipo_pago');
     const bloqueModulo = document.getElementById('bloque-modulo');
     const bloqueRecup = document.getElementById('bloque-recuperacion');
+    const avisoAbonoInicial = document.getElementById('aviso-abono-inicial');
 
     function actualizar() {
         if (!tipoSel) return;
         const v = tipoSel.value;
+        if (avisoAbonoInicial) {
+            avisoAbonoInicial.style.display = (v === 'abono') ? 'block' : 'none';
+        }
         // Módulo: visible para por_modulo, solo_modulo y recuperacion
         if (bloqueModulo) {
             bloqueModulo.style.display = (v === 'por_modulo' || v === 'solo_modulo' || v === 'recuperacion') ? 'block' : 'none';

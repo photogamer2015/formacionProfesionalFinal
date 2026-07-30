@@ -1,5 +1,5 @@
 from django.db import models
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
 
 # ─────────────────────────────────────────────────────────
@@ -23,6 +23,39 @@ JORNADA_DIAS = [
 ]
 
 # Tipos de matrícula contratada por el estudiante
+MONTO_RESERVA_MATRICULA = Decimal('10.00')
+CENTAVO = Decimal('0.01')
+DOLAR = Decimal('1.00')
+
+
+def distribuir_monto_en_cuotas_enteras(monto, cantidad):
+    """
+    Divide un monto en cuotas de dólares enteros y tan parejas como sea
+    posible. Si el monto original tiene centavos, se conservan únicamente en
+    la última cuota para no perder ni aumentar dinero.
+    """
+    cantidad = max(int(cantidad or 1), 1)
+    monto = max(monto or Decimal('0.00'), Decimal('0.00')).quantize(
+        CENTAVO, rounding=ROUND_HALF_UP
+    )
+    if cantidad == 1:
+        return [monto]
+    if monto < DOLAR:
+        return [monto] + [Decimal('0.00')] * (cantidad - 1)
+
+    dolares_enteros = int(monto.to_integral_value(rounding=ROUND_FLOOR))
+    base, extras = divmod(dolares_enteros, cantidad)
+    cuotas = [
+        Decimal(base + (1 if indice < extras else 0)).quantize(CENTAVO)
+        for indice in range(cantidad)
+    ]
+    centavos = monto - Decimal(dolares_enteros)
+    if centavos:
+        cuotas[-1] = (cuotas[-1] + centavos).quantize(
+            CENTAVO, rounding=ROUND_HALF_UP
+        )
+    return cuotas
+
 TIPO_MATRICULA = [
     ('reserva_abono', 'Reserva / Abono'),
     ('reserva_modulo_1', 'Reserva + Módulo 1'),
@@ -563,11 +596,25 @@ class Matricula(models.Model):
 
     @property
     def valor_modulo(self):
-        """Valor de UN módulo del curso (valor neto / n.º de módulos de la
-        modalidad). Se usa cuando la forma de pago es 'modulo'."""
+        """Valor objetivo del primer módulo después de descontar la reserva."""
+        cuotas = self.cuotas_modulos_objetivo()
+        return cuotas[0] if cuotas else Decimal('0.00')
+
+    @property
+    def reserva_inicial_plan(self):
+        if self.tipo_matricula != 'reserva_abono':
+            return Decimal('0.00')
+        return min(MONTO_RESERVA_MATRICULA, self.valor_neto)
+
+    def cuotas_modulos_objetivo(self):
+        """Plan base: (valor neto - reserva fija) dividido entre módulos."""
         n = self.curso.get_numero_modulos(self.modalidad) if self.curso_id else 1
-        n = n or 1
-        return (self.valor_neto / Decimal(n)).quantize(Decimal('0.01'))
+        n = max(int(n or 1), 1)
+        monto_cuotas = max(
+            self.valor_neto - self.reserva_inicial_plan,
+            Decimal('0.00'),
+        )
+        return distribuir_monto_en_cuotas_enteras(monto_cuotas, n)
 
     @property
     def monto_segun_forma_pago(self):
@@ -641,10 +688,7 @@ class Matricula(models.Model):
         n_mod = (self.curso.get_numero_modulos(self.modalidad) if self.curso_id else 1) or 1
         if n_mod <= 0:
             return {}
-
-        valor_modulo = (
-            self.valor_neto / Decimal(n_mod) if n_mod > 0 else Decimal('0.00')
-        )
+        cuotas_objetivo = self.cuotas_modulos_objetivo()
 
         aplicado = {n: Decimal('0.00') for n in range(1, n_mod + 1)}
 
@@ -657,8 +701,9 @@ class Matricula(models.Model):
 
         carry = Decimal('0.00')
         for n in range(1, n_mod + 1):
-            if aplicado[n] < valor_modulo:
-                falta = valor_modulo - aplicado[n]
+            objetivo = cuotas_objetivo[n - 1]
+            if aplicado[n] < objetivo:
+                falta = objetivo - aplicado[n]
                 tomar_carry = min(falta, carry)
                 aplicado[n] += tomar_carry
                 carry -= tomar_carry
@@ -668,9 +713,9 @@ class Matricula(models.Model):
                     aplicado[n] += tomar_libre
                     libre_total -= tomar_libre
 
-            if aplicado[n] > valor_modulo and valor_modulo > 0:
-                carry += aplicado[n] - valor_modulo
-                aplicado[n] = valor_modulo
+            if aplicado[n] > objetivo and objetivo > 0:
+                carry += aplicado[n] - objetivo
+                aplicado[n] = objetivo
 
         remanente = carry + libre_total
         if remanente > 0 and n_mod >= 1:
@@ -683,18 +728,7 @@ class Matricula(models.Model):
         if n_mod <= 0:
             return []
 
-        # IMPORTANTE: redondeamos valor_modulo a 2 decimales porque los pagos
-        # reales solo pueden tener 2 decimales (USD). Si dejáramos el valor
-        # con todos sus decimales (ej. 100/3 = 33.33333...), un módulo
-        # pagado con $33.33 quedaría como "Parcial" para siempre — el
-        # estudiante nunca podría completarlo. Al redondear, la suma de
-        # los n_mod módulos puede quedar 1 centavo arriba o abajo del
-        # valor neto; eso es aceptable para el control por módulo. El
-        # saldo total real sigue calculándose desde valor_pagado.
-        if n_mod > 0:
-            valor_modulo = (self.valor_neto / Decimal(n_mod)).quantize(Decimal('0.01'))
-        else:
-            valor_modulo = Decimal('0.00')
+        cuotas_objetivo = self.cuotas_modulos_objetivo()
 
         aplicado = {n: Decimal('0.00') for n in range(1, n_mod + 1)}
         fecha_ultimo = {n: None for n in range(1, n_mod + 1)}
@@ -721,9 +755,10 @@ class Matricula(models.Model):
 
         for n in range(1, n_mod + 1):
             pagado = aplicado[n]
+            esperado = cuotas_objetivo[n - 1]
             if curso_pagado_total:
                 estado = 'Pagado'
-            elif pagado >= valor_modulo and valor_modulo > 0:
+            elif pagado >= esperado and esperado > 0:
                 estado = 'Pagado'
             elif pagado > 0:
                 estado = 'Parcial'
@@ -732,7 +767,7 @@ class Matricula(models.Model):
             desglose.append({
                 'numero': n,
                 'pagado': pagado,
-                'esperado': valor_modulo,
+                'esperado': esperado,
                 'estado': estado,
                 'fecha_ultimo_pago': fecha_ultimo[n],
             })
@@ -740,9 +775,11 @@ class Matricula(models.Model):
 
     def estado_modulo(self, numero_modulo, valor_modulo=None, pagos_efectivos=None):
         if valor_modulo is None:
-            n_mod = self.curso.get_numero_modulos(self.modalidad) if self.curso_id else 1
-            n_mod = n_mod or 1
-            valor_modulo = self.valor_neto / Decimal(n_mod)
+            cuotas = self.cuotas_modulos_objetivo()
+            indice = max(int(numero_modulo or 1) - 1, 0)
+            valor_modulo = (
+                cuotas[indice] if indice < len(cuotas) else Decimal('0.00')
+            )
 
         if pagos_efectivos is None:
             pagos_efectivos = self.pagos_por_modulo_efectivo()
@@ -1046,6 +1083,10 @@ class RecuperacionPendiente(models.Model):
     )
     fecha_marcada = models.DateField(
         help_text='Fecha en que se marcó la clase a recuperar.'
+    )
+    fecha_programada = models.DateField(
+        null=True, blank=True,
+        help_text='Fecha pactada para que el estudiante recupere la clase.'
     )
     saldo_pendiente_al_marcar = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0.00'),

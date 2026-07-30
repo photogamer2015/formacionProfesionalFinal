@@ -43,7 +43,7 @@
         </div>
     </a>
 
-    <a href="{% url 'academia:matricula_lista' modalidad=modalidad %}" style="text-decoration:none;">
+    <a href="{% url 'academia:matricula_lista' modalidad='todos' %}" style="text-decoration:none;">
         <div class="card-box" style="border-left: 4px solid #2e7d32; cursor:pointer;">
             <div style="font-size:30px; margin-bottom:8px;">≡</div>
             <h3 style="color:#1a237e; font-size:17px; margin-bottom:6px;">Lista de Matriculados</h3>
@@ -69,6 +69,18 @@
             <h3 style="color:#1a237e; font-size:17px; margin-bottom:6px;">Estudiantes</h3>
             <p style="color:#666; font-size:13px;">
                 Directorio completo con historial y exportación Excel.
+            </p>
+        </div>
+    </a>
+    <a href="{% url 'academia:matricula_retirados' modalidad='todos' %}" style="text-decoration:none">
+        <div class="card-box" style="border-left: 4px solid #c62828; cursor:pointer;">
+            <div style="font-size:30px; margin-bottom:8px;">↩️</div>
+            <h3 style="color:#1a237e; font-size:17px; margin-bottom:6px;">
+                Estudiantes retirados
+                {% if total_retirados %}({{ total_retirados }}){% endif %}
+            </h3>
+            <p style="color:#666; font-size:13px;">
+                Solo estudiantes cuya matrícula fue marcada como retiro voluntario.
             </p>
         </div>
     </a>

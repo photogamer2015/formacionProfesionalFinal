@@ -215,11 +215,13 @@ class AdicionalAdmin(admin.ModelAdmin):
 @admin.register(RecuperacionPendiente)
 class RecuperacionPendienteAdmin(admin.ModelAdmin):
     list_display = (
-        'matricula', 'numero_modulo', 'fecha_marcada',
+        'matricula', 'numero_modulo', 'fecha_marcada', 'fecha_programada',
         'saldo_pendiente_al_marcar', 'pagada', 'fecha_recuperacion',
         'creado',
     )
-    list_filter = ('pagada', 'numero_modulo', 'fecha_marcada')
+    list_filter = (
+        'pagada', 'numero_modulo', 'fecha_marcada', 'fecha_programada',
+    )
     search_fields = (
         'matricula__estudiante__cedula',
 
@@ -232,7 +234,7 @@ class RecuperacionPendienteAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Datos de la clase a recuperar', {
             'fields': ('matricula', 'numero_modulo', 'fecha_marcada',
-                       'saldo_pendiente_al_marcar'),
+                       'fecha_programada', 'saldo_pendiente_al_marcar'),
         }),
         ('Estado del cobro', {
             'fields': ('pagada', 'fecha_recuperacion', 'abono'),

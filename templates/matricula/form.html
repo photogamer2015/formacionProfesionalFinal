@@ -104,12 +104,14 @@
                     o copiar los datos de uno de ellos:
                 </div>
                 <!-- Checkbox para permitir el duplicado (envía al backend) -->
-                <label style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; background:white; border:1px dashed #F9A825; border-radius:6px; margin-bottom:10px; cursor:pointer;">
+                <label class="shared-phone-confirm">
                     {{ est_form.permitir_celular_duplicado }}
-                    <span style="font-size:12px; color:#6D4C41; font-weight:600; line-height:1.35;">
-                        ✅ Sí, es un número compartido (familia, hijos del mismo padre, etc.) — permitir usar el mismo número
-                        <span style="display:block; font-weight:400; font-size:11px; color:#8D6E63; margin-top:2px;">
-                            Marca esta casilla y el sistema permitirá guardar la matrícula aunque el número ya exista en otro estudiante.
+                    <span class="shared-phone-confirm__text">
+                        <strong>Usar este celular compartido</strong>
+                        <span>
+                            Marca esta casilla si el número pertenece a una familia,
+                            representante o grupo que ya tiene otro estudiante registrado.
+                            El sistema permitirá guardar la matrícula con este mismo celular.
                         </span>
                     </span>
                 </label>
@@ -232,6 +234,7 @@
             </label>
             {{ mat_form.tipo_matricula }}{{ mat_form.tipo_matricula.errors }}
         </div>
+        {% if matricula.tipo_matricula == 'reserva_modulo_1' %}
         <div id="modulos-a-pagar-wrap" style="display:none;">
             <label class="form-label" for="id_modulos_a_pagar">
                 Módulo a pagar *
@@ -239,6 +242,9 @@
             </label>
             {{ mat_form.modulos_a_pagar }}{{ mat_form.modulos_a_pagar.errors }}
         </div>
+        {% else %}
+            {{ mat_form.modulos_a_pagar.as_hidden }}
+        {% endif %}
         {% endif %}
         <div>
             <label class="form-label" for="{{ mat_form.fecha_matricula.id_for_label }}">Fecha de matrícula *</label>
@@ -278,7 +284,7 @@
             </label>
             {{ mat_form.forma_pago }}{{ mat_form.forma_pago.errors }}
             <small id="forma-pago-hint" style="color: #666; display: block; margin-top: 5px;">
-                Pago completo cobra el valor neto · Módulo cobra un módulo · Abono permite un monto parcial.
+                Pago completo cobra el valor neto · Abono permite una reserva o monto parcial.
             </small>
         </div>
         <div>
@@ -626,6 +632,78 @@
         padding: 9px 12px;
     }
 
+    .shared-phone-confirm {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        background: #fff;
+        border: 1px solid #f9a825;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .shared-phone-confirm input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        flex: 0 0 20px;
+        width: 20px;
+        height: 20px;
+        margin: 1px 0 0;
+        border: 2px solid #d99000;
+        border-radius: 5px;
+        background: #fff;
+        display: grid;
+        place-content: center;
+        cursor: pointer;
+    }
+
+    .shared-phone-confirm input[type="checkbox"]::before {
+        content: "";
+        width: 10px;
+        height: 6px;
+        border-left: 3px solid #fff;
+        border-bottom: 3px solid #fff;
+        transform: rotate(-45deg) scale(0);
+        transform-origin: center;
+    }
+
+    .shared-phone-confirm input[type="checkbox"]:checked {
+        background: #1a237e;
+        border-color: #1a237e;
+    }
+
+    .shared-phone-confirm input[type="checkbox"]:checked::before {
+        transform: rotate(-45deg) scale(1);
+    }
+
+    .shared-phone-confirm input[type="checkbox"]:focus-visible {
+        outline: 3px solid rgba(26, 35, 126, 0.22);
+        outline-offset: 2px;
+    }
+
+    .shared-phone-confirm__text {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+        color: #6d4c41;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .shared-phone-confirm__text strong {
+        color: #4e342e;
+        font-size: 13px;
+        line-height: 1.25;
+    }
+
+    .shared-phone-confirm__text span {
+        color: #7b5b51;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+    }
+
     #submit-btn:disabled {
         background: #cfd5df !important;
         color: #6b7280 !important;
@@ -838,10 +916,11 @@
         const valorPagadoInput = document.querySelector('[name="mat-valor_pagado"]') || document.querySelector('[name="valor_pagado"]');
         const formaPagoSelect = document.querySelector('[name="mat-forma_pago"]') || document.querySelector('[name="forma_pago"]');
         const tipoMatriculaSelect = document.querySelector('[name="mat-tipo_matricula"]') || document.querySelector('[name="tipo_matricula"]');
+        const ES_REGISTRO_NUEVO = {% if modo == 'registrar' %}true{% else %}false{% endif %};
+        const MONTO_RESERVA = 10;
         // Cada tipo de matrícula sugiere una forma de pago natural.
         const TIPO_MATRICULA_A_FORMA_PAGO = {
             'reserva_abono': 'abono',
-            'reserva_modulo_1': 'abono_modulo',
             'programa_completo': 'pago_completo',
         };
         const formaPagoHint = document.getElementById('forma-pago-hint');
@@ -864,7 +943,6 @@
         }
 
         // ── Aplicar la forma de pago al "Valor pagado" ──
-        // Pago completo → valor neto · Módulo → valor de un módulo · Abono → libre.
         function aplicarFormaPago(forzar = false) {
             if (typeof SOLO_DATOS !== 'undefined' && SOLO_DATOS) return;
             if (!valorPagadoInput) return;
@@ -876,7 +954,22 @@
             const vAct = valorPagadoInput.value.trim();
             const tieneValorMio = vAct !== '' && vAct !== '0.00';
 
-            if (forma === 'pago_completo') {
+            const esReservaFija = (
+                ES_REGISTRO_NUEVO
+                && tipoMatriculaSelect
+                && tipoMatriculaSelect.value === 'reserva_abono'
+                && forma === 'abono'
+            );
+
+            if (esReservaFija) {
+                if (forzar || !tieneValorMio) {
+                    valorPagadoInput.value = MONTO_RESERVA.toFixed(2);
+                }
+                valorPagadoInput.readOnly = false;
+                valorPagadoInput.style.background = '';
+                if (formaPagoHint) formaPagoHint.textContent =
+                    'Reserva / Abono: inicia en $10.00 y puedes escribir un monto mayor. El saldo se divide entre los módulos del curso.';
+            } else if (forma === 'pago_completo') {
                 if (forzar || !tieneValorMio) {
                     valorPagadoInput.value = neto.toFixed(2);
                 }
@@ -895,14 +988,14 @@
                 valorPagadoInput.readOnly = false;
                 valorPagadoInput.style.background = '';
                 if (formaPagoHint) formaPagoHint.textContent =
-                    'Pago completo cobra el valor neto · Abono / Módulo cobra un pago parcial.';
+                    'Pago completo cobra el valor neto · Abono permite una reserva o pago parcial.';
             }
             if (typeof toggleSubmitBtn === 'function') {
                 toggleSubmitBtn();
             }
         }
 
-        // ── Reserva + Módulo: desplegable de "Módulo a pagar" ───────────────
+        // Flujo heredado: solo aparece al editar una matrícula antigua.
         const modulosWrap = document.getElementById('modulos-a-pagar-wrap');
         const modulosSelect = document.getElementById('id_modulos_a_pagar');
 
@@ -1006,7 +1099,6 @@
         if (descuentoInput) descuentoInput.addEventListener('input', actualizarValorNeto);
         if (formaPagoSelect) {
             formaPagoSelect.addEventListener('change', function() {
-                aplicarFormaPago(true);
                 if (tipoMatriculaSelect) {
                     if (this.value === 'pago_completo') {
                         tipoMatriculaSelect.value = 'programa_completo';
@@ -1016,6 +1108,7 @@
                         tipoMatriculaSelect.value = 'reserva_abono';
                     }
                 }
+                aplicarFormaPago(true);
                 actualizarModulosAPagar(true);
                 validarCamposPrincipales();
             });

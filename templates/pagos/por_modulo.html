@@ -251,10 +251,10 @@
 
 {# ─── Filtros ─────────────────────────────────────── #}
 <div class="card-box no-print" style="margin-bottom:18px; padding:16px;">
-    <form method="get" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; align-items:end;">
+    <form method="get" id="filtros-form" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; align-items:end;">
         <div>
             <label class="form-label" style="font-size:11px;">Curso *</label>
-            <select name="curso" class="form-input" required>
+            <select name="curso" id="filtro-curso" class="form-input" required>
                 <option value="">— Selecciona un curso —</option>
                 {% for c in cursos %}
                 <option value="{{ c.pk }}" {% if filtros.curso == c.pk|stringformat:"s" %}selected{% endif %}>
@@ -311,9 +311,48 @@
                 {% endif %}
             </select>
         </div>
+        <div>
+            <label class="form-label" style="font-size:11px;">📅 Fecha de Jornada</label>
+            <select name="fecha_jornada" id="filtro-fecha-jornada" class="form-input"
+                    {% if not curso_sel %}disabled{% endif %}
+                    style="{% if not curso_sel %}opacity:0.5; cursor:not-allowed;{% endif %}">
+                <option value="">— Todas —</option>
+                {% for f in fechas_jornada %}
+                <option value="{{ f|date:'Y-m-d' }}" {% if filtros.fecha_jornada == f|date:'Y-m-d' %}selected{% endif %}>
+                    📅 {{ f|date:"d/m/Y" }}
+                </option>
+                {% endfor %}
+            </select>
+            {% if not curso_sel %}
+            <div style="font-size:10px; color:#999; margin-top:2px;">Selecciona un curso primero</div>
+            {% endif %}
+        </div>
         <button type="submit" class="btn btn-primary">Aplicar</button>
     </form>
 </div>
+
+<script>
+(function() {
+    var cursoSel = document.getElementById('filtro-curso');
+    var fechaSel = document.getElementById('filtro-fecha-jornada');
+
+    if (cursoSel && fechaSel) {
+        cursoSel.addEventListener('change', function() {
+            if (!this.value) {
+                fechaSel.disabled = true;
+                fechaSel.style.opacity = '0.5';
+                fechaSel.style.cursor = 'not-allowed';
+                fechaSel.value = '';
+            } else {
+                // Cuando se cambia el curso, se envía el formulario para
+                // recargar las fechas de jornada disponibles del nuevo curso.
+                fechaSel.value = '';
+                document.getElementById('filtros-form').submit();
+            }
+        });
+    }
+})();
+</script>
 
 {% if not curso_sel %}
 <div class="card-box" style="padding:30px; text-align:center; background:#f5f7ff;">
