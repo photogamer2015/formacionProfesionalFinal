@@ -169,6 +169,7 @@
                     {{ form.banco_2 }}{{ form.banco_2.errors }}
                 </div>
             </div>
+            {% include 'includes/pago_mixto_resumen.html' %}
             <small id="mixto-adicional-error-msg" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600; font-size:12px;">
                 ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Valor (USD)" principal.
             </small>
@@ -550,6 +551,7 @@
         const containerUnSolo = document.getElementById('un-solo-metodo-adicional-container');
         const containerMixto = document.getElementById('mixto-adicional-container');
         const errorMsg = document.getElementById('mixto-adicional-error-msg');
+        const resumenMixto = containerMixto ? containerMixto.querySelector('[data-pago-mixto-resumen]') : null;
         
         const montoPrincipal = document.getElementById('id_valor');
         const monto1 = document.getElementById('id_monto_pago_1_adicional');
@@ -582,9 +584,17 @@
             const mMain = parseFloat(montoPrincipal.value) || 0;
             const m1 = parseFloat(monto1.value) || 0;
             const m2 = parseFloat(monto2.value) || 0;
-            
-            // Usar una pequeña tolerancia para evitar problemas de redondeo
-            if (Math.abs(mMain - (m1 + m2)) > 0.001) {
+            const suma = m1 + m2;
+            const coincide = mMain > 0 && m1 > 0 && m2 > 0
+                && Math.abs(mMain - suma) <= 0.01;
+            if (window.PagoMixtoUI) {
+                window.PagoMixtoUI.actualizar(resumenMixto, mMain, suma, coincide);
+            }
+            [monto1, monto2].forEach((input) => {
+                if (input) input.style.borderColor = coincide ? '#2e7d32' : '#d32f2f';
+            });
+
+            if (!coincide) {
                 if (errorMsg) errorMsg.style.display = 'block';
                 if (submitBtn) submitBtn.disabled = true;
             } else {

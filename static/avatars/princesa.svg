@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="princesa-bg" x1="18" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B6FC8"/>
+      <stop offset="1" stop-color="#43356F"/>
+    </linearGradient>
+    <clipPath id="princesa-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#princesa-bg)"/>
+  <g clip-path="url(#princesa-clip)">
+    <circle cx="25" cy="26" r="18" fill="#FFF" opacity=".09"/>
+    <path d="M24 129c3-25 18-38 40-38s37 13 40 38" fill="#F0C9FF"/>
+    <path d="M38 64c-4-27 8-42 26-42s30 16 26 43l-5 30H43z" fill="#3B233D"/>
+    <path d="M57 82h14v17H57z" fill="#E8AD87"/>
+    <ellipse cx="64" cy="61" rx="23" ry="28" fill="#F3C39E"/>
+    <path d="M41 55c1-22 10-33 25-33 13 0 22 9 24 27-9-2-18-8-25-15-5 9-13 16-24 21z" fill="#4A2C4B"/>
+    <path d="M43 56c-3 8-2 20 3 28l5-7-1-23zM85 52l-7 27 5 7c6-8 7-23 2-34z" fill="#4A2C4B"/>
+    <ellipse cx="55" cy="62" rx="2.2" ry="3" fill="#2D2432"/>
+    <ellipse cx="73" cy="62" rx="2.2" ry="3" fill="#2D2432"/>
+    <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#B65D69" stroke-width="2" stroke-linecap="round"/>
+    <path d="M43 105l13-9 8 8 8-8 13 9 7 24H36z" fill="#D996F4"/>
+    <path d="M56 96l8 8 8-8-2 18H58z" fill="#FFF" opacity=".85"/>
+    <path d="M48 29l3-16 12 11L74 12l5 17z" fill="#FFD45A" stroke="#F2A914" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="51" cy="14" r="2.5" fill="#FFF1A6"/>
+    <circle cx="74" cy="13" r="2.5" fill="#FFF1A6"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".38" stroke-width="3"/>
+</svg>

@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 from django.utils import timezone
@@ -505,18 +506,33 @@ def bienvenida(request):
     # ── Alertas de pago pendiente (solo para roles con gestión) ──
     from .permisos import puede_gestionar_matriculas as _puede_mat
     alertas_pago = []
+    alertas_cursos = []
     if _puede_mat(request.user):
         try:
             from .views_pagos import _calcular_alertas_pago
             alertas_pago = _calcular_alertas_pago(usuario_actual=request.user)
+            cursos_con_alertas = {}
+            for alerta in alertas_pago:
+                curso = alerta['curso']
+                item = cursos_con_alertas.setdefault(
+                    curso.pk,
+                    {'id': curso.pk, 'nombre': curso.nombre, 'cantidad': 0},
+                )
+                item['cantidad'] += 1
+            alertas_cursos = sorted(
+                cursos_con_alertas.values(),
+                key=lambda item: item['nombre'].casefold(),
+            )
         except Exception:
             # Si algo falla en el cálculo, no rompemos el dashboard.
             alertas_pago = []
+            alertas_cursos = []
 
     return render(request, 'bienvenida.html', {
         'usuario': request.user,
         'stats': stats,
         'alertas_pago': alertas_pago,
+        'alertas_cursos': alertas_cursos,
         'avisos_vigentes': _avisos_vigentes_seguro(),
     })
 
@@ -1553,8 +1569,46 @@ def curso_jornadas(request, pk):
     else:
         form = JornadaCursoForm(initial={'modalidad': modalidad_activa, 'activo': True})
 
-    jornadas_pres = curso.jornadas.filter(modalidad='presencial').order_by('fecha_inicio')
-    jornadas_onl = curso.jornadas.filter(modalidad='online').order_by('fecha_inicio')
+    ahora = timezone.now()
+
+    def preparar_jornadas(modalidad):
+        jornadas = list(
+            curso.jornadas.filter(modalidad=modalidad)
+            .annotate(num_matriculas=Count('matriculas'))
+            .order_by('fecha_inicio')
+        )
+        for jornada in jornadas:
+            dia_esperado = {
+                'sabados_intensivos': 5,
+                'domingos_intensivos': 6,
+            }.get(jornada.descripcion)
+            jornada.es_intensiva_feriado = bool(
+                jornada.activo
+                and jornada.fecha_inicio
+                and dia_esperado is not None
+                and jornada.fecha_inicio.weekday() == dia_esperado
+            )
+            jornada.fecha_siguiente_feriado = (
+                jornada.fecha_inicio + timedelta(days=7)
+                if jornada.es_intensiva_feriado else None
+            )
+            jornada.feriado_disponible_en = (
+                jornada.feriado_aplicado_en + timedelta(hours=24)
+                if jornada.feriado_aplicado_en else None
+            )
+            jornada.feriado_bloqueado = bool(
+                jornada.feriado_disponible_en
+                and jornada.feriado_disponible_en > ahora
+            )
+            jornada.mensaje_matriculados_feriado = (
+                'El estudiante matriculado pasará'
+                if jornada.num_matriculas == 1
+                else f'Los {jornada.num_matriculas} estudiantes matriculados pasarán'
+            )
+        return jornadas
+
+    jornadas_pres = preparar_jornadas('presencial')
+    jornadas_onl = preparar_jornadas('online')
 
     sedes = Sede.objects.filter(activa=True).order_by('pais', 'orden', 'nombre')
 
@@ -1671,6 +1725,83 @@ def jornada_editar(request, pk, jornada_pk):
     from django.urls import reverse
     modalidad_activa = request.POST.get('modalidad_activa', jornada.modalidad)
     return redirect(f"{reverse('academia:curso_jornadas', args=[curso.pk])}?modalidad={modalidad_activa}")
+
+
+@permiso_jornada_requerido('academia.change_jornadacurso')
+@require_POST
+def jornada_marcar_feriado(request, pk, jornada_pk):
+    """
+    Traslada una jornada intensiva al mismo día de la semana siguiente.
+
+    La misma JornadaCurso se actualiza para que todas sus matrículas conserven
+    pagos e historial y queden asociadas automáticamente a la nueva fecha. El
+    bloqueo se valida también en el servidor para impedir dobles envíos.
+    """
+    curso = get_object_or_404(Curso, pk=pk)
+    modalidad_activa = request.POST.get('modalidad_activa', 'presencial')
+    ahora = timezone.now()
+
+    with transaction.atomic():
+        jornada = get_object_or_404(
+            JornadaCurso.objects.select_for_update(),
+            pk=jornada_pk,
+            curso=curso,
+        )
+        modalidad_activa = jornada.modalidad
+        dia_esperado = {
+            'sabados_intensivos': 5,
+            'domingos_intensivos': 6,
+        }.get(jornada.descripcion)
+
+        if not jornada.activo:
+            messages.error(request, 'Solo se puede aplicar un feriado a una jornada activa.')
+        elif dia_esperado is None:
+            messages.error(
+                request,
+                'El día no laboral solo se aplica a Sábados Intensivos o Domingos Intensivos.',
+            )
+        elif not jornada.fecha_inicio or jornada.fecha_inicio.weekday() != dia_esperado:
+            messages.error(
+                request,
+                'La fecha configurada no coincide con el día intensivo de esta jornada. '
+                'Corrige primero la fecha desde Editar.',
+            )
+        elif (
+            jornada.feriado_aplicado_en
+            and jornada.feriado_aplicado_en + timedelta(hours=24) > ahora
+        ):
+            disponible = timezone.localtime(
+                jornada.feriado_aplicado_en + timedelta(hours=24)
+            ).strftime('%d/%m/%Y a las %H:%M')
+            messages.warning(
+                request,
+                f'Esta jornada ya fue trasladada por feriado. '
+                f'Podrás volver a usar el control el {disponible}.',
+            )
+        else:
+            fecha_anterior = jornada.fecha_inicio
+            jornada.fecha_inicio = fecha_anterior + timedelta(days=7)
+            jornada.feriado_aplicado_en = ahora
+            jornada.save(update_fields=['fecha_inicio', 'feriado_aplicado_en'])
+            matriculados = jornada.matriculas.count()
+            detalle_matriculados = (
+                '1 estudiante quedó trasladado automáticamente.'
+                if matriculados == 1
+                else f'{matriculados} estudiantes quedaron trasladados automáticamente.'
+            )
+            messages.success(
+                request,
+                f'Día no laboral aplicado: la jornada pasó del '
+                f'{fecha_anterior.strftime("%d/%m/%Y")} al '
+                f'{jornada.fecha_inicio.strftime("%d/%m/%Y")}. '
+                f'{detalle_matriculados}',
+            )
+
+    from django.urls import reverse
+    return redirect(
+        f"{reverse('academia:curso_jornadas', args=[curso.pk])}"
+        f"?modalidad={modalidad_activa}"
+    )
 
 
 # ─────────────────────────────────────────────────────────

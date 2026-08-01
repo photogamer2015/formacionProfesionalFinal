@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="rubia-bg" x1="14" y1="7" x2="113" y2="119" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8D8E8"/>
+      <stop offset="1" stop-color="#B879AD"/>
+    </linearGradient>
+    <clipPath id="rubia-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#rubia-bg)"/>
+  <g clip-path="url(#rubia-clip)">
+    <path d="M23 130c3-25 19-39 41-39s38 14 41 39" fill="#506DB7"/>
+    <path d="M36 69c-5-31 4-49 28-49s33 19 28 50l-7 31H43z" fill="#E5B940"/>
+    <path d="M57 82h14v17H57z" fill="#EAB28A"/>
+    <ellipse cx="64" cy="60" rx="23" ry="28" fill="#F4C6A4"/>
+    <path d="M40 53c2-23 10-34 25-34 17 0 26 14 25 37-10-5-18-13-22-24-5 10-14 18-28 21z" fill="#F1CF62"/>
+    <path d="M42 52c-6 14-5 31 3 45l7-11-2-37zM87 49l-9 39 6 10c9-14 9-33 3-49z" fill="#EBC456"/>
+    <ellipse cx="55" cy="61" rx="2.3" ry="3" fill="#3F4A57"/>
+    <ellipse cx="73" cy="61" rx="2.3" ry="3" fill="#3F4A57"/>
+    <path d="M59 74c3 2 7 2 10 0" fill="none" stroke="#C76572" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M45 106l12-10 7 8 7-8 12 10 8 24H37z" fill="#5C7CCE"/>
+    <circle cx="47" cy="72" r="3.2" fill="#F2B83E"/>
+    <circle cx="81" cy="72" r="3.2" fill="#F2B83E"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

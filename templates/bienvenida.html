@@ -766,6 +766,7 @@
     /* Cabecera clicable (colapsa/expande todo) */
     .gm-head {
         display: flex;
+        position: relative;
         align-items: center;
         gap: 10px;
         padding: 13px 18px;
@@ -808,6 +809,27 @@
         font-size: 13px;
         color: #7a93b5;
         transition: transform .2s ease;
+    }
+    .gm-search-wrapper { display: flex; align-items: center; margin-right: 12px; }
+    .gm-search-controls { display: none; align-items: center; gap: 7px; }
+    .gm-search-wrapper.abierto .gm-search-controls { display: flex; }
+    .gm-search-input,
+    .gm-course-filter {
+        border: 1px solid #c2d5f2;
+        border-radius: 20px;
+        font-size: 12px;
+        outline: none;
+        background: rgba(255,255,255,.78);
+        color: #29406a;
+        height: 31px;
+    }
+    .gm-search-input { width: 155px; padding: 4px 11px; }
+    .gm-course-filter { width: 220px; padding: 4px 28px 4px 10px; }
+    .gm-filter-count { color: #68809f; font-size: 11px; white-space: nowrap; }
+    .gm-search-icon { cursor: pointer; font-size: 15px; margin-left: 6px; opacity: .8; }
+    body.dark-mode .gm-search-input,
+    body.dark-mode .gm-course-filter {
+        background: #182439; border-color: #3d5273; color: #dce6f5;
     }
     /* Cuerpo colapsable */
     .gm-body {
@@ -880,15 +902,25 @@
         padding: 3px 10px; border-radius: 8px;
     }
     .gm-chip.pendiente { background: #fff4e5; color: #b26a00; }
+    .gm-chip.recaudar  { background: #e9f2ff; color: #154c8c; border: 1px solid #b9d4f5; }
     .gm-chip.modulo    { background: #eaf3ff; color: #2b6cb0; }
     .gm-chip.jornada   { background: #f0f2f5; color: #566579; }
     .gm-chip.sede      { background: #e8f5f2; color: #0f766e; }
     .gm-chip.modalidad { background: #edf7ed; color: #2e7d32; }
+    .gm-chip.recuperacion { background: #fff3cd; color: #8a5a00; border: 1px solid #f2cd73; }
+    .gm-chip.ciclo-corto { background: #fff1df; color: #a55300; border: 1px solid #ffc477; }
     body.dark-mode .gm-chip.pendiente { background: #3a2e1a; color: #e0b060; }
+    body.dark-mode .gm-chip.recaudar  { background: #1b3554; color: #a8d0ff; border-color: #315c8d; }
     body.dark-mode .gm-chip.modulo    { background: #22344d; color: #7fb0e8; }
     body.dark-mode .gm-chip.jornada   { background: #2a3040; color: #9aabc0; }
     body.dark-mode .gm-chip.sede      { background: #143832; color: #83d4c4; }
     body.dark-mode .gm-chip.modalidad { background: #1e3626; color: #9bd39b; }
+    body.dark-mode .gm-chip.recuperacion { background: #473716; color: #ffd978; border-color: #735b25; }
+    body.dark-mode .gm-chip.ciclo-corto { background: #4a3017; color: #ffc97d; border-color: #775027; }
+    .gm-filter-empty {
+        margin: 12px 0 0; padding: 12px; text-align: center;
+        color: #66758a; background: rgba(255,255,255,.65); border-radius: 8px;
+    }
 
     /* Acciones */
     .gm-acciones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
@@ -934,6 +966,16 @@
 	        .gm-head .gm-count {
 	            margin-left: 0;
 	        }
+	        .gm-search-wrapper { margin-right: 2px; }
+	        .gm-search-wrapper.abierto {
+	            position: absolute; left: 14px; right: 14px; z-index: 5;
+	            padding: 8px; border-radius: 10px; background: #f5f9ff;
+	            box-shadow: 0 8px 22px rgba(27,42,78,.18);
+	        }
+	        body.dark-mode .gm-search-wrapper.abierto { background: #152137; }
+	        .gm-search-controls { flex: 1; flex-wrap: wrap; }
+	        .gm-search-input, .gm-course-filter { width: 100%; flex: 1 1 100%; }
+	        .gm-filter-count { flex: 1; }
 	        .gm-body-inner {
 	            padding: 0 12px 12px;
 	        }
@@ -989,9 +1031,24 @@
             Gestión de Matrículas
             <span class="gm-count">{{ alertas_pago|length }}</span>
         </h3>
-        <div class="gm-search-wrapper" style="display: flex; align-items: center; margin-right: 12px;" onclick="event.stopPropagation();">
-            <input type="text" id="gm-search-input" placeholder="Buscar..." style="display: none; padding: 4px 10px; border: 1px solid #c2d5f2; border-radius: 20px; font-size: 13px; outline: none; width: 140px; background: transparent; color: inherit;" onkeyup="filterGmCards(this.value)">
-            <span class="gm-search-icon" style="cursor: pointer; font-size: 15px; margin-left: 6px; opacity: 0.8;" onclick="toggleGmSearch(event)" title="Buscar estudiante">🔍</span>
+        <div class="gm-search-wrapper" id="gm-search-wrapper" onclick="event.stopPropagation();">
+            <div class="gm-search-controls">
+                <input type="search" id="gm-search-input" class="gm-search-input"
+                       placeholder="Nombre o cédula" oninput="filterGmCards()"
+                       aria-label="Buscar alerta por estudiante o cédula">
+                <select id="gm-course-filter" class="gm-course-filter" onchange="filterGmCards()"
+                        aria-label="Filtrar alertas por curso">
+                    <option value="">Todos los cursos ({{ alertas_pago|length }})</option>
+                    {% for curso_alerta in alertas_cursos %}
+                    <option value="{{ curso_alerta.id }}">
+                        {{ curso_alerta.nombre }} ({{ curso_alerta.cantidad }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <span class="gm-filter-count" id="gm-filter-count">{{ alertas_pago|length }} visibles</span>
+            </div>
+            <span class="gm-search-icon" onclick="toggleGmSearch(event)"
+                  title="Buscar y filtrar alertas por curso" role="button" tabindex="0">🔍</span>
         </div>
         <span class="gm-flecha">▾</span>
     </div>
@@ -999,14 +1056,14 @@
     <div class="gm-body">
         <div class="gm-body-inner">
             <p class="gm-resumen">
-                Estudiantes con saldo pendiente según su modalidad: presencial se gestiona
-                desde el inicio de la jornada y cada 7 días; online se gestiona un día antes
-                del inicio y el saldo restante a los 13 días; ciclo corto online es un solo
-                pago un día antes. Coordina el pago o consulta su asistencia con un clic.
+                Estudiantes con saldo pendiente: el Módulo 1 se gestiona desde la fecha de
+                inicio de la jornada y cada módulo siguiente se habilita 7 días después.
+                Al pagar un módulo, la alerta se oculta hasta el próximo vencimiento; con
+                saldo cero deja de aparecer. Los cursos de pago único generan una sola alerta.
             </p>
 
             {% for a in alertas_pago|slice:":3" %}
-            <div class="gm-card">
+            <div class="gm-card" data-curso-id="{{ a.curso.id }}">
                 <div>
                     <div class="gm-nombre">
                         {{ a.estudiante.nombres }}
@@ -1017,10 +1074,18 @@
                     </div>
                     <div class="gm-estado">
                         <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
-                        <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                        <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                        <span class="gm-chip recaudar">💰 A recaudar {{ a.hito_label }}: ${{ a.saldo_m1|floatformat:2 }}</span>
+                        {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
                         <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                         <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
                         <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
+                        {% if a.recuperacion_pagada %}
+                        <span class="gm-chip recuperacion"
+                              title="Recibo {{ a.recuperacion_recibo|default:'sin número' }}">
+                            ✱ Recuperación pagada · {{ a.recuperacion_modulos_label }} · {{ a.recuperacion_fecha|date:"d/m/Y" }}
+                        </span>
+                        {% endif %}
                         {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
                     </div>
                 </div>
@@ -1051,7 +1116,7 @@
             <details class="gm-vermas">
                 <summary>▾ Ver {{ alertas_pago|length|add:"-3" }} caso{{ alertas_pago|length|add:"-3"|pluralize }} más</summary>
                 {% for a in alertas_pago|slice:"3:" %}
-                <div class="gm-card">
+                <div class="gm-card" data-curso-id="{{ a.curso.id }}">
                     <div>
                         <div class="gm-nombre">
                             {{ a.estudiante.nombres }}
@@ -1062,10 +1127,18 @@
                         </div>
                         <div class="gm-estado">
                             <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
-                            <span class="gm-chip pendiente">💵 Pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                            <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
+                            <span class="gm-chip recaudar">💰 A recaudar {{ a.hito_label }}: ${{ a.saldo_m1|floatformat:2 }}</span>
+                            {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
                             <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                             <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
                             <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
+                            {% if a.recuperacion_pagada %}
+                            <span class="gm-chip recuperacion"
+                                  title="Recibo {{ a.recuperacion_recibo|default:'sin número' }}">
+                                ✱ Recuperación pagada · {{ a.recuperacion_modulos_label }} · {{ a.recuperacion_fecha|date:"d/m/Y" }}
+                            </span>
+                            {% endif %}
                             {% if a.celular %}<span class="gm-chip jornada">📱 {{ a.celular }}</span>{% endif %}
                         </div>
                     </div>
@@ -1093,6 +1166,9 @@
                 {% endfor %}
             </details>
             {% endif %}
+            <p class="gm-filter-empty" id="gm-filter-empty" hidden>
+                No hay alertas que coincidan con el curso o la búsqueda seleccionada.
+            </p>
         </div>
     </div>
 </div>
@@ -1100,33 +1176,49 @@
 <script>
 function toggleGmSearch(e) {
     if (e) e.stopPropagation();
+    const wrapper = document.getElementById('gm-search-wrapper');
     const input = document.getElementById('gm-search-input');
-    if (input.style.display === 'none' || input.style.display === '') {
-        input.style.display = 'block';
+    const course = document.getElementById('gm-course-filter');
+    if (!wrapper.classList.contains('abierto')) {
+        wrapper.classList.add('abierto');
+        document.getElementById('gm-panel').classList.add('abierto');
         input.focus();
     } else {
-        input.style.display = 'none';
+        wrapper.classList.remove('abierto');
         input.value = '';
-        filterGmCards('');
+        course.value = '';
+        filterGmCards();
     }
 }
 
-function filterGmCards(query) {
-    query = query.toLowerCase();
+function filterGmCards() {
+    const input = document.getElementById('gm-search-input');
+    const course = document.getElementById('gm-course-filter');
+    const query = input.value.trim().toLowerCase();
+    const courseId = course.value;
     const panel = document.getElementById('gm-panel');
     const cards = panel.querySelectorAll('.gm-card');
+    let visible = 0;
     cards.forEach(card => {
         const text = card.innerText.toLowerCase();
-        if (text.includes(query)) {
-            card.style.display = '';
-        } else {
-            card.style.display = 'none';
-        }
+        const matchesText = !query || text.includes(query);
+        const matchesCourse = !courseId || card.dataset.cursoId === courseId;
+        const matches = matchesText && matchesCourse;
+        card.style.display = matches ? '' : 'none';
+        if (matches) visible += 1;
     });
 
+    document.getElementById('gm-filter-count').textContent = visible + ' visible' + (visible === 1 ? '' : 's');
+    document.getElementById('gm-filter-empty').hidden = visible !== 0;
+    const count = panel.querySelector('.gm-count');
+    if (count) count.textContent = visible;
+
     const details = panel.querySelector('.gm-vermas');
-    if (details && query.trim() !== '') {
-        details.open = true;
+    const filtering = query !== '' || courseId !== '';
+    if (details) {
+        details.open = filtering;
+        const summary = details.querySelector('summary');
+        if (summary) summary.style.display = filtering ? 'none' : '';
     }
 }
 </script>

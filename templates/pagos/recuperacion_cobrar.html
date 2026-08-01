@@ -11,6 +11,18 @@
 
 <h2 class="page-title">💵 Cobrar Clase de Recuperación</h2>
 
+<style>
+    .recuperacion-mixta-grid {
+        display: grid;
+        grid-template-columns: minmax(110px, .8fr) minmax(160px, 1fr) minmax(170px, 1.1fr);
+        gap: 12px;
+        align-items: end;
+    }
+    @media (max-width: 700px) {
+        .recuperacion-mixta-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
 <div class="card-box" style="max-width:680px; padding:24px; margin-top:14px;">
 
     {# ── Cabecera con datos del estudiante y saldo arrastrado ── #}
@@ -91,15 +103,78 @@
         </div>
 
         <div style="margin-bottom:14px;">
-            <label class="form-label">Método de pago *</label>
-            {{ form.metodo }}
-            {{ form.metodo.errors }}
+            <label class="form-label" for="id_tipo_cobro_abono">Distribución de pago *</label>
+            {{ form.tipo_cobro }}
+            {{ form.tipo_cobro.errors }}
+            <small style="color:#666; font-size:11px; display:block; margin-top:4px;">
+                Selecciona si el pago se realiza con un solo método o combinando dos.
+            </small>
         </div>
 
-        <div id="bloque-banco" style="margin-bottom:14px; display:none; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
-            <label class="form-label" style="color:#1a237e;">🏦 Banco *</label>
-            {{ form.banco }}
-            {{ form.banco.errors }}
+        <div id="un-solo-metodo-recuperacion">
+            <div style="margin-bottom:14px;">
+                <label class="form-label">Método de pago *</label>
+                {{ form.metodo }}
+                {{ form.metodo.errors }}
+            </div>
+
+            <div id="bloque-banco" style="margin-bottom:14px; display:none; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
+                <label class="form-label" style="color:#1a237e;">🏦 Banco *</label>
+                {{ form.banco }}
+                {{ form.banco.errors }}
+            </div>
+        </div>
+
+        <div id="pago-mixto-recuperacion"
+             style="display:none; margin-bottom:14px; background:#f8f9fa; padding:16px; border-radius:8px; border:1px solid #d8e0ea;">
+            <p style="margin:0 0 4px; font-weight:700; color:#1a237e; font-size:14px;">
+                Pago Mixto (Dividir el monto en dos)
+            </p>
+            <p style="margin:0 0 14px; font-size:11.5px; color:#666; line-height:1.45;">
+                💡 Ingresa arriba el <strong>Monto (USD)</strong> total de la recuperación y distribúyelo entre las dos formas de pago.
+            </p>
+
+            <div class="recuperacion-mixta-grid" style="margin-bottom:12px;">
+                <div>
+                    <label class="form-label">Monto 1 *</label>
+                    {{ form.monto_pago_1 }}
+                    {{ form.monto_pago_1.errors }}
+                </div>
+                <div>
+                    <label class="form-label">Método 1 *</label>
+                    {{ form.metodo_pago_1 }}
+                    {{ form.metodo_pago_1.errors }}
+                </div>
+                <div id="bloque-banco-1" style="display:none;">
+                    <label class="form-label">🏦 Banco 1 *</label>
+                    {{ form.banco_1 }}
+                    {{ form.banco_1.errors }}
+                </div>
+            </div>
+
+            <div class="recuperacion-mixta-grid">
+                <div>
+                    <label class="form-label">Monto 2 *</label>
+                    {{ form.monto_pago_2 }}
+                    {{ form.monto_pago_2.errors }}
+                </div>
+                <div>
+                    <label class="form-label">Método 2 *</label>
+                    {{ form.metodo_pago_2 }}
+                    {{ form.metodo_pago_2.errors }}
+                </div>
+                <div id="bloque-banco-2" style="display:none;">
+                    <label class="form-label">🏦 Banco 2 *</label>
+                    {{ form.banco_2 }}
+                    {{ form.banco_2.errors }}
+                </div>
+            </div>
+
+            {% include 'includes/pago_mixto_resumen.html' %}
+            <small id="recuperacion-mixta-error"
+                   style="display:none; color:#d32f2f; margin-top:10px; font-weight:700; font-size:12px;">
+                ⚠️ La suma de Monto 1 y Monto 2 debe coincidir exactamente con el Monto (USD).
+            </small>
         </div>
 
         <div style="margin-bottom:14px;">
@@ -114,7 +189,7 @@
 
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <a href="{% url 'academia:recuperaciones_lista' %}" class="btn btn-secondary">Cancelar</a>
-            <button type="submit" class="btn btn-success">💵 Cobrar recuperación</button>
+            <button type="submit" class="btn btn-success" id="btn-cobrar-recuperacion">💵 Cobrar recuperación</button>
         </div>
     </form>
 </div>
@@ -122,50 +197,148 @@
 
 {% block extra_js %}
 <script>
-    // Banco visible solo si método es transferencia/tarjeta, con lógica para Payphone
     (function () {
         const metodoSel = document.getElementById('id_metodo');
         const bloqueBanco = document.getElementById('bloque-banco');
-        if (!metodoSel || !bloqueBanco) return;
+        const bancoSel = document.getElementById('id_banco');
+        const metodoSel1 = document.getElementById('id_metodo_pago_1_abono');
+        const bloqueBanco1 = document.getElementById('bloque-banco-1');
+        const bancoSel1 = document.getElementById('id_banco_1_abono');
+        const metodoSel2 = document.getElementById('id_metodo_pago_2_abono');
+        const bloqueBanco2 = document.getElementById('bloque-banco-2');
+        const bancoSel2 = document.getElementById('id_banco_2_abono');
+        const distribucionSel = document.getElementById('id_tipo_cobro_abono');
+        const bloqueUnMetodo = document.getElementById('un-solo-metodo-recuperacion');
+        const bloqueMixto = document.getElementById('pago-mixto-recuperacion');
+        const montoTotal = document.getElementById('id_monto');
+        const monto1 = document.getElementById('id_monto_pago_1_abono');
+        const monto2 = document.getElementById('id_monto_pago_2_abono');
+        const resumenMixto = bloqueMixto ? bloqueMixto.querySelector('[data-pago-mixto-resumen]') : null;
+        const errorMixto = document.getElementById('recuperacion-mixta-error');
+        const botonCobrar = document.getElementById('btn-cobrar-recuperacion');
+        const formulario = botonCobrar ? botonCobrar.closest('form') : null;
 
-        function actualizar() {
-            const bancoSel = document.getElementById('id_banco');
-            const labelBanco = bloqueBanco.querySelector('label');
-            
-            if (metodoSel.value === 'transferencia') {
-                bloqueBanco.style.display = 'block';
-                if (labelBanco) labelBanco.innerText = '🏦 Banco *';
-                if (bancoSel) {
-                    Array.from(bancoSel.options).forEach(opt => {
-                        if (opt.value === 'payphone') {
-                            opt.style.display = 'none';
-                        } else {
-                            opt.style.display = '';
-                        }
-                    });
-                    if (bancoSel.value === 'payphone') { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
-                }
-            } else if (metodoSel.value === 'tarjeta') {
-                bloqueBanco.style.display = 'block';
-                if (labelBanco) labelBanco.innerText = '💳 Tarjeta / App *';
-                if (bancoSel) {
-                    Array.from(bancoSel.options).forEach(opt => {
-                        if (opt.value === 'payphone' || opt.value === '') {
-                            opt.style.display = '';
-                        } else {
-                            opt.style.display = 'none';
-                        }
-                    });
-                    if (bancoSel.value !== 'payphone') { bancoSel.value = 'payphone'; bancoSel.dispatchEvent(new Event('change')); }
-                }
+        function numero(input) {
+            return parseFloat(((input && input.value) || '').replace(',', '.')) || 0;
+        }
+
+        function requiereBanco(metodo) {
+            return metodo === 'transferencia' || metodo === 'tarjeta';
+        }
+
+        function configurarBanco(metodoSelect, contenedor, bancoSelect) {
+            if (!metodoSelect || !contenedor || !bancoSelect) return;
+            const metodo = metodoSelect.value;
+            const etiqueta = contenedor.querySelector('label');
+            const visible = requiereBanco(metodo);
+            contenedor.style.display = visible ? 'block' : 'none';
+            bancoSelect.required = visible;
+
+            if (!visible) {
+                bancoSelect.value = '';
+                return;
+            }
+
+            if (metodo === 'tarjeta') {
+                if (etiqueta) etiqueta.textContent = '💳 Tarjeta / App *';
+                Array.from(bancoSelect.options).forEach((opcion) => {
+                    opcion.hidden = !['', 'payphone'].includes(opcion.value);
+                });
+                bancoSelect.value = 'payphone';
             } else {
-                bloqueBanco.style.display = 'none';
-                if (bancoSel) { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
+                if (etiqueta) etiqueta.textContent = '🏦 Banco *';
+                Array.from(bancoSelect.options).forEach((opcion) => {
+                    opcion.hidden = opcion.value === 'payphone';
+                });
+                if (bancoSelect.value === 'payphone') bancoSelect.value = '';
             }
         }
-        
-        metodoSel.addEventListener('change', actualizar);
-        actualizar();
+
+        function validarMixto() {
+            const esMixto = distribucionSel && distribucionSel.value === 'mixto';
+            if (!esMixto) {
+                if (errorMixto) errorMixto.style.display = 'none';
+                if (botonCobrar) botonCobrar.disabled = false;
+                return true;
+            }
+
+            const total = numero(montoTotal);
+            const parte1 = numero(monto1);
+            const parte2 = numero(monto2);
+            const suma = parte1 + parte2;
+            const diferencia = total - suma;
+            const sumaCoincide = total > 0 && parte1 > 0 && parte2 > 0
+                && Math.abs(diferencia) < 0.005;
+            const metodosCompletos = !!(
+                metodoSel1 && metodoSel1.value
+                && metodoSel2 && metodoSel2.value
+            );
+            const bancosCompletos = !(
+                (metodoSel1 && requiereBanco(metodoSel1.value) && !bancoSel1.value)
+                || (metodoSel2 && requiereBanco(metodoSel2.value) && !bancoSel2.value)
+            );
+            const valido = sumaCoincide && metodosCompletos && bancosCompletos;
+
+            if (window.PagoMixtoUI) {
+                window.PagoMixtoUI.actualizar(resumenMixto, total, suma, sumaCoincide);
+            }
+            [monto1, monto2].forEach((input) => {
+                if (!input) return;
+                input.style.borderColor = sumaCoincide ? '#2e7d32' : '#d32f2f';
+            });
+            if (errorMixto) {
+                if (!sumaCoincide) {
+                    errorMixto.textContent = '⚠️ Monto 1 + Monto 2 debe coincidir exactamente con el Monto (USD).';
+                } else if (!metodosCompletos || !bancosCompletos) {
+                    errorMixto.textContent = '⚠️ Completa los dos métodos de pago y sus bancos o apps cuando correspondan.';
+                }
+                errorMixto.style.display = valido ? 'none' : 'block';
+            }
+            if (botonCobrar) {
+                botonCobrar.disabled = !valido;
+                botonCobrar.style.opacity = valido ? '1' : '.55';
+                botonCobrar.style.cursor = valido ? 'pointer' : 'not-allowed';
+            }
+            return valido;
+        }
+
+        function actualizarDistribucion() {
+            const esMixto = distribucionSel && distribucionSel.value === 'mixto';
+            if (bloqueUnMetodo) bloqueUnMetodo.style.display = esMixto ? 'none' : 'block';
+            if (bloqueMixto) bloqueMixto.style.display = esMixto ? 'block' : 'none';
+            if (metodoSel) metodoSel.required = !esMixto;
+            validarMixto();
+        }
+
+        [
+            [metodoSel, bloqueBanco, bancoSel],
+            [metodoSel1, bloqueBanco1, bancoSel1],
+            [metodoSel2, bloqueBanco2, bancoSel2],
+        ].forEach(([metodo, bloque, banco]) => {
+            if (!metodo) return;
+            metodo.addEventListener('change', function () {
+                configurarBanco(metodo, bloque, banco);
+                validarMixto();
+            });
+            configurarBanco(metodo, bloque, banco);
+        });
+
+        [montoTotal, monto1, monto2, bancoSel1, bancoSel2].forEach((campo) => {
+            if (!campo) return;
+            campo.addEventListener('input', validarMixto);
+            campo.addEventListener('change', validarMixto);
+        });
+        if (distribucionSel) distribucionSel.addEventListener('change', actualizarDistribucion);
+        if (formulario) {
+            formulario.addEventListener('submit', function (evento) {
+                if (!validarMixto()) {
+                    evento.preventDefault();
+                    if (monto2) monto2.focus();
+                }
+            });
+        }
+
+        actualizarDistribucion();
     })();
 </script>
 {% endblock %}

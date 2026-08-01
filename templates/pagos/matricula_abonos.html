@@ -28,9 +28,21 @@
                     {% if matricula.modalidad == 'online' %}🟢{% else %}🏫{% endif %}
                     {{ matricula.get_modalidad_display }}
                 </span>
+                {% if pago_unico_online %}
+                <span style="display:inline-flex; align-items:center; background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7; padding:2px 9px; border-radius:10px; font-size:10px; font-weight:700; margin-left:6px;">
+                    💵 Un solo pago
+                </span>
+                {% endif %}
             </div>
             {% if matricula.jornada %}
             <div style="color:#888; font-size:12px; margin-top:4px;">{{ matricula.jornada.etiqueta }}</div>
+            {% endif %}
+
+            {% if pago_unico_online %}
+            <div style="margin-top:10px; max-width:680px; background:#f1f8e9; border:1px solid #c5e1a5; border-left:4px solid #2e7d32; border-radius:8px; padding:9px 12px; color:#33691e; font-size:12px; line-height:1.4;">
+                <strong>Plan financiero: un solo pago de ${{ saldo_pendiente|floatformat:2 }}.</strong>
+                El curso mantiene {{ matricula.curso.numero_modulos_online }} módulos académicos, pero no genera una cuota para el Módulo 2.
+            </div>
             {% endif %}
 
         </div>
@@ -301,7 +313,11 @@
                     {% elif a.tipo_pago == 'por_modulo' %}
                     <span style="background:#f3e5f5; color:#6a1b9a; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">Abono + Módulo</span>
                     {% elif a.tipo_pago == 'solo_modulo' %}
+                    {% if pago_unico_online %}
+                    <span style="background:#e8f5e9; color:#1b5e20; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">Un solo pago</span>
+                    {% else %}
                     <span style="background:#ede7f6; color:#4527a0; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">Solo Módulo</span>
+                    {% endif %}
                     {% elif a.tipo_pago == 'recuperacion' %}
                     <span style="background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">✱ Recuperación</span>
                     {% if not a.cuenta_para_saldo %}
@@ -437,7 +453,7 @@
                     {{ form.tipo_pago.errors }}
                 </div>
                 <div id="bloque-modulo" style="display:none;">
-                    <label class="form-label">Módulo *</label>
+                    <label class="form-label" id="label-modulo-pago">Módulo *</label>
                     {{ form.numero_modulo }}
                     {{ form.numero_modulo.errors }}
                 </div>
@@ -448,7 +464,11 @@
                 <strong style="color:#8a5a00;">Aviso:</strong>
                 El abono inicial ya fue pagado en el registro de matrícula.
                 Puedes usar <strong>Abono</strong> solo si estás registrando un pago adicional libre.
+                {% if pago_unico_online %}
+                Para cobrar el saldo posterior a la reserva, usa <strong>Un solo pago</strong>.
+                {% else %}
                 Para cobrar una cuota semanal del curso, usa <strong>Solo Módulo</strong>.
+                {% endif %}
             </div>
 
             {# ── Bloque Recuperación: ¿suma al saldo o cobrar aparte? ── #}
@@ -534,6 +554,7 @@
                         {{ form.banco_2 }}{{ form.banco_2.errors }}
                     </div>
                 </div>
+                {% include 'includes/pago_mixto_resumen.html' %}
                 <small id="mixto-abono-error-msg" aria-live="polite" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600; font-size:12px;">
                     ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Monto (USD)" principal.
                 </small>
@@ -651,6 +672,44 @@
     const bloqueModulo = document.getElementById('bloque-modulo');
     const bloqueRecup = document.getElementById('bloque-recuperacion');
     const avisoAbonoInicial = document.getElementById('aviso-abono-inicial');
+    const moduloSelectPago = document.getElementById('id_numero_modulo');
+    const labelModuloPago = document.getElementById('label-modulo-pago');
+    const esPagoUnicoOnline = moduloSelectPago && moduloSelectPago.dataset.pagoUnicoOnline === '1';
+    const opcionesModuloOriginales = moduloSelectPago
+        ? Array.from(moduloSelectPago.options).map((opcion) => ({
+            opcion,
+            texto: opcion.textContent,
+            disabled: opcion.disabled,
+        }))
+        : [];
+
+    function configurarSelectorPagoUnico(tipoPago) {
+        if (!esPagoUnicoOnline || !moduloSelectPago) return;
+        const esCuotaUnica = tipoPago === 'solo_modulo' || tipoPago === 'por_modulo';
+
+        opcionesModuloOriginales.forEach(({ opcion, texto, disabled }) => {
+            opcion.textContent = texto;
+            opcion.hidden = false;
+            opcion.disabled = disabled;
+        });
+
+        if (esCuotaUnica) {
+            Array.from(moduloSelectPago.options).forEach((opcion) => {
+                if (opcion.value === '1') {
+                    opcion.textContent = 'Un solo pago';
+                    opcion.hidden = false;
+                    opcion.disabled = false;
+                } else {
+                    opcion.hidden = true;
+                    opcion.disabled = true;
+                }
+            });
+            moduloSelectPago.value = '1';
+            if (labelModuloPago) labelModuloPago.textContent = 'Pago *';
+        } else {
+            if (labelModuloPago) labelModuloPago.textContent = 'Módulo *';
+        }
+    }
 
     function actualizar() {
         if (!tipoSel) return;
@@ -662,6 +721,7 @@
         if (bloqueModulo) {
             bloqueModulo.style.display = (v === 'por_modulo' || v === 'solo_modulo' || v === 'recuperacion') ? 'block' : 'none';
         }
+        configurarSelectorPagoUnico(v);
         // Recuperación: visible solo para recuperacion
         if (bloqueRecup) {
             bloqueRecup.style.display = (v === 'recuperacion') ? 'block' : 'none';
@@ -701,6 +761,7 @@
     const monto1Input = document.getElementById('id_monto_pago_1_abono');
     const monto2Input = document.getElementById('id_monto_pago_2_abono');
     const mixtoErrorMsg = document.getElementById('mixto-abono-error-msg');
+    const resumenMixto = mixtoContainer ? mixtoContainer.querySelector('[data-pago-mixto-resumen]') : null;
     const btnGuardar = document.getElementById('btn-guardar-pago');
     const formPago = btnGuardar ? btnGuardar.closest('form') : null;
     const avisoValidacionPago = document.getElementById('abono-validacion-aviso');
@@ -795,8 +856,9 @@
         }
         [monto1Input, monto2Input].forEach((input) => {
             if (!input) return;
-            input.style.borderColor = mostrar ? '#d32f2f' : '';
-            input.style.borderWidth = mostrar ? '2px' : '';
+            const validoMixto = !mostrar && tipoCobroSelect && tipoCobroSelect.value === 'mixto';
+            input.style.borderColor = mostrar ? '#d32f2f' : (validoMixto ? '#2e7d32' : '');
+            input.style.borderWidth = (mostrar || validoMixto) ? '2px' : '';
         });
     }
 
@@ -810,6 +872,11 @@
             const m1 = valorNumero(monto1Input);
             const m2 = valorNumero(monto2Input);
             const suma = m1 + m2;
+            const coincide = val > 0 && m1 > 0 && m2 > 0
+                && Math.abs(suma - val) <= 0.01;
+            if (window.PagoMixtoUI) {
+                window.PagoMixtoUI.actualizar(resumenMixto, val, suma, coincide);
+            }
             if (m1 <= 0 || m2 <= 0) {
                 esValido = false;
                 mostrarErrorMixto(true, 'Completa Monto 1 y Monto 2 con valores mayores a $0.00.');

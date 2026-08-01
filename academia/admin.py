@@ -4,7 +4,7 @@ from .models import (
     Estudiante, Matricula, PersonaExterna, RecuperacionPendiente,
     AssistantQueryLog, CierreCurso, MatriculaArchivada, AbonoArchivado,
     EstudianteArchivado, AdicionalArchivado, CierreAdministrativo, Sede,
-    Aviso, Recordatorio,
+    Aviso, PerfilUsuario, Recordatorio,
 )
 
 
@@ -34,6 +34,13 @@ class RecordatorioAdmin(admin.ModelAdmin):
     list_filter = ('prioridad', 'leido')
     search_fields = ('titulo', 'contenido', 'creado_por__username', 'destinatario__username')
     date_hierarchy = 'fecha'
+
+
+@admin.register(PerfilUsuario)
+class PerfilUsuarioAdmin(admin.ModelAdmin):
+    list_display = ('user', 'avatar', 'actualizado')
+    list_filter = ('avatar',)
+    search_fields = ('user__username', 'user__first_name', 'user__last_name')
 
 
 @admin.register(Categoria)
@@ -73,7 +80,7 @@ class CursoAdmin(admin.ModelAdmin):
             'fields': ('ofrece_presencial', 'valor_presencial'),
         }),
         ('Modalidad online', {
-            'fields': ('ofrece_online', 'valor_online'),
+            'fields': ('ofrece_online', 'valor_online', 'pago_unico_online'),
         }),
         ('Legado (no usar)', {
             'classes': ('collapse',),
@@ -88,9 +95,11 @@ class JornadaCursoAdmin(admin.ModelAdmin):
     list_display = (
         'curso', 'modalidad', 'descripcion', 'descripcion_otros', 'fecha_inicio',
         'hora_inicio', 'hora_fin', 'sede', 'ciudad', 'activo',
+        'feriado_aplicado_en',
     )
     list_filter = ('modalidad', 'activo', 'sede', 'ciudad', 'curso')
     search_fields = ('curso__nombre', 'descripcion', 'descripcion_otros', 'ciudad')
+    readonly_fields = ('feriado_aplicado_en',)
 
 
 @admin.register(Estudiante)

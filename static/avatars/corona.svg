@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="corona-bg" x1="20" y1="12" x2="106" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#314B83"/>
+      <stop offset="1" stop-color="#142343"/>
+    </linearGradient>
+    <linearGradient id="corona-gold" x1="41" y1="39" x2="87" y2="91" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF2A6"/>
+      <stop offset=".48" stop-color="#FFD04D"/>
+      <stop offset="1" stop-color="#E99612"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#corona-bg)"/>
+  <circle cx="64" cy="64" r="46" fill="none" stroke="#FFF" stroke-opacity=".08" stroke-width="16"/>
+  <path d="M25 45l22 16 17-29 17 29 22-16-10 43H35z" fill="url(#corona-gold)" stroke="#F6B51D" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M35 88h58v10H35z" fill="#FFD55C" stroke="#F6B51D" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="25" cy="43" r="6" fill="#FFE277"/>
+  <circle cx="64" cy="29" r="6" fill="#FFE277"/>
+  <circle cx="103" cy="43" r="6" fill="#FFE277"/>
+  <path d="M44 76h40" fill="none" stroke="#FFF0A3" stroke-width="4" stroke-linecap="round"/>
+  <path d="M52 65l12-16 12 16" fill="none" stroke="#FFF8C8" stroke-opacity=".72" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".38" stroke-width="3"/>
+</svg>

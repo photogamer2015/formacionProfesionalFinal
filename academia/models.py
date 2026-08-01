@@ -6,6 +6,27 @@ from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 # Constantes compartidas
 # ─────────────────────────────────────────────────────────
 
+AVATAR_PERFIL_PREDETERMINADO = 'corona'
+AVATARES_PERFIL = [
+    ('princesa', 'Princesa'),
+    ('corona', 'Corona'),
+    ('pollito', 'Pollito'),
+    ('leon', 'León'),
+    ('mujer_rubia', 'Mujer rubia'),
+    ('mujer_afro_castana', 'Mujer afro castaña'),
+    ('latina', 'Latina'),
+    ('morena', 'Morena'),
+    ('mulata', 'Mulata'),
+    ('pacman', 'Pac-Man'),
+    ('gorra_mario', 'Gorra de Mario'),
+    ('princesa_peach', 'Princesa Peach'),
+]
+
+ARCHIVOS_AVATAR_PERFIL = {
+    clave: f'avatars/{clave}.svg'
+    for clave, _etiqueta in AVATARES_PERFIL
+}
+
 MODALIDADES = [
     ('presencial', 'Presencial'),
     ('online', 'Online'),
@@ -266,6 +287,14 @@ class Curso(models.Model):
         help_text='Indica si el curso es de ciclo corto (2 semanas).'
     )
 
+    pago_unico_online = models.BooleanField(
+        default=False,
+        help_text=(
+            'En ciclos cortos online, cobra todo el saldo posterior a la '
+            'reserva en una sola cuota, sin cambiar los módulos académicos.'
+        ),
+    )
+
     nombrar_modulos = models.BooleanField(
         default=False,
         help_text='Indica si los módulos tendrán nombres personalizados.'
@@ -294,6 +323,14 @@ class Curso(models.Model):
         if modalidad == 'online':
             return self.numero_modulos_online or 1
         return self.numero_modulos or 1
+
+    def usa_pago_unico_recaudacion(self, modalidad):
+        """Indica si la modalidad se cobra en una sola cuota de recaudación."""
+        return bool(
+            modalidad == 'online'
+            and self.es_ciclo_corto
+            and self.pago_unico_online
+        )
 
     def valor_para(self, modalidad):
         """Devuelve el valor del curso según la modalidad."""
@@ -364,6 +401,15 @@ class JornadaCurso(models.Model):
         help_text='Ciudad (presencial) o plataforma (online). Se mantiene sincronizada con la sede.'
     )
     activo = models.BooleanField(default=True)
+    feriado_aplicado_en = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text=(
+            'Última vez que la jornada fue trasladada por día no laboral. '
+            'Controla el bloqueo de 24 horas para evitar movimientos duplicados.'
+        ),
+    )
 
     class Meta:
         verbose_name = 'Jornada'
@@ -596,9 +642,26 @@ class Matricula(models.Model):
 
     @property
     def valor_modulo(self):
-        """Valor objetivo del primer módulo después de descontar la reserva."""
+        """Valor de la primera obligación de pago después de la reserva."""
         cuotas = self.cuotas_modulos_objetivo()
         return cuotas[0] if cuotas else Decimal('0.00')
+
+    @property
+    def tiene_pago_unico_online(self):
+        """La matrícula conserva sus módulos académicos, pero tiene una cuota."""
+        return bool(
+            self.curso_id
+            and self.curso.usa_pago_unico_recaudacion(self.modalidad)
+        )
+
+    @property
+    def numero_cuotas_pago(self):
+        """Número de obligaciones económicas, independiente de los módulos."""
+        if self.tiene_pago_unico_online:
+            return 1
+        if not self.curso_id:
+            return 1
+        return max(int(self.curso.get_numero_modulos(self.modalidad) or 1), 1)
 
     @property
     def reserva_inicial_plan(self):
@@ -607,9 +670,13 @@ class Matricula(models.Model):
         return min(MONTO_RESERVA_MATRICULA, self.valor_neto)
 
     def cuotas_modulos_objetivo(self):
-        """Plan base: (valor neto - reserva fija) dividido entre módulos."""
-        n = self.curso.get_numero_modulos(self.modalidad) if self.curso_id else 1
-        n = max(int(n or 1), 1)
+        """Plan financiero posterior a la reserva.
+
+        Normalmente existe una cuota por módulo. En un ciclo corto online con
+        pago único, los módulos académicos se mantienen, pero todo el saldo se
+        concentra en una sola obligación económica.
+        """
+        n = self.numero_cuotas_pago
         monto_cuotas = max(
             self.valor_neto - self.reserva_inicial_plan,
             Decimal('0.00'),
@@ -685,7 +752,7 @@ class Matricula(models.Model):
         return dict(resultado)
 
     def pagos_por_modulo_efectivo(self):
-        n_mod = (self.curso.get_numero_modulos(self.modalidad) if self.curso_id else 1) or 1
+        n_mod = self.numero_cuotas_pago
         if n_mod <= 0:
             return {}
         cuotas_objetivo = self.cuotas_modulos_objetivo()
@@ -724,7 +791,7 @@ class Matricula(models.Model):
         return aplicado
 
     def desglose_pagos_por_modulo(self):
-        n_mod = (self.curso.get_numero_modulos(self.modalidad) if self.curso_id else 1) or 1
+        n_mod = self.numero_cuotas_pago
         if n_mod <= 0:
             return []
 
@@ -766,6 +833,10 @@ class Matricula(models.Model):
                 estado = 'Pendiente'
             desglose.append({
                 'numero': n,
+                'label': (
+                    'Un solo pago'
+                    if self.tiene_pago_unico_online else f'Módulo {n}'
+                ),
                 'pagado': pagado,
                 'esperado': esperado,
                 'estado': estado,
@@ -914,6 +985,18 @@ class Abono(models.Model):
             return None
         if self.matricula and self.matricula.curso:
             curso = self.matricula.curso
+            if (
+                self.tipo_pago in ('por_modulo', 'solo_modulo')
+                and self.matricula.tiene_pago_unico_online
+            ):
+                if curso.nombrar_modulos and curso.nombres_modulos:
+                    nombres = curso.nombres_modulos.get(
+                        self.matricula.modalidad, []
+                    )
+                    nombre = nombres[0] if nombres else None
+                    if nombre:
+                        return f'Módulo 1 - {nombre}'
+                return 'Módulo 1'
             if curso.nombrar_modulos and curso.nombres_modulos:
                 nombres = curso.nombres_modulos.get(self.matricula.modalidad, [])
                 if 1 <= self.numero_modulo <= len(nombres) and nombres[self.numero_modulo - 1]:
@@ -2606,3 +2689,33 @@ class CuotaManualRecaudacion(models.Model):
 
     def __str__(self):
         return f'{self.matricula_id} · {self.fecha} · ${self.monto}'
+
+
+class PerfilUsuario(models.Model):
+    """Preferencias visuales persistentes del perfil de cada usuario."""
+
+    user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='perfil_visual',
+    )
+    avatar = models.CharField(
+        max_length=32,
+        choices=AVATARES_PERFIL,
+        default=AVATAR_PERFIL_PREDETERMINADO,
+    )
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Perfil de usuario'
+        verbose_name_plural = 'Perfiles de usuario'
+
+    @property
+    def avatar_archivo(self):
+        return ARCHIVOS_AVATAR_PERFIL.get(
+            self.avatar,
+            ARCHIVOS_AVATAR_PERFIL[AVATAR_PERFIL_PREDETERMINADO],
+        )
+
+    def __str__(self):
+        return f'{self.user.get_username()} · {self.get_avatar_display()}'

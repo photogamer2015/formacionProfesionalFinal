@@ -9,7 +9,7 @@ Diseño:
 
 from collections import defaultdict
 from datetime import date, datetime
-from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 import re
 from urllib.parse import urlencode
@@ -43,94 +43,6 @@ MESES_ES = [
 ]
 
 CENTAVO = Decimal('0.01')
-
-
-def _abonos_abono_modulo_disponibles(matricula, numero_modulo=None, recuperacion_actual=None):
-    """
-    Pagos "Abono + Módulo" que pueden cubrir una recuperación sin registrar
-    un cobro adicional.
-
-    La opción solo aplica cuando existe un pago real con tipo `por_modulo`.
-    Los abonos generales y los pagos "Solo Módulo" no habilitan este descuento.
-    """
-    abonos = list(matricula.abonos.filter(
-        tipo_pago='por_modulo',
-        cuenta_para_saldo=True,
-        numero_modulo__isnull=False,
-    ).order_by('fecha', 'creado', 'pk'))
-    if not abonos:
-        return []
-
-    if recuperacion_actual and recuperacion_actual.pk:
-        recuperaciones_usadas = RecuperacionPendiente.objects.filter(
-            matricula=matricula,
-            abono__isnull=False,
-        ).exclude(pk=recuperacion_actual.pk)
-    else:
-        recuperaciones_usadas = RecuperacionPendiente.objects.filter(
-            matricula=matricula,
-            abono__isnull=False,
-        )
-    usados_por_modulo = set(recuperaciones_usadas.values_list('abono_id', 'numero_modulo'))
-
-    n_mod = (
-        matricula.curso.get_numero_modulos(matricula.modalidad)
-        if matricula.curso_id else 1
-    ) or 1
-    valor_modulo = (
-        (matricula.valor_neto / Decimal(n_mod)).quantize(CENTAVO, rounding=ROUND_HALF_UP)
-        if n_mod > 0 else Decimal('0.00')
-    )
-
-    def modulos_cubiertos(abono):
-        cubiertos = set()
-        inicio = abono.numero_modulo
-        if not inicio or not (1 <= inicio <= n_mod):
-            return cubiertos
-        cubiertos.add(inicio)
-        if valor_modulo > 0:
-            cantidad = int((abono.monto / valor_modulo).to_integral_value(rounding=ROUND_FLOOR))
-            for n in range(inicio, min(n_mod, inicio + max(cantidad, 1) - 1) + 1):
-                cubiertos.add(n)
-        return cubiertos
-
-    candidatos = []
-    for abono in abonos:
-        cubiertos = modulos_cubiertos(abono)
-        if numero_modulo is not None:
-            if numero_modulo not in cubiertos:
-                continue
-            if (abono.pk, numero_modulo) in usados_por_modulo:
-                continue
-        if abono not in candidatos:
-            candidatos.append(abono)
-    return candidatos
-
-
-def _abonos_abono_modulo_context(matricula, recuperacion_actual=None):
-    """Datos livianos para que la plantilla indique si un módulo se puede descontar."""
-    disponibles = {}
-    n_mod = (
-        matricula.curso.get_numero_modulos(matricula.modalidad)
-        if matricula.curso_id else 1
-    ) or 1
-    for numero_modulo in range(1, n_mod + 1):
-        abonos = _abonos_abono_modulo_disponibles(
-            matricula,
-            numero_modulo=numero_modulo,
-            recuperacion_actual=recuperacion_actual,
-        )
-        if not abonos:
-            continue
-        abono = abonos[0]
-        clave = str(numero_modulo)
-        disponibles.setdefault(clave, {
-            'recibo': abono.numero_recibo,
-            'monto': f'{abono.monto:.2f}',
-            'fecha': abono.fecha.strftime('%d/%m/%Y') if abono.fecha else '',
-            'metodo': abono.get_metodo_display(),
-        })
-    return disponibles
 
 
 def _redirect_despues_recuperacion(request, matricula=None):
@@ -434,6 +346,15 @@ def _filtrar_matriculas(request):
             if _tiene_modulo_pendiente(m)
         ]
         qs = qs.filter(pk__in=ids)
+    elif estado == 'Recuperacion':
+        # Recibos actuales de Recuperación y asociaciones históricas ya pagadas.
+        qs = qs.filter(
+            Q(abonos__tipo_pago='recuperacion')
+            | Q(
+                recuperaciones_pendientes__pagada=True,
+                recuperaciones_pendientes__abono__isnull=False,
+            )
+        ).distinct()
 
     return qs, {
         'estado': estado,
@@ -536,6 +457,16 @@ def _partes_pago_abono(abono):
     return partes
 
 
+def _abono_corresponde_a_recuperacion(abono):
+    """Reconoce recibos actuales y asociaciones históricas de recuperación."""
+    if abono.tipo_pago == 'recuperacion':
+        return True
+    return any(
+        recuperacion.pagada
+        for recuperacion in abono.recuperaciones.all()
+    )
+
+
 def _adjuntar_resumen_abonos(matriculas):
     """Agrega a cada matrícula el resumen de sus abonos ya prefetched."""
     for matricula in matriculas:
@@ -543,6 +474,15 @@ def _adjuntar_resumen_abonos(matriculas):
         if abonos is None:
             abonos = list(matricula.abonos.all())
         matricula.resumen_abonos = _resumen_abonos(abonos)
+        pagos_recuperacion = [
+            abono for abono in abonos
+            if _abono_corresponde_a_recuperacion(abono)
+        ]
+        matricula.tiene_pago_recuperacion = bool(pagos_recuperacion)
+        matricula.total_pago_recuperacion = sum(
+            (abono.monto or Decimal('0.00') for abono in pagos_recuperacion),
+            Decimal('0.00'),
+        )
     return matriculas
 
 
@@ -564,7 +504,11 @@ def pagos_lista(request):
     """
     qs, filtros = _filtrar_matriculas(request)
     qs = qs.prefetch_related(
-        Prefetch('abonos', queryset=Abono.objects.order_by('fecha', 'id'), to_attr='abonos_para_resumen')
+        Prefetch(
+            'abonos',
+            queryset=Abono.objects.prefetch_related('recuperaciones').order_by('fecha', 'id'),
+            to_attr='abonos_para_resumen',
+        )
     ).order_by('-creado', '-id')
     matriculas = _adjuntar_resumen_abonos(list(qs))
 
@@ -1907,6 +1851,7 @@ def matricula_abonos(request, pk):
 
     return render(request, 'pagos/matricula_abonos.html', {
         'matricula': matricula,
+        'pago_unico_online': matricula.tiene_pago_unico_online,
         'abonos': abonos,
         'saldo_pendiente': saldo_pendiente,
         'dist_metodo': dict(dist_metodo),
@@ -1915,8 +1860,61 @@ def matricula_abonos(request, pk):
     })
 
 
+def _sincronizar_recuperacion_desde_pago(abono):
+    """Vincula automáticamente un pago tipo Recuperación con su registro.
+
+    Si el módulo ya tenía una recuperación pendiente, la marca como pagada.
+    Si el usuario registró directamente el pago desde la matrícula, crea el
+    registro pagado para que también aparezca en Clases en Recuperación y en
+    la Hoja de Recaudación.
+    """
+    if (
+        not abono
+        or abono.tipo_pago != 'recuperacion'
+        or not abono.matricula_id
+        or not abono.numero_modulo
+    ):
+        return None
+
+    matricula = abono.matricula
+    recuperacion = (
+        RecuperacionPendiente.objects.filter(abono=abono).first()
+        or RecuperacionPendiente.objects.filter(
+            matricula=matricula,
+            numero_modulo=abono.numero_modulo,
+            pagada=False,
+        ).order_by('fecha_marcada', 'pk').first()
+    )
+
+    if recuperacion is None:
+        monto_que_afecta_saldo = (
+            abono.monto if abono.cuenta_para_saldo else Decimal('0.00')
+        )
+        saldo_antes_del_pago = min(
+            matricula.valor_neto,
+            max(matricula.saldo + monto_que_afecta_saldo, Decimal('0.00')),
+        )
+        recuperacion = RecuperacionPendiente(
+            matricula=matricula,
+            numero_modulo=abono.numero_modulo,
+            fecha_marcada=abono.fecha,
+            saldo_pendiente_al_marcar=saldo_antes_del_pago,
+            observaciones=(
+                'Registro generado automáticamente desde el pago de recuperación.'
+            ),
+        )
+
+    recuperacion.numero_modulo = abono.numero_modulo
+    recuperacion.pagada = True
+    recuperacion.fecha_recuperacion = abono.fecha
+    recuperacion.abono = abono
+    recuperacion.save()
+    return recuperacion
+
+
 @matricula_requerida
 @require_POST
+@transaction.atomic
 def abono_crear(request, matricula_pk):
     """Crear un abono nuevo. Llamado desde el modal."""
     matricula = get_object_or_404(Matricula, pk=matricula_pk)
@@ -1937,6 +1935,7 @@ def abono_crear(request, matricula_pk):
             abono.metodo_2 = form.cleaned_data.get('metodo_pago_2') or 'efectivo'
             abono.banco_2 = form.cleaned_data.get('banco_2') or ''
             abono.save()
+            _sincronizar_recuperacion_desde_pago(abono)
             messages.success(
                 request,
                 f'Pago mixto registrado: {abono.numero_recibo} (${abono.monto}). '
@@ -1947,6 +1946,7 @@ def abono_crear(request, matricula_pk):
             abono.matricula = matricula
             abono.registrado_por = request.user
             abono.save()
+            _sincronizar_recuperacion_desde_pago(abono)
             messages.success(
                 request,
                 f'Abono registrado: {abono.numero_recibo} por ${abono.monto}. '
@@ -1968,6 +1968,7 @@ def abono_crear(request, matricula_pk):
 
 
 @admin_requerido
+@transaction.atomic
 def abono_editar(request, matricula_pk, abono_pk):
     """Editar un abono existente."""
     matricula = get_object_or_404(Matricula, pk=matricula_pk)
@@ -1987,12 +1988,14 @@ def abono_editar(request, matricula_pk, abono_pk):
                 abono.metodo_2 = form.cleaned_data.get('metodo_pago_2') or 'efectivo'
                 abono.banco_2 = form.cleaned_data.get('banco_2') or ''
                 abono.save()
+                _sincronizar_recuperacion_desde_pago(abono)
             else:
                 abono = form.save(commit=False)
                 abono.monto_2 = None
                 abono.metodo_2 = ''
                 abono.banco_2 = ''
                 abono.save()
+                _sincronizar_recuperacion_desde_pago(abono)
             messages.success(request, f'Abono {abono.numero_recibo} actualizado.')
             return redirect('academia:matricula_abonos', pk=matricula_pk)
     else:
@@ -2224,28 +2227,59 @@ def abono_recibo(request, abono_pk):
 # hacen sentido para el control de morosidad por módulo).
 TIPOS_CON_RESERVA = ('reserva_abono', 'reserva_modulo_1')
 
+TIPOS_MATRICULA_FILTRO_PAGOS_MODULO = (
+    ('reserva_abono', 'Reserva / Abono'),
+    ('programa_completo', 'Programa Completo'),
+)
 
-def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
-                            tipo_matricula='', filtro_modulo_estado='',
-                            fecha_jornada=''):
-    """
-    Construye la matriz estudiantes x modulos para un curso.
-    filtro_modulo_estado: cadena con formato "<num>_<estado>",
-    por ejemplo "2_Parcial" o "1_Pagado". Filtra por el modulo
-    y estado indicados. Cadena vacia = sin filtro.
-    """
-    if modalidad in ('presencial', 'online'):
-        n_mod = curso_sel.get_numero_modulos(modalidad)
+
+def _normalizar_matricula_filtro_pagos_modulo(matricula_id, curso_sel):
+    if not curso_sel or not matricula_id or not str(matricula_id).isdigit():
+        return ''
+    existe = Matricula.objects.filter(
+        pk=int(matricula_id),
+        curso=curso_sel,
+    ).exclude(estado='retiro_voluntario').exists()
+    return str(matricula_id) if existe else ''
+
+
+def _label_matricula_estudiante_jornada(matricula):
+    estudiante = matricula.estudiante
+    jornada = matricula.jornada
+    nombre = (getattr(estudiante, 'nombre_completo', '') or estudiante.nombres or '').strip()
+    nombre = nombre or 'Sin nombre'
+    cedula = (estudiante.cedula or '').strip()
+    if cedula:
+        nombre = f'{nombre} ({cedula})'
+
+    partes = [matricula.get_modalidad_display()]
+    if jornada:
+        partes.append(jornada.descripcion_legible)
+        if jornada.fecha_inicio:
+            partes.append(jornada.fecha_inicio.strftime('%d/%m/%Y'))
+        if jornada.ciudad:
+            partes.append(jornada.ciudad)
     else:
-        n_mod = max(curso_sel.numero_modulos, curso_sel.numero_modulos_online)
-    modulos = list(range(1, n_mod + 1))
-    modulos_visibles = list(modulos)
+        partes.append('Sin jornada')
+
+    return f"{nombre} - {' · '.join(p for p in partes if p)} - Mat. #{matricula.pk}"
+
+
+def _opciones_matriculas_estudiantes_pagos_modulo(curso_sel, modalidad='',
+                                                   ciudad='', tipo_matricula='',
+                                                   fecha_jornada=''):
+    if not curso_sel:
+        return []
 
     qs = Matricula.objects.filter(
-        curso=curso_sel
+        curso=curso_sel,
     ).select_related(
-        'estudiante', 'jornada', 'registrado_por'
-    ).prefetch_related('abonos').exclude(estado='retiro_voluntario')
+        'estudiante', 'jornada'
+    ).exclude(
+        estado='retiro_voluntario'
+    ).order_by(
+        'estudiante__nombres', 'jornada__fecha_inicio', 'pk'
+    )
 
     if modalidad in ('presencial', 'online'):
         qs = qs.filter(modalidad=modalidad)
@@ -2256,9 +2290,67 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
     if fecha_jornada:
         qs = qs.filter(jornada__fecha_inicio=fecha_jornada)
 
+    return [
+        {
+            'id': str(m.pk),
+            'label': _label_matricula_estudiante_jornada(m),
+        }
+        for m in qs
+    ]
+
+
+def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
+                            tipo_matricula='', filtro_modulo_estado='',
+                            fecha_jornada='', matricula_id=''):
+    """
+    Construye la matriz estudiantes x modulos para un curso.
+    filtro_modulo_estado: cadena con formato "<num>_<estado>",
+    por ejemplo "2_Parcial" o "1_Pagado". Filtra por el modulo
+    y estado indicados. Cadena vacia = sin filtro.
+    """
+    if modalidad in ('presencial', 'online'):
+        n_mod = (
+            1
+            if curso_sel.usa_pago_unico_recaudacion(modalidad)
+            else curso_sel.get_numero_modulos(modalidad)
+        )
+    else:
+        cuotas_por_modalidad = []
+        if curso_sel.ofrece_presencial:
+            cuotas_por_modalidad.append(curso_sel.numero_modulos or 1)
+        if curso_sel.ofrece_online:
+            cuotas_por_modalidad.append(
+                1 if curso_sel.usa_pago_unico_recaudacion('online')
+                else (curso_sel.numero_modulos_online or 1)
+            )
+        n_mod = max(cuotas_por_modalidad or [1])
+    modulos = list(range(1, n_mod + 1))
+    modulos_visibles = list(modulos)
+
+    qs = Matricula.objects.filter(
+        curso=curso_sel
+    ).select_related(
+        'estudiante', 'jornada', 'registrado_por'
+    ).prefetch_related(
+        'abonos', 'recuperaciones_pendientes__abono'
+    ).exclude(estado='retiro_voluntario')
+
+    if modalidad in ('presencial', 'online'):
+        qs = qs.filter(modalidad=modalidad)
+    if ciudad:
+        qs = qs.filter(jornada__ciudad__iexact=ciudad)
+    if tipo_matricula:
+        qs = qs.filter(tipo_matricula=tipo_matricula)
+    if fecha_jornada:
+        qs = qs.filter(jornada__fecha_inicio=fecha_jornada)
+    if matricula_id and str(matricula_id).isdigit():
+        qs = qs.filter(pk=int(matricula_id))
+
     matriculas = []
     for m in qs:
         jornada = m.jornada
+        todos_abonos = list(m.abonos.all())
+        todas_recuperaciones = list(m.recuperaciones_pendientes.all())
 
         # Desglose por módulo: SOLO cuenta los abonos asignados explícitamente
         # a un módulo (tipo_pago='por_modulo' o 'recuperacion' con
@@ -2269,17 +2361,44 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
         # haya un solo lugar de verdad.
         desglose = m.desglose_pagos_por_modulo()
 
-        modulos_data = [
-            {
-                'numero': d['numero'],
+        modulos_data = []
+        for d in desglose:
+            numero = d['numero']
+            pagos_recuperacion = {
+                abono.pk: abono
+                for abono in todos_abonos
+                if (
+                    abono.tipo_pago == 'recuperacion'
+                    and abono.cuenta_para_saldo
+                    and abono.numero_modulo == numero
+                )
+            }
+            for recuperacion in todas_recuperaciones:
+                if (
+                    recuperacion.pagada
+                    and recuperacion.numero_modulo == numero
+                    and recuperacion.abono
+                    and recuperacion.abono.cuenta_para_saldo
+                ):
+                    pagos_recuperacion[recuperacion.abono.pk] = recuperacion.abono
+
+            modulos_data.append({
+                'numero': numero,
                 'estado': d['estado'],
                 'pagado': d['pagado'],
                 'esperado': d['esperado'],
                 'fecha_pago': d['fecha_ultimo_pago'],
                 'aplica': True,
-            }
-            for d in desglose
-        ]
+                'es_recuperacion': bool(pagos_recuperacion),
+                'recuperacion_monto': sum(
+                    (a.monto for a in pagos_recuperacion.values()),
+                    Decimal('0.00'),
+                ),
+                'recuperacion_recibos': ', '.join(
+                    a.numero_recibo for a in pagos_recuperacion.values()
+                    if a.numero_recibo
+                ),
+            })
         # Si la matrícula tiene menos módulos que el máximo del curso
         # (por ejemplo, una matrícula online con 2 módulos en un curso que
         # también ofrece presencial con 4 módulos), rellenamos las celdas
@@ -2293,6 +2412,9 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                 'esperado': Decimal('0.00'),
                 'fecha_pago': None,
                 'aplica': False,
+                'es_recuperacion': False,
+                'recuperacion_monto': Decimal('0.00'),
+                'recuperacion_recibos': '',
             })
 
         # Diccionario plano para los cálculos posteriores que sí lo necesitan
@@ -2311,10 +2433,10 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
         abonos_modulo = []
         recaudado_hoja = Decimal('0.00')
         if modulo_control:
-            todos_abonos = list(m.abonos.filter(cuenta_para_saldo=True))
             abonos_modulo = [
                 a for a in todos_abonos
-                if a.tipo_pago in ('por_modulo', 'solo_modulo')
+                if a.cuenta_para_saldo
+                and a.tipo_pago in ('por_modulo', 'solo_modulo')
                 and a.numero_modulo == modulo_control['numero']
             ]
             recaudado_hoja = sum(
@@ -2324,7 +2446,9 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
         metodos = sorted({a.get_metodo_display() for a in abonos_modulo})
         tipos = sorted({a.get_tipo_pago_display() for a in abonos_modulo})
         bancos = sorted({a.get_banco_display() for a in abonos_modulo if a.banco})
-        recuperaciones_pendientes = m.recuperaciones_pendientes.filter(pagada=False)
+        recuperaciones_pendientes = [
+            r for r in todas_recuperaciones if not r.pagada
+        ]
         recuperacion_txt = ', '.join(
             f"Mód. {r.numero_modulo}" for r in recuperaciones_pendientes
         )
@@ -2339,6 +2463,7 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
 
         matriculas.append({
             'matricula': m,
+            'pago_unico_online': m.tiene_pago_unico_online,
             'estudiante': m.estudiante,
             'curso_nombre': m.curso.nombre,
             'modulos_data': modulos_data,
@@ -2469,8 +2594,11 @@ def pagos_por_modulo(request):
     modalidad = request.GET.get('modalidad', '').strip()
     ciudad = request.GET.get('ciudad', '').strip()
     tipo_matricula = request.GET.get('tipo_matricula', '').strip()
+    if tipo_matricula not in dict(TIPOS_MATRICULA_FILTRO_PAGOS_MODULO):
+        tipo_matricula = ''
     filtro_modulo_estado = request.GET.get('filtro_modulo_estado', '').strip()
     fecha_jornada = request.GET.get('fecha_jornada', '').strip()
+    matricula_id = request.GET.get('matricula', '').strip()
 
     curso_sel = None
     matriculas = []
@@ -2483,6 +2611,9 @@ def pagos_por_modulo(request):
             curso_sel = Curso.objects.get(pk=int(curso_id), activo=True)
         except Curso.DoesNotExist:
             curso_sel = None
+    matricula_id = _normalizar_matricula_filtro_pagos_modulo(
+        matricula_id, curso_sel
+    )
 
     if curso_sel:
         matriculas, modulos, resumen_por_modulo, modulos_visibles = _construir_matriz_pagos(
@@ -2492,9 +2623,11 @@ def pagos_por_modulo(request):
             tipo_matricula=tipo_matricula,
             filtro_modulo_estado=filtro_modulo_estado,
             fecha_jornada=fecha_jornada,
+            matricula_id=matricula_id,
         )
     # Fechas de jornada disponibles para el curso seleccionado
     fechas_jornada = []
+    estudiantes_jornada = []
     if curso_sel:
         from academia.models import JornadaCurso
         fechas_jornada = (
@@ -2503,6 +2636,23 @@ def pagos_por_modulo(request):
             .values_list('fecha_inicio', flat=True)
             .distinct()
         )
+        estudiantes_jornada = _opciones_matriculas_estudiantes_pagos_modulo(
+            curso_sel,
+            modalidad=modalidad,
+            ciudad=ciudad,
+            tipo_matricula=tipo_matricula,
+            fecha_jornada=fecha_jornada,
+        )
+
+    export_querystring = urlencode({
+        'curso': curso_id,
+        'modalidad': modalidad,
+        'ciudad': ciudad,
+        'tipo_matricula': tipo_matricula,
+        'filtro_modulo_estado': filtro_modulo_estado,
+        'fecha_jornada': fecha_jornada,
+        'matricula': matricula_id,
+    })
 
     return render(request, 'pagos/por_modulo.html', {
         'cursos': cursos,
@@ -2512,11 +2662,14 @@ def pagos_por_modulo(request):
         'matriculas_data': matriculas,
         'resumen_por_modulo': resumen_por_modulo,
         'fechas_jornada': fechas_jornada,
-        'tipos_matricula': [
-            ('reserva_abono', 'Reserva / Abono'),
-            ('reserva_modulo_1', 'Reserva + Módulo 1'),
-            ('programa_completo', 'Programa Completo'),
-        ],
+        'estudiantes_jornada': estudiantes_jornada,
+        'tipos_matricula': TIPOS_MATRICULA_FILTRO_PAGOS_MODULO,
+        'filtro_pago_unico_online': bool(
+            curso_sel
+            and modalidad == 'online'
+            and curso_sel.usa_pago_unico_recaudacion('online')
+        ),
+        'export_querystring': export_querystring,
         'filtros': {
             'curso': curso_id,
             'modalidad': modalidad,
@@ -2524,6 +2677,7 @@ def pagos_por_modulo(request):
             'tipo_matricula': tipo_matricula,
             'filtro_modulo_estado': filtro_modulo_estado,
             'fecha_jornada': fecha_jornada,
+            'matricula': matricula_id,
         },
     })
 
@@ -2855,47 +3009,19 @@ def recuperacion_marcar(request, matricula_pk):
     Guarda automáticamente el saldo pendiente al momento.
     """
     matricula = get_object_or_404(Matricula, pk=matricula_pk)
-    abonos_modulo_disponibles = _abonos_abono_modulo_context(matricula)
-
     if request.method == 'POST':
         form = RecuperacionPendienteForm(request.POST, matricula=matricula)
         if form.is_valid():
             recup = form.save(commit=False)
             recup.matricula = matricula
             recup.saldo_pendiente_al_marcar = matricula.saldo
-            modo_registro = form.cleaned_data.get('modo_registro')
-
-            if modo_registro == RecuperacionPendienteForm.MODO_DESCONTAR_ABONO_MODULO:
-                abonos_modulo = _abonos_abono_modulo_disponibles(
-                    matricula, recup.numero_modulo
-                )
-                abono_modulo = abonos_modulo[0] if abonos_modulo else None
-                if abono_modulo:
-                    recup.pagada = True
-                    recup.fecha_recuperacion = (
-                        recup.fecha_programada or recup.fecha_marcada
-                    )
-                    recup.abono = abono_modulo
-                    recup.save()
-                    messages.success(
-                        request,
-                        f'Clase de Módulo {recup.numero_modulo} descontada con '
-                        f'{abono_modulo.numero_recibo} (Abono + Módulo por ${abono_modulo.monto}). '
-                        'No se creó un cobro adicional.'
-                    )
-                    return redirect('academia:matricula_abonos', pk=matricula.pk)
-                form.add_error(
-                    'modo_registro',
-                    'Ese pago "Abono + Módulo" ya no está disponible para descontar.'
-                )
-            else:
-                recup.save()
-                messages.success(
-                    request,
-                    f'Clase de Módulo {recup.numero_modulo} marcada para recuperación. '
-                    f'Saldo arrastrado: ${recup.saldo_pendiente_al_marcar:.2f}.'
-                )
-                return redirect('academia:matricula_abonos', pk=matricula.pk)
+            recup.save()
+            messages.success(
+                request,
+                f'Clase de Módulo {recup.numero_modulo} marcada para recuperación. '
+                f'Saldo arrastrado: ${recup.saldo_pendiente_al_marcar:.2f}.'
+            )
+            return redirect('academia:matricula_abonos', pk=matricula.pk)
     else:
         form = RecuperacionPendienteForm(
             initial={'fecha_marcada': date.today()},
@@ -2905,9 +3031,7 @@ def recuperacion_marcar(request, matricula_pk):
     return render(request, 'pagos/recuperacion_marcar.html', {
         'form': form,
         'matricula': matricula,
-        'abonos_modulo_disponibles': abonos_modulo_disponibles,
         'modo_edicion': False,
-        'permitir_modo_registro': True,
     })
 
 
@@ -2923,76 +3047,44 @@ def recuperacion_editar(request, recup_pk):
     )
     matricula = recup.matricula
     abono_original = recup.abono
-    tiene_cobro_recuperacion = bool(
-        abono_original and abono_original.tipo_pago == 'recuperacion'
-    )
-    modo_inicial = (
-        RecuperacionPendienteForm.MODO_DESCONTAR_ABONO_MODULO
-        if abono_original and abono_original.tipo_pago == 'por_modulo'
-        else RecuperacionPendienteForm.MODO_NORMAL
-    )
-
-    abonos_modulo_disponibles = _abonos_abono_modulo_context(
-        matricula,
-        recuperacion_actual=recup,
-    )
+    tiene_pago_asociado = bool(abono_original)
 
     if request.method == 'POST':
-        post = request.POST.copy()
-        if tiene_cobro_recuperacion:
-            post['modo_registro'] = RecuperacionPendienteForm.MODO_NORMAL
-        form = RecuperacionPendienteForm(post, instance=recup, matricula=matricula)
+        form = RecuperacionPendienteForm(
+            request.POST, instance=recup, matricula=matricula
+        )
         if form.is_valid():
             recup_editada = form.save(commit=False)
             recup_editada.matricula = matricula
-            modo_registro = form.cleaned_data.get('modo_registro')
 
-            if tiene_cobro_recuperacion:
+            # Los pagos ya asociados, incluidos registros históricos, se
+            # conservan. Ya no se pueden crear nuevos descuentos con un pago
+            # "Abono + Módulo" desde esta pantalla.
+            if tiene_pago_asociado:
                 recup_editada.pagada = True
-                recup_editada.fecha_recuperacion = abono_original.fecha
+                recup_editada.fecha_recuperacion = (
+                    recup.fecha_recuperacion or abono_original.fecha
+                )
                 recup_editada.abono = abono_original
                 recup_editada.save()
-                if abono_original.numero_modulo != recup_editada.numero_modulo:
+                if (
+                    abono_original.tipo_pago == 'recuperacion'
+                    and abono_original.numero_modulo != recup_editada.numero_modulo
+                ):
                     abono_original.numero_modulo = recup_editada.numero_modulo
                     abono_original.save(update_fields=['numero_modulo', 'actualizado'])
                 messages.success(request, 'Recuperación actualizada. El pago asociado se conservó.')
                 return _redirect_despues_recuperacion(request, matricula)
 
-            if modo_registro == RecuperacionPendienteForm.MODO_DESCONTAR_ABONO_MODULO:
-                abonos_modulo = _abonos_abono_modulo_disponibles(
-                    matricula,
-                    recup_editada.numero_modulo,
-                    recuperacion_actual=recup,
-                )
-                abono_modulo = abonos_modulo[0] if abonos_modulo else None
-                if abono_modulo:
-                    recup_editada.pagada = True
-                    recup_editada.fecha_recuperacion = (
-                        recup_editada.fecha_programada
-                        or recup_editada.fecha_marcada
-                    )
-                    recup_editada.abono = abono_modulo
-                    recup_editada.save()
-                    messages.success(
-                        request,
-                        f'Recuperación actualizada y descontada con {abono_modulo.numero_recibo}.'
-                    )
-                    return _redirect_despues_recuperacion(request, matricula)
-                form.add_error(
-                    'modo_registro',
-                    'Ese pago "Abono + Módulo" ya no está disponible para descontar.'
-                )
-            else:
-                recup_editada.pagada = False
-                recup_editada.fecha_recuperacion = None
-                recup_editada.abono = None
-                recup_editada.save()
-                messages.success(request, 'Recuperación actualizada y dejada como pendiente.')
-                return _redirect_despues_recuperacion(request, matricula)
+            recup_editada.pagada = False
+            recup_editada.fecha_recuperacion = None
+            recup_editada.abono = None
+            recup_editada.save()
+            messages.success(request, 'Recuperación actualizada y dejada como pendiente.')
+            return _redirect_despues_recuperacion(request, matricula)
     else:
         form = RecuperacionPendienteForm(
             instance=recup,
-            initial={'modo_registro': modo_inicial},
             matricula=matricula,
         )
 
@@ -3000,9 +3092,7 @@ def recuperacion_editar(request, recup_pk):
         'form': form,
         'matricula': matricula,
         'recuperacion': recup,
-        'abonos_modulo_disponibles': abonos_modulo_disponibles,
         'modo_edicion': True,
-        'permitir_modo_registro': not tiene_cobro_recuperacion,
         'next_url': request.GET.get('next', ''),
     })
 
@@ -3029,7 +3119,6 @@ def recuperacion_cobrar(request, recup_pk):
     matricula = recup.matricula
 
     if request.method == 'POST':
-        form = AbonoForm(request.POST, matricula=matricula)
         # Forzar tipo_pago='recuperacion' y modulo=el de la recuperación
         post = request.POST.copy()
         post['tipo_pago'] = 'recuperacion'
@@ -3041,6 +3130,26 @@ def recuperacion_cobrar(request, recup_pk):
             abono.tipo_pago = 'recuperacion'
             abono.numero_modulo = recup.numero_modulo
             abono.registrado_por = request.user
+            if form.cleaned_data.get('tipo_cobro') == 'mixto':
+                # `monto` conserva el total. En el modelo `monto_2` guarda
+                # la segunda parte y la primera se obtiene como total - monto_2.
+                abono.monto = form.cleaned_data['monto']
+                abono.metodo = (
+                    form.cleaned_data.get('metodo_pago_1') or 'efectivo'
+                )
+                abono.banco = form.cleaned_data.get('banco_1') or ''
+                abono.monto_2 = (
+                    form.cleaned_data.get('monto_pago_2')
+                    or Decimal('0.00')
+                )
+                abono.metodo_2 = (
+                    form.cleaned_data.get('metodo_pago_2') or 'efectivo'
+                )
+                abono.banco_2 = form.cleaned_data.get('banco_2') or ''
+            else:
+                abono.monto_2 = None
+                abono.metodo_2 = ''
+                abono.banco_2 = ''
             abono.save()
             # Marcar recuperación como pagada
             recup.pagada = True
@@ -3097,6 +3206,64 @@ def recuperacion_eliminar(request, recup_pk):
 DIAS_SEMANA_ES = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
 
 
+def _modulo_recaudacion_label(matricula, numero_modulo):
+    """Etiqueta real del modulo vigente para pantalla, impresion y exportaciones."""
+    try:
+        numero = max(int(numero_modulo or 1), 1)
+    except (TypeError, ValueError):
+        numero = 1
+
+    curso = getattr(matricula, 'curso', None)
+    nombre = ''
+    if curso and curso.nombrar_modulos and curso.nombres_modulos:
+        nombres_por_modalidad = (
+            curso.nombres_modulos if isinstance(curso.nombres_modulos, dict) else {}
+        )
+        nombres = nombres_por_modalidad.get(matricula.modalidad, []) or []
+        if isinstance(nombres, list) and 1 <= numero <= len(nombres):
+            nombre = str(nombres[numero - 1] or '').strip()
+
+    return f'Módulo {numero} - {nombre}' if nombre else f'Módulo {numero}'
+
+
+def _recuperacion_recaudacion_label(matricula, abonos_dia):
+    """Estado de recuperación visible en pantalla, impresión y Excel."""
+    recuperaciones = list(matricula.recuperaciones_pendientes.all())
+    abonos_dia_ids = {a.pk for a in abonos_dia if a.pk}
+    abonos_vinculados = set()
+    etiquetas = []
+
+    for recuperacion in recuperaciones:
+        if (
+            recuperacion.pagada
+            and recuperacion.abono_id in abonos_dia_ids
+        ):
+            etiquetas.append(
+                f'✱ Pagada · Módulo {recuperacion.numero_modulo}'
+            )
+            abonos_vinculados.add(recuperacion.abono_id)
+
+    # Protege también pagos de recuperación antiguos o importados que aún no
+    # tenían vínculo con RecuperacionPendiente.
+    for abono in abonos_dia:
+        if (
+            abono.tipo_pago == 'recuperacion'
+            and abono.pk not in abonos_vinculados
+        ):
+            etiquetas.append(
+                f'✱ Pagada · Módulo {abono.numero_modulo or 1}'
+            )
+
+    for recuperacion in recuperaciones:
+        if not recuperacion.pagada:
+            etiquetas.append(
+                f'✱ Pendiente · Módulo {recuperacion.numero_modulo}'
+            )
+
+    # Conserva el orden y evita duplicados si un dato histórico coincidiera.
+    return ' · '.join(dict.fromkeys(etiquetas))
+
+
 def _jornadas_recaudacion_queryset(curso_id, ciudad='', modalidad=''):
     """Jornadas disponibles para el selector de la hoja de recaudación."""
     if not (curso_id and str(curso_id).isdigit()):
@@ -3117,7 +3284,6 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
     items = []
     total_efectivo = Decimal('0.00')
     total_transferencia = Decimal('0.00')
-    total_recaudar_esperado = Decimal('0.00')
     total_recaudado = Decimal('0.00')
     total_cuotas = Decimal('0.00')
 
@@ -3141,9 +3307,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
         plan_recaudacion = _plan_recaudacion_matricula(m, fecha_obj)
         modulo_actual = plan_recaudacion['modulo']
 
-        # Recuperaciones pendientes en este módulo
-        tiene_recup = m.recuperaciones_pendientes.filter(pagada=False).exists()
-        recup_str = '✱ Recuperar' if tiene_recup else ''
+        recup_str = _recuperacion_recaudacion_label(m, abonos_dia)
 
         cuota_sugerida = plan_recaudacion['cuota_sugerida']
 
@@ -3154,9 +3318,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
             elif parte['metodo'] in ('transferencia', 'tarjeta'):
                 total_transferencia += parte['monto']
 
-        saldo_pendiente = plan_recaudacion['saldo_pendiente']
-
-        total_recaudar_esperado += saldo_pendiente
+        saldo_modulo = plan_recaudacion['saldo_modulo']
         total_cuotas += cuota_sugerida
         total_recaudado += pagado_dia
 
@@ -3164,7 +3326,8 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
             'estudiante': m.estudiante,
             'matricula_id': m.pk,
             'modulo': modulo_actual,
-            'saldo_pendiente': saldo_pendiente,
+            'modulo_label': _modulo_recaudacion_label(m, modulo_actual),
+            'saldo_modulo': saldo_modulo,
             'cuota_sugerida': cuota_sugerida,
             'cuota_manual': plan_recaudacion.get('cuota_manual', False),
             'recaudado': pagado_dia,
@@ -3213,7 +3376,6 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
         'items': items,
         'total_efectivo': total_efectivo,
         'total_transferencia': total_transferencia,
-        'total_recaudar_esperado': total_recaudar_esperado,
         'total_cuotas': total_cuotas,
         'total_recaudado': total_recaudado,
     }
@@ -3236,6 +3398,8 @@ def _construir_hojas_recaudacion(fecha_obj, curso_id, ciudad='',
         estado='retiro_voluntario',
     ).select_related(
         'estudiante', 'jornada', 'jornada__sede', 'registrado_por',
+    ).prefetch_related(
+        'abonos', 'recuperaciones_pendientes__abono',
     ).order_by(
         'jornada__fecha_inicio', 'jornada__modalidad', 'jornada__hora_inicio',
         'jornada__id', 'estudiante__nombres', 'id',
@@ -3276,39 +3440,25 @@ def _distribuir_saldo_en_cuotas_enteras(saldo, cantidad):
 # ─────────────────────────────────────────────────────────────────
 # ALGORITMO ÚNICO DE CUOTA DE RECAUDACIÓN
 #
-#   cuota_de_hoy = saldo_pendiente_actual ÷ semanas_restantes
+#   cuota_de_hoy = saldo pendiente del módulo vigente
 #
-# Un curso tiene N módulos y cada módulo ES una semana de clase. La cuota
-# NO es fija: se recalcula en CADA generación de la hoja con el saldo real
-# del momento. Así el sistema absorbe solo la excepción del estudiante que
-# paga de más (o de menos): lo que falte siempre se reparte entre las
-# semanas que de verdad quedan.
+# La Hoja de Recaudación cobra exclusivamente el módulo vigente. El valor
+# objetivo de cada módulo sale del valor neto posterior a la reserva dividido
+# entre la cantidad de módulos configurada. Los pagos se aplican en orden:
+# primero completan el módulo actual y luego avanzan a los siguientes.
 #
-# semanas_restantes = min(
-#       N − semanas_cubiertas_por_pago,      # lo que ya pagó no se recobra
-#       semanas_de_calendario_no_vencidas    # lo que queda del curso
-#   )
-#
-# Redondeo: las cuotas automáticas se expresan en dólares enteros y cualquier
-# dólar sobrante se distribuye entre las primeras cuotas para mantenerlas lo
-# más parejas posible. Si el saldo incluye centavos inevitables por un
-# descuento o ajuste manual, solo la última cuota los conserva.
-# Invariante: sum(cuotas) == saldo_pendiente y el saldo llega a $0 exactamente.
-#
-# Ejemplos reales:
-#   • Asistente Contable $100, 4 sem, pagó $70 → cubrió sem 1 y 2 (módulo
-#     $25 c/u; la 3.ª pide $75 acumulados). Está en el módulo 3 y quedan 2
-#     semanas → $30 ÷ 2 = $15.00 / $15.00.   (antes daba $22.50 / $7.50)
-#   • Melanie $110, 4 sem, pagó $40 → cubrió sem 1 → $70 en 3 cuotas:
-#     $24.00 / $23.00 / $23.00.
-#   • Si en la semana 2 paga $30 (más que su cuota), su saldo baja a $40 y
-#     quedan 2 semanas → las cuotas futuras BAJAN a $20.00 / $20.00.
+# Ejemplo: curso $110, reserva $10 y 4 módulos de $25. Si el estudiante
+# pagó $40 en total, cubrió la reserva, el módulo 1 y $5 del módulo 2. La
+# hoja muestra únicamente $20 como saldo del módulo 2; no redistribuye los
+# $70 pendientes de todo el curso.
 # ─────────────────────────────────────────────────────────────────
 
 
 def _semanas_recaudacion_matricula(matricula):
-    """Número de módulos del curso = número de semanas de pago."""
+    """Cantidad de cuotas configuradas para la hoja de recaudación."""
     if matricula.curso_id:
+        if matricula.curso.usa_pago_unico_recaudacion(matricula.modalidad):
+            return 1
         return max(int(matricula.curso.get_numero_modulos(matricula.modalidad) or 1), 1)
     return 1
 
@@ -3375,7 +3525,8 @@ def _semanas_calendario_restantes(matricula, fecha_recaudacion, total_semanas):
     Semanas de pago que aún NO vencieron a la fecha de la hoja, según el
     calendario de la modalidad (el mismo del panel de alertas: presencial
     semanal desde el inicio de jornada; online un día antes del inicio y el
-    saldo a los 13 días; ciclo corto online, pago único).
+    saldo a los 13 días; ciclo corto online con cobro semanal o pago único,
+    según la configuración del curso).
 
     Esto sostiene la regla invariable: aunque el estudiante venga atrasado,
     su saldo se reparte solo entre las semanas que realmente quedan, de modo
@@ -3392,7 +3543,7 @@ def _semanas_calendario_restantes(matricula, fecha_recaudacion, total_semanas):
 
     # Se cuentan FECHAS DISTINTAS, no módulos: varios módulos pueden vencer
     # el mismo día y entonces son UN solo cobro. Es lo que ocurre con el
-    # ciclo corto online (pago único un día antes del inicio) y con el
+    # ciclo corto online configurado con pago único y con el
     # segundo cobro del online normal (todo el saldo restante a los 13 días).
     fechas = {
         venc for (venc, _hito) in calendario.values()
@@ -3408,17 +3559,19 @@ def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None,
 
     Devuelve dict con:
       modulo            → módulo/semana en curso (el primero no cubierto)
-      saldo_pendiente   → saldo real de hoy
-      cuota_sugerida    → cuánto cobrarle HOY (= cuotas[0])
-      cuotas_pendientes → cuántas semanas quedan por cobrar
-      cuotas            → proyección; su suma es EXACTAMENTE el saldo
+      saldo_pendiente   → saldo total del curso (solo para compatibilidad)
+      saldo_modulo      → saldo pendiente del módulo vigente
+      cuota_sugerida    → cuánto cobrar HOY; nunca supera saldo_modulo
+      cuotas_pendientes → cantidad de módulos con saldo
+      cuotas            → saldos del módulo vigente y módulos posteriores
       cuota_manual      → True si la cuota de hoy fue fijada a mano por el
                           usuario para esta fecha (ver CuotaManualRecaudacion)
 
     Si existe una cuota manual guardada para (matrícula, fecha) y
     aplicar_manual=True, esa cuota reemplaza a la automática en
-    cuota_sugerida (acotada a [0, saldo]). HTML, Excel y PDF pasan por esta
-    misma función, así que el valor manual sale igual en los tres.
+    cuota_sugerida (acotada a [0, saldo_modulo]). HTML, impresión y exports
+    pasan por esta misma función, así que el valor manual nunca puede cobrar
+    parte de un módulo futuro.
     """
     saldo = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
     saldo = saldo.quantize(CENTAVO, rounding=ROUND_HALF_UP)
@@ -3430,6 +3583,7 @@ def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None,
         return {
             'modulo': total_semanas,
             'saldo_pendiente': Decimal('0.00'),
+            'saldo_modulo': Decimal('0.00'),
             'cuota_sugerida': Decimal('0.00'),
             'cuotas_pendientes': 0,
             'cuotas': [],
@@ -3437,16 +3591,35 @@ def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None,
             'cuota_manual': False,
         }
 
-    # La hoja de recaudación debe cobrar la cuota lógica del módulo pendiente,
-    # aunque la fecha de la hoja sea posterior al calendario original de la
-    # jornada. El atraso se ve en el saldo, pero no debe concentrar todo el
-    # saldo en una sola cuota.
-    semanas_restantes = max(total_semanas - cubiertas_pago, 1)
+    cuotas_objetivo = _cuotas_objetivo_recaudacion(
+        matricula, total_semanas
+    )
+    pagado_cuotas = _pago_aplicable_a_cuotas(matricula)
 
-    cuotas = _distribuir_saldo_en_cuotas_enteras(saldo, semanas_restantes)
+    if cubiertas_pago < total_semanas:
+        modulo_actual = cubiertas_pago + 1
+        requerido_anterior = sum(
+            cuotas_objetivo[:cubiertas_pago], Decimal('0.00')
+        )
+        pagado_modulo = max(
+            pagado_cuotas - requerido_anterior,
+            Decimal('0.00'),
+        )
+        saldo_modulo = max(
+            cuotas_objetivo[cubiertas_pago] - pagado_modulo,
+            Decimal('0.00'),
+        ).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+        cuotas = [saldo_modulo] + cuotas_objetivo[cubiertas_pago + 1:]
+        cuotas = [cuota for cuota in cuotas if cuota > 0]
+    else:
+        # Puede existir saldo total por una reserva incompleta, pero nunca se
+        # disfraza ese valor como saldo de un módulo.
+        modulo_actual = total_semanas
+        saldo_modulo = Decimal('0.00')
+        cuotas = []
 
     # ── Cuota manual guardada para esta fecha (si existe) ──
-    cuota_sugerida = cuotas[0]
+    cuota_sugerida = saldo_modulo
     cuota_manual = False
     if aplicar_manual and fecha_recaudacion is not None:
         from .models import CuotaManualRecaudacion
@@ -3454,21 +3627,21 @@ def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None,
             matricula=matricula, fecha=fecha_recaudacion,
         ).only('monto').first()
         if override is not None:
-            # Lógica de cobranza: la cuota manual nunca sale del rango
-            # [0, saldo pendiente], aunque el saldo haya cambiado después
-            # de guardarla (por ejemplo, si el estudiante abonó luego).
+            # Nunca permite cobrar módulos futuros: el límite es el saldo
+            # pendiente del módulo vigente, no el saldo total del curso.
             cuota_sugerida = max(
-                min(override.monto, saldo), Decimal('0.00')
+                min(override.monto, saldo_modulo), Decimal('0.00')
             ).quantize(CENTAVO, rounding=ROUND_HALF_UP)
             cuota_manual = True
 
     return {
-        'modulo': min(cubiertas_pago + 1, total_semanas),
+        'modulo': modulo_actual,
         'saldo_pendiente': saldo,
+        'saldo_modulo': saldo_modulo,
         'cuota_sugerida': cuota_sugerida,
-        'cuotas_pendientes': semanas_restantes,
+        'cuotas_pendientes': len(cuotas),
         'cuotas': cuotas,
-        'cuota_estandar': cuotas[0],
+        'cuota_estandar': saldo_modulo,
         'cuota_manual': cuota_manual,
     }
 
@@ -3750,7 +3923,11 @@ def _export_pagos_modulo_filtros(request):
     modalidad = request.GET.get('modalidad', '').strip()
     ciudad = request.GET.get('ciudad', '').strip()
     tipo_matricula = request.GET.get('tipo_matricula', '').strip()
+    if tipo_matricula not in dict(TIPOS_MATRICULA_FILTRO_PAGOS_MODULO):
+        tipo_matricula = ''
     filtro_modulo_estado = request.GET.get('filtro_modulo_estado', '').strip()
+    fecha_jornada = request.GET.get('fecha_jornada', '').strip()
+    matricula_id = request.GET.get('matricula', '').strip()
 
     curso_sel = None
     if curso_id and curso_id.isdigit():
@@ -3758,12 +3935,17 @@ def _export_pagos_modulo_filtros(request):
             curso_sel = Curso.objects.get(pk=int(curso_id), activo=True)
         except Curso.DoesNotExist:
             curso_sel = None
+    matricula_id = _normalizar_matricula_filtro_pagos_modulo(
+        matricula_id, curso_sel
+    )
 
     return curso_sel, {
         'modalidad': modalidad,
         'ciudad': ciudad,
         'tipo_matricula': tipo_matricula,
         'filtro_modulo_estado': filtro_modulo_estado,
+        'fecha_jornada': fecha_jornada,
+        'matricula': matricula_id,
     }
 
 
@@ -3781,6 +3963,8 @@ def pagos_por_modulo_export_excel(request):
         ciudad=filtros['ciudad'],
         tipo_matricula=filtros['tipo_matricula'],
         filtro_modulo_estado=filtros['filtro_modulo_estado'],
+        fecha_jornada=filtros['fecha_jornada'],
+        matricula_id=filtros['matricula'],
     )
 
     # Encabezados base + 1 columna por módulo + Asistencia
@@ -3818,7 +4002,13 @@ def pagos_por_modulo_export_excel(request):
         ]
         for mod in x['modulos_visibles_data']:
             if mod.get('aplica', True):
-                fila.append(f"{mod['estado']} – ${float(mod['pagado']):.2f} / ${float(mod['esperado']):.2f}")
+                detalle = (
+                    f"{mod['estado']} – ${float(mod['pagado']):.2f} / "
+                    f"${float(mod['esperado']):.2f}"
+                )
+                if mod.get('es_recuperacion'):
+                    detalle += ' – Recuperación'
+                fila.append(detalle)
             else:
                 fila.append('— (no aplica)')
         fila.append('')  # Asistencia: en blanco para firmar
@@ -3878,6 +4068,8 @@ def pagos_por_modulo_export_pdf(request):
         ciudad=filtros['ciudad'],
         tipo_matricula=filtros['tipo_matricula'],
         filtro_modulo_estado=filtros['filtro_modulo_estado'],
+        fecha_jornada=filtros['fecha_jornada'],
+        matricula_id=filtros['matricula'],
     )
 
     # ── Elegir tamaño de página según número de módulos ──
@@ -3952,8 +4144,13 @@ def pagos_por_modulo_export_pdf(request):
             estado = mod['estado']
             simbolo = {'Pagado': '✓', 'Parcial': '◐', 'Pendiente': '○'}.get(estado, '')
             color = {'Pagado': '#2e7d32', 'Parcial': '#f0ad4e', 'Pendiente': '#c62828'}.get(estado, '#000')
+            marca_recuperacion = (
+                '<br/><font color="#8a5a00"><b>Recuperación</b></font>'
+                if mod.get('es_recuperacion') else ''
+            )
             fila.append(Paragraph(
-                f'<font color="{color}"><b>{simbolo} ${float(mod["pagado"]):.2f}</b></font>',
+                f'<font color="{color}"><b>{simbolo} ${float(mod["pagado"]):.2f}</b></font>'
+                f'{marca_recuperacion}',
                 cell_st,
             ))
         fila.append('')  # Asistencia: vacío para firma a mano
@@ -4075,7 +4272,7 @@ def hoja_recaudacion_guardar_cuotas(request):
                   "cuotas": [{"matricula_id": 1, "monto": "15.00"}, ...]}
 
     Reglas:
-      • Cada monto se acota a [0, saldo pendiente] de su matrícula.
+      • Cada monto se acota a [0, saldo pendiente del módulo vigente].
       • Si el monto queda IGUAL a la cuota automática del sistema, el
         registro manual se elimina: esa fila vuelve al cálculo dinámico.
       • Si difiere, se guarda/actualiza como CuotaManualRecaudacion y a
@@ -4103,13 +4300,12 @@ def hoja_recaudacion_guardar_cuotas(request):
         except Exception:
             continue
 
-        saldo = matricula.saldo if matricula.saldo > 0 else Decimal('0.00')
-        monto = max(min(monto, saldo), Decimal('0.00'))
-
         # Cuota automática (sin overrides) para saber si hay diferencia real.
         plan_auto = _plan_recaudacion_matricula(
             matricula, fecha, aplicar_manual=False
         )
+        saldo_modulo = plan_auto['saldo_modulo']
+        monto = max(min(monto, saldo_modulo), Decimal('0.00'))
         if abs(monto - plan_auto['cuota_sugerida']) < Decimal('0.005'):
             borradas, _ = CuotaManualRecaudacion.objects.filter(
                 matricula=matricula, fecha=fecha,
@@ -4163,7 +4359,7 @@ def hoja_recaudacion_export_excel(request):
                 item['estudiante'].nombre_completo if hasattr(item['estudiante'], 'nombre_completo')
                 else f"{item['estudiante'].nombres}".strip(),
                 item['jornada_inicio'] if item['jornada_inicio'] else '',
-                item['modulo'],
+                item['modulo_label'],
                 float(item['recaudado'] or 0),
                 item['forma_pago'],
                 item['banco'],
@@ -4256,7 +4452,7 @@ def hoja_recaudacion_export_pdf(request):
                 str(i),
                 nombre,
                 item['jornada_inicio'].strftime('%d/%m/%Y') if item['jornada_inicio'] else '—',
-                str(item['modulo']),
+                item['modulo_label'],
                 f"${float(item['recaudado']):.2f}",
                 item['forma_pago'],
                 item['banco'],
@@ -4324,12 +4520,14 @@ def _calendario_vencimientos(matricula):
         de la jornada (ej. inicia 10/07 → vence 09/07). El resto del valor
         pendiente (saldo restante) vence a los 13 días del inicio (un día
         antes de que arranque la segunda mitad del curso).
-      • ONLINE ciclo corto: un cobro por módulo, separado por 7 días.
+      • ONLINE ciclo corto: por defecto, un cobro por módulo separado por 7
+        días. Si tiene activado "pago único online", todo el saldo posterior
+        a la reserva vence en un solo cobro un día antes del inicio.
       • ONLINE de 1 solo módulo: un solo pago un día antes del inicio.
 
     Devuelve un dict {numero_modulo: (fecha_vencimiento, hito)} donde hito es:
       - 'modulo'         → pago de módulo (semanal presencial / módulo 1 online)
-      - 'pago_unico'     → un solo pago por todo el curso (online ciclo corto)
+      - 'pago_unico'     → un solo pago por todo el curso
       - 'saldo_restante' → segundo pago online: todo el saldo que quede
     """
     from datetime import timedelta
@@ -4337,10 +4535,13 @@ def _calendario_vencimientos(matricula):
     inicio = matricula.jornada.fecha_inicio
     n_mod = (matricula.curso.get_numero_modulos(matricula.modalidad) or 1)
     es_corto = bool(getattr(matricula.curso, 'es_ciclo_corto', False))
+    pago_unico = matricula.curso.usa_pago_unico_recaudacion(
+        matricula.modalidad
+    )
 
     calendario = {}
     if matricula.modalidad == 'online':
-        if n_mod == 1:
+        if n_mod == 1 or pago_unico:
             calendario[1] = (inicio - timedelta(days=1), 'pago_unico')
         elif es_corto:
             # Ciclo corto: conserva exactamente una cuota por módulo/semana.
@@ -4363,32 +4564,59 @@ def _calendario_vencimientos(matricula):
     return calendario
 
 
+def _calendario_alertas_pago(matricula):
+    """
+    Calendario exclusivo del panel "Gestión de Matrículas".
+
+    Cada obligación financiera empieza en la fecha real de la jornada y las
+    siguientes vencen cada siete días. El panel siempre conserva el primer
+    módulo impago: nunca salta al módulo de la semana actual. Los cursos con
+    pago único mantienen una sola obligación, aunque académicamente tengan
+    más de un módulo.
+    """
+    from datetime import timedelta
+
+    inicio = matricula.jornada.fecha_inicio
+    total_cuotas = _semanas_recaudacion_matricula(matricula)
+    pago_unico = matricula.curso.usa_pago_unico_recaudacion(
+        matricula.modalidad
+    )
+
+    if pago_unico:
+        return {1: (inicio, 'pago_unico')}
+
+    return {
+        numero: (
+            inicio + timedelta(days=(numero - 1) * 7),
+            'modulo',
+        )
+        for numero in range(1, total_cuotas + 1)
+    }
+
+
 def _calcular_alertas_pago(usuario_actual=None):
     """
     Devuelve la lista de alertas activas: matrículas tipo "Reserva/Abono" o
     "Reserva + Módulo 1" con saldo pendiente cuyo hito de pago YA venció
-    según el calendario de la modalidad (ver _calendario_vencimientos).
+    según el calendario semanal del panel (ver _calendario_alertas_pago).
 
-    En presencial, el recordatorio avanza con la semana vigente de la jornada,
-    aunque exista deuda de semanas anteriores: inicio, inicio + 7 días, etc.
-    Nunca avanza más allá del último módulo del curso. En online conserva sus
-    hitos especiales y avanza según los pagos acumulados. Excluye las alertas
-    que ya fueron marcadas como "revisadas hoy".
+    Siempre muestra el primer módulo que todavía no está cubierto. Cuando se
+    paga, la alerta se oculta hasta que llegue la fecha del siguiente módulo.
+    Con saldo cero desaparece definitivamente. Excluye también las alertas que
+    ya fueron marcadas como "revisadas hoy".
     """
     from .models import AlertaPagoRevisada
-    from datetime import timedelta
-
     hoy = date.today()
 
-    # Solo matrículas con tipo que implica reserva. El filtro de fecha incluye
-    # jornadas que inician mañana, porque las alertas ONLINE vencen un día
-    # antes del inicio de la jornada.
+    # La primera alerta nace el mismo día de inicio de la jornada.
     qs = Matricula.objects.filter(
         tipo_matricula__in=TIPOS_CON_RESERVA,
-        jornada__fecha_inicio__lte=hoy + timedelta(days=1),
+        jornada__fecha_inicio__lte=hoy,
     ).exclude(estado='retiro_voluntario').select_related(
         'estudiante', 'curso', 'jornada', 'jornada__sede'
-    ).prefetch_related('abonos')
+    ).prefetch_related(
+        Prefetch('abonos', queryset=Abono.objects.prefetch_related('recuperaciones'))
+    )
 
     # Set de (matricula_id, modulo) ya revisadas hoy → para excluir
     revisadas_hoy = set(
@@ -4403,9 +4631,10 @@ def _calcular_alertas_pago(usuario_actual=None):
             continue  # curso totalmente pagado: nunca alertar
 
         n_mod = m.curso.get_numero_modulos(m.modalidad) or 1
-        cuotas_objetivo = _cuotas_objetivo_recaudacion(m, n_mod)
+        total_cuotas = _semanas_recaudacion_matricula(m)
+        cuotas_objetivo = _cuotas_objetivo_recaudacion(m, total_cuotas)
 
-        calendario = _calendario_vencimientos(m)
+        calendario = _calendario_alertas_pago(m)
 
         # Primer módulo no cubierto por los pagos posteriores a la reserva.
         pagado_cuotas = _pago_aplicable_a_cuotas(m)
@@ -4423,20 +4652,6 @@ def _calcular_alertas_pago(usuario_actual=None):
             continue  # está al día
 
         numero_modulo = primer_modulo_pendiente
-        if m.modalidad == 'presencial':
-            # El aviso semanal se ancla siempre al inicio real de la jornada.
-            # Si empezó el 01/07, las semanas vigentes son 01, 08, 15, 22...
-            # Usamos el último hito alcanzado, sin inventar módulos posteriores.
-            modulos_vencidos = [
-                k for k, (fecha, _hito) in calendario.items()
-                if fecha <= hoy
-            ]
-            if not modulos_vencidos:
-                continue
-            numero_modulo = max(
-                primer_modulo_pendiente,
-                max(modulos_vencidos),
-            )
 
         fecha_venc, hito = calendario.get(
             numero_modulo, (m.jornada.fecha_inicio, 'modulo')
@@ -4476,6 +4691,17 @@ def _calcular_alertas_pago(usuario_actual=None):
         else:
             hito_label = f'Módulo {numero_modulo}'
 
+        es_ciclo_corto = bool(getattr(m.curso, 'es_ciclo_corto', False))
+        if es_ciclo_corto:
+            if m.curso.usa_pago_unico_recaudacion(m.modalidad):
+                ciclo_corto_label = 'Ciclo corto · Un solo pago'
+            else:
+                ciclo_corto_label = (
+                    f'Ciclo corto · {total_cuotas} pagos por módulo'
+                )
+        else:
+            ciclo_corto_label = ''
+
         celular = (m.estudiante.celular or '').strip()
         # Limpieza básica del celular para WhatsApp (solo dígitos, agregamos 593 si parece local)
         digitos = ''.join(c for c in celular if c.isdigit())
@@ -4491,6 +4717,27 @@ def _calcular_alertas_pago(usuario_actual=None):
             sede_label = m.jornada.sede_nombre or m.jornada.ciudad or ''
         if not sede_label:
             sede_label = 'Online' if m.modalidad == 'online' else '—'
+
+        pagos_recuperacion = sorted(
+            (
+                abono for abono in m.abonos.all()
+                if _abono_corresponde_a_recuperacion(abono)
+            ),
+            key=lambda abono: (abono.fecha, abono.pk),
+            reverse=True,
+        )
+        modulos_recuperacion = sorted({
+            abono.numero_modulo
+            for abono in pagos_recuperacion
+            if abono.numero_modulo
+        })
+        recuperacion_modulos_label = (
+            ', '.join(f'Módulo {numero}' for numero in modulos_recuperacion)
+            if modulos_recuperacion else 'Sin módulo indicado'
+        )
+        ultimo_pago_recuperacion = (
+            pagos_recuperacion[0] if pagos_recuperacion else None
+        )
 
         alertas.append({
             'matricula': m,
@@ -4512,8 +4759,20 @@ def _calcular_alertas_pago(usuario_actual=None):
             'valor_m1': cuota_modulo,
             'saldo_m1': monto_hito,
             'saldo_total': saldo_total,
+            'es_ciclo_corto': es_ciclo_corto,
+            'ciclo_corto_label': ciclo_corto_label,
             'celular': celular,
             'celular_wa': celular_wa,
+            'recuperacion_pagada': bool(pagos_recuperacion),
+            'recuperacion_modulos_label': recuperacion_modulos_label,
+            'recuperacion_fecha': (
+                ultimo_pago_recuperacion.fecha
+                if ultimo_pago_recuperacion else None
+            ),
+            'recuperacion_recibo': (
+                ultimo_pago_recuperacion.numero_recibo
+                if ultimo_pago_recuperacion else ''
+            ),
         })
 
     # Ordenar de mayor atraso a menor

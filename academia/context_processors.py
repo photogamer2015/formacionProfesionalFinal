@@ -94,4 +94,42 @@ def recordatorios(request):
         'recordatorios_no_leidos': pendientes,
         'recordatorios_no_leidos_n': len(pendientes),
     }
+
+
+def perfil_usuario(request):
+    """Avatar del usuario autenticado para el encabezado global."""
+    from .models import (
+        ARCHIVOS_AVATAR_PERFIL,
+        AVATAR_PERFIL_PREDETERMINADO,
+        PerfilUsuario,
+    )
+
+    archivo_predeterminado = ARCHIVOS_AVATAR_PERFIL[
+        AVATAR_PERFIL_PREDETERMINADO
+    ]
+    user = getattr(request, 'user', None)
+    if user is None or not user.is_authenticated:
+        return {
+            'perfil_avatar': AVATAR_PERFIL_PREDETERMINADO,
+            'perfil_avatar_archivo': archivo_predeterminado,
+        }
+
+    try:
+        avatar = (
+            PerfilUsuario.objects
+            .filter(user_id=user.pk)
+            .values_list('avatar', flat=True)
+            .first()
+        ) or AVATAR_PERFIL_PREDETERMINADO
+    except Exception:
+        # La cabecera sigue funcionando aunque la migración aún no se aplique.
+        avatar = AVATAR_PERFIL_PREDETERMINADO
+
+    return {
+        'perfil_avatar': avatar,
+        'perfil_avatar_archivo': ARCHIVOS_AVATAR_PERFIL.get(
+            avatar,
+            archivo_predeterminado,
+        ),
+    }
     

@@ -7,6 +7,7 @@
 <style>
     /* Estilos solo de pantalla (no se imprimen) */
     .no-print { /* se oculta al imprimir */ }
+    .print-only { display: none; }
     .recaudacion-date-picker {
         position: relative;
         min-width: 0;
@@ -265,14 +266,35 @@
 
     @media print {
         body { background: white !important; }
-        .no-print, .crumb, .top-bar, header, nav, .menu, .sidebar { display: none !important; }
-        .hoja-recaudacion { page-break-after: always; box-shadow: none !important; border: none !important; padding: 14px !important; }
+        .no-print, .crumb, .top-bar, header, nav, .menu, .sidebar,
+        .global-back-button, #assistant-widget { display: none !important; }
+        .hoja-recaudacion { page-break-after: always; box-shadow: none !important; border: none !important; padding: 8px !important; }
         .hoja-recaudacion:last-of-type { page-break-after: auto; }
         .hoja-tabla th { background:#f0ad4e !important; color:white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .hoja-tabla th:nth-child(5),
-        .hoja-tabla td:nth-child(5),
-        .hoja-tabla th:nth-child(6),
-        .hoja-tabla td:nth-child(6) { display: none !important; }
+        .hoja-tabla .col-cuota { display: table-cell !important; }
+        .screen-only { display: none !important; }
+        .print-only { display: inline !important; }
+        .hoja-tabla {
+            width: 100% !important;
+            table-layout: fixed !important;
+            font-size: 8px !important;
+        }
+        .hoja-tabla th,
+        .hoja-tabla td {
+            padding: 3px 4px !important;
+            overflow-wrap: anywhere;
+        }
+        .hoja-tabla th { font-size: 7px !important; line-height: 1.15; }
+        .hoja-tabla th:nth-child(1),  .hoja-tabla td:nth-child(1)  { width: 3% !important; }
+        .hoja-tabla th:nth-child(2),  .hoja-tabla td:nth-child(2)  { width: 20% !important; }
+        .hoja-tabla th:nth-child(3),  .hoja-tabla td:nth-child(3)  { width: 11% !important; }
+        .hoja-tabla th:nth-child(4),  .hoja-tabla td:nth-child(4)  { width: 6% !important; }
+        .hoja-tabla th:nth-child(5),  .hoja-tabla td:nth-child(5)  { width: 11% !important; white-space: nowrap; }
+        .hoja-tabla th:nth-child(6),  .hoja-tabla td:nth-child(6)  { width: 9% !important; white-space: nowrap; }
+        .hoja-tabla th:nth-child(7),  .hoja-tabla td:nth-child(7)  { width: 16% !important; }
+        .hoja-tabla th:nth-child(8),  .hoja-tabla td:nth-child(8)  { width: 10% !important; }
+        .hoja-tabla th:nth-child(9),  .hoja-tabla td:nth-child(9)  { width: 7% !important; }
+        .hoja-tabla th:nth-child(10), .hoja-tabla td:nth-child(10) { width: 7% !important; }
         .hoja-totales { display: none !important; }
     }
 
@@ -319,6 +341,7 @@
         padding: 6px 8px;
         text-align: left;
         vertical-align: middle;
+        overflow-wrap: anywhere;
     }
     .hoja-tabla th {
         background: #f0ad4e;
@@ -334,7 +357,7 @@
         margin-top: 12px;
         border-radius: 6px;
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         gap: 12px;
         font-size: 13px;
     }
@@ -375,8 +398,6 @@
         {% with qs="?fecha="|add:filtros.fecha|add:"&ciudad="|add:filtros.ciudad|add:"&curso="|add:filtros.curso|add:"&jornada="|add:filtros.jornada|add:"&modalidad="|add:filtros.modalidad %}
         <a href="{% url 'academia:hoja_recaudacion_export_excel' %}{{ qs }}"
            class="btn btn-secondary" title="Exportar a Excel">📊 Excel</a>
-        <a href="{% url 'academia:hoja_recaudacion_export_pdf' %}{{ qs }}"
-           class="btn btn-secondary" title="Exportar a PDF">📄 PDF</a>
         <button type="button" onclick="window.print()" class="btn btn-success">🖨️ Imprimir</button>
         {% endwith %}
     </div>
@@ -385,12 +406,12 @@
 
 {% if hojas %}
 {% comment %}
-   Modo manual de recaudación: al activarlo, la columna "A Recaudar (Cuota)"
+   Modo manual de recaudación: al activarlo, la columna "A Recaudar (Módulo)"
    se vuelve editable por estudiante y los totales se recalculan al instante.
    La lógica de cobranza se mantiene: la cuota manual nunca puede superar el
-   saldo pendiente del estudiante ni ser negativa. "Guardar cambios" persiste
+   saldo del módulo vigente ni ser negativa. "Guardar cambios" persiste
    los valores para ESTA fecha y desde entonces salen igual en la vista, la
-   impresión y los exports Excel/PDF. Dejar una cuota igual a la automática
+   impresión y el Excel. Dejar una cuota igual a la automática
    la restaura al cálculo dinámico del sistema.
 {% endcomment %}
 <div class="card-box no-print" id="panel-cuota-manual"
@@ -400,10 +421,10 @@
         ✏️ Poner el recaudar manualmente
     </label>
     <span id="ayuda-cuota-manual" style="font-size:11.5px; color:#777; flex:1; min-width:260px;">
-        Activa esta opción para editar la columna "A Recaudar (Cuota)" de cada estudiante.
-        El total se recalcula solo y ninguna cuota puede superar su saldo pendiente.
+        Activa esta opción para editar la columna "A Recaudar (Módulo)" de cada estudiante.
+        El total se recalcula solo y ninguna cuota puede superar el saldo del módulo vigente.
         Con <strong>Guardar cambios</strong> los valores quedan fijos para esta fecha
-        (también en el Excel y el PDF); una cuota igual a la automática vuelve al cálculo del sistema.
+        (también en la impresión y el Excel); una cuota igual a la automática vuelve al cálculo del sistema.
     </span>
     <button type="button" id="btn-guardar-cuotas" class="btn btn-success"
             style="display:none; font-size:12.5px; padding:7px 14px;">
@@ -816,7 +837,7 @@
     <div class="hoja-encabezado">
         Módulo de {{ hoja.curso.nombre }} 
         {% if hoja.curso.es_ciclo_corto %}
-        <span style="color: #FFD700; font-weight: bold;">(CICLO CORTO)</span> 
+        <span style="color: #FFD700; font-weight: bold;">(CICLO CORTO{% if hoja.jornada.modalidad == 'online' and hoja.curso.pago_unico_online %} · PAGO ÚNICO ONLINE{% endif %})</span>
         {% endif %}
         — {{ hoja.jornada_label }}
         — Recordar que si el estudiante falta a clases igual debe cumplir con el plan de financiamiento
@@ -835,9 +856,11 @@
                 <th style="width:30px; text-align:center;">#</th>
                 <th>Nombre del estudiante</th>
                 <th style="width:90px; text-align:center;">Inicio jornada</th>
-                <th style="width:50px; text-align:center;">Mód.</th>
-                <th style="width:70px; text-align:right;">Saldo Pend.</th>
-                <th style="width:80px; text-align:right;">A Recaudar (Cuota)</th>
+                <th style="width:82px; text-align:center;">Mód.</th>
+                <th class="col-cuota" style="width:100px; text-align:right;">
+                    <span class="screen-only">A Recaudar (Módulo)</span>
+                    <span class="print-only">Saldo a recaudar</span>
+                </th>
                 <th style="width:80px; text-align:right;">Recaudado</th>
                 <th style="width:120px;">Forma de pago</th>
                 <th style="width:110px;">Banco</th>
@@ -856,12 +879,11 @@
                 <td style="text-align:center; font-size:11px;">
                     {% if item.jornada_inicio %}{{ item.jornada_inicio|date:"d/m/Y" }}{% else %}—{% endif %}
                 </td>
-                <td style="text-align:center; font-weight:700;">{{ item.modulo }}</td>
-                <td style="text-align:right;">${{ item.saldo_pendiente|floatformat:2 }}</td>
-                <td class="celda-cuota" style="text-align:right; font-weight:600; color:#1a237e;"
+                <td style="text-align:center; font-weight:700;">{{ item.modulo_label }}</td>
+                <td class="celda-cuota col-cuota" style="text-align:right; font-weight:600; color:#1a237e;"
                     data-matricula="{{ item.matricula_id }}"
                     data-auto="{{ item.cuota_sugerida|unlocalize }}"
-                    data-saldo="{{ item.saldo_pendiente|unlocalize }}"
+                    data-saldo="{{ item.saldo_modulo|unlocalize }}"
                     data-manual="{% if item.cuota_manual %}1{% else %}0{% endif %}">{% if item.cuota_manual %}<span class="marca-manual" title="Cuota fijada manualmente para esta fecha">✏️</span> {% endif %}${{ item.cuota_sugerida|floatformat:2 }}</td>
                 <td style="text-align:right; font-weight:700; color:{% if item.recaudado > 0 %}#2e7d32{% else %}#999{% endif %};">
                     ${{ item.recaudado|floatformat:2 }}
@@ -869,7 +891,9 @@
                 <td>{{ item.forma_pago }}</td>
                 <td>{{ item.banco }}</td>
                 <td style="text-align:center;">{{ item.asistencia }}</td>
-                <td style="color:#c9a227; font-weight:600;">{{ item.recuperacion }}</td>
+                <td style="font-weight:700; color:#8a5a00; {% if item.recuperacion %}background:#fff8e1; border-left:2px solid #f0ad4e;{% endif %}">
+                    {{ item.recuperacion }}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -877,11 +901,7 @@
 
     <div class="hoja-totales">
         <div>
-            <div class="label">Saldo Pendiente</div>
-            <div class="valor" style="color:#c62828;">${{ hoja.total_recaudar_esperado|floatformat:2 }}</div>
-        </div>
-        <div>
-            <div class="label">A Recaudar (Cuotas)</div>
+            <div class="label">Total a recaudar por módulos</div>
             <div class="valor total-cuotas" style="color:#1a237e;"
                  data-auto="{{ hoja.total_cuotas|unlocalize }}">${{ hoja.total_cuotas|floatformat:2 }}</div>
         </div>
@@ -929,12 +949,12 @@
 (function () {
     'use strict';
 
-    // ══ Modo manual de "A Recaudar (Cuota)" con guardado persistente ══
+    // ══ Modo manual de "A Recaudar (Módulo)" con guardado persistente ══
     // Reglas de cobranza que se mantienen SIEMPRE:
-    //   • 0 ≤ cuota manual ≤ saldo pendiente del estudiante
+    //   • 0 ≤ cuota manual ≤ saldo pendiente del módulo vigente
     //   • el total "A Recaudar (Cuotas)" de cada hoja = suma de sus cuotas
     //   • "Guardar cambios" persiste los valores para ESTA fecha y desde
-    //     entonces salen igual en la vista, la impresión y Excel/PDF
+    //     entonces salen igual en la vista, la impresión y Excel
     //   • una cuota igual a la automática se restaura al cálculo dinámico
     var chk = document.getElementById('chk-cuota-manual');
     if (!chk) return;
@@ -959,11 +979,11 @@
         hoja.querySelectorAll('.cuota-input').forEach(function (inp) {
             var saldo = parseFloat(inp.dataset.saldo) || 0;
             var v = leerNumero(inp);
-            // Lógica de cobranza: nunca negativa, nunca mayor al saldo pendiente.
+            // Nunca negativa ni mayor al saldo del módulo vigente.
             var valida = v >= 0 && v <= saldo + 0.005;
             inp.classList.toggle('cuota-invalida', !valida);
             inp.title = valida ? '' :
-                'La cuota debe estar entre $0 y el saldo pendiente (' + fmt(saldo) + ')';
+                'La cuota debe estar entre $0 y el saldo del módulo (' + fmt(saldo) + ')';
             total += Math.min(Math.max(v, 0), saldo);
         });
         var tot = hoja.querySelector('.total-cuotas');
@@ -1050,7 +1070,7 @@
                 estado.style.color = '#2e7d32';
                 estado.textContent = '✔ Guardado. Actualizando…';
                 // Recargar para mostrar el estado persistido (marcas ✏️ y
-                // totales calculados por el servidor, iguales a Excel/PDF).
+                // totales calculados por el servidor, iguales a impresión y Excel).
                 setTimeout(function () { window.location.reload(); }, 600);
             } else {
                 throw new Error(data.error || 'Error al guardar');

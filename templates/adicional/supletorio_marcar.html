@@ -100,6 +100,7 @@
                     {{ form.banco_2 }}{{ form.banco_2.errors }}
                 </div>
             </div>
+            {% include 'includes/pago_mixto_resumen.html' %}
             <small id="mixto-supletorio-error-msg" aria-live="polite" style="display:none; margin-top:10px; color:#d32f2f; font-weight:700; font-size:12px;">
                 ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al valor del supletorio.
             </small>
@@ -143,6 +144,7 @@
         const monto2Input = document.getElementById('id_monto_pago_2_adicional');
         const mixtoError = document.getElementById('mixto-supletorio-error-msg');
         const submitBtn = document.querySelector('button[type="submit"]');
+        const resumenMixto = mixtoContainer ? mixtoContainer.querySelector('[data-pago-mixto-resumen]') : null;
 
         const metodoSel1 = document.getElementById('id_metodo_pago_1_adicional');
         const bancoBloque1 = document.getElementById('bloque-banco-1');
@@ -163,8 +165,9 @@
             }
             [monto1Input, monto2Input].forEach((input) => {
                 if (!input) return;
-                input.style.borderColor = mostrar ? '#d32f2f' : '';
-                input.style.borderWidth = mostrar ? '2px' : '';
+                const validoMixto = !mostrar && tipoCobroSel && tipoCobroSel.value === 'mixto';
+                input.style.borderColor = mostrar ? '#d32f2f' : (validoMixto ? '#2e7d32' : '');
+                input.style.borderWidth = (mostrar || validoMixto) ? '2px' : '';
             });
         }
 
@@ -211,6 +214,12 @@
                 const m1 = numero(monto1Input);
                 const m2 = numero(monto2Input);
                 const total = numero(valorInput);
+                const suma = m1 + m2;
+                const coincide = total > 0 && m1 > 0 && m2 > 0
+                    && Math.abs(suma - total) <= 0.01;
+                if (window.PagoMixtoUI) {
+                    window.PagoMixtoUI.actualizar(resumenMixto, total, suma, coincide);
+                }
                 if (m1 <= 0 || m2 <= 0) {
                     valido = false;
                     mostrarErrorMixto(true, 'Completa Monto 1 y Monto 2 con valores mayores a $0.00.');

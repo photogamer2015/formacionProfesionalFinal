@@ -191,6 +191,17 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .top-profile-avatar {
+            width: 28px;
+            height: 28px;
+            flex: 0 0 28px;
+            display: block;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #ffffff;
+            border: 2px solid rgba(255,255,255,.9);
+            box-shadow: 0 4px 10px rgba(0,0,0,.22);
+        }
         .nav-link-admin {
             background: rgba(228,81,3,.24);
             border-color: rgba(244,122,51,.42);
@@ -939,8 +950,15 @@
         
         {% if user.is_authenticated %}
         <div class="top-profile">
-            <a href="{% url 'academia:comprobante_asesor_detalle' user.id %}" class="top-profile-link">
-                <span class="nav-icon" aria-hidden="true">P</span>
+            <a href="{% url 'academia:comprobante_asesor_detalle' user.id %}"
+               class="top-profile-link"
+               title="Abrir mi perfil">
+                <img
+                    src="{% static perfil_avatar_archivo %}"
+                    alt=""
+                    class="top-profile-avatar"
+                    aria-hidden="true"
+                >
                 <span>Perfil {{ user.first_name|default:user.username }}</span>
             </a>
         </div>
@@ -1028,7 +1046,7 @@
     <div class="container">
         {% block global_back_button %}
         <!-- Botón Global de Retroceder -->
-        <div style="margin-bottom: 24px;">
+        <div class="global-back-button" style="margin-bottom: 24px;">
             <button onclick="history.back()" style="display: inline-flex; align-items: center; gap: 10px; background: white; color: #1B2A4E; border: 2px solid #1B2A4E; font-weight: 700; font-size: 15px; padding: 10px 20px; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: all 0.2s;" onmouseover="this.style.background='#1B2A4E'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='#1B2A4E';">
                 <span style="font-size: 20px; line-height: 1;">⬅️</span> Regresar
             </button>

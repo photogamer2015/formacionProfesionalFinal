@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from types import SimpleNamespace
@@ -15,11 +15,14 @@ from .authentication import (
     LOGIN_MFA_EMAIL_SESSION_KEY, LOGIN_MFA_EMAIL_TO_SAVE_SESSION_KEY,
     LOGIN_MFA_USER_ID_SESSION_KEY,
 )
-from .forms import AbonoForm, AdicionalSupletorioRapidoForm, MatriculaForm
+from .forms import (
+    AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, MatriculaForm,
+)
 from .models import (
     Abono, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
-    Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
-    MatriculaArchivada, PersonaExterna, RecuperacionPendiente, Sede,
+    CuotaManualRecaudacion, Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
+    MatriculaArchivada, PerfilUsuario, PersonaExterna,
+    RecuperacionPendiente, Sede,
 )
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
 from .views import _registrar_pago_inicial
@@ -246,6 +249,53 @@ class LoginCaptchaTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn('_auth_user_id', self.client.session)
+
+
+class PerfilUsuarioTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_superuser(
+            username='yandri',
+            password='clave12345',
+            email='yandri@example.com',
+            first_name='Yandri',
+        )
+        self.client.force_login(self.user)
+        self.url = reverse(
+            'academia:comprobante_asesor_detalle',
+            args=[self.user.pk],
+        )
+
+    def test_perfil_muestra_selector_y_avatar_predeterminado(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Elige tu avatar')
+        self.assertContains(response, 'avatars/corona.svg')
+        self.assertContains(response, 'Princesa Peach')
+
+    def test_usuario_puede_guardar_avatar_y_el_header_lo_refleja(self):
+        response = self.client.post(
+            self.url,
+            {'avatar': 'leon'},
+            follow=True,
+        )
+
+        self.assertRedirects(response, self.url)
+        self.assertEqual(
+            PerfilUsuario.objects.get(user=self.user).avatar,
+            'leon',
+        )
+        self.assertContains(response, 'avatars/leon.svg')
+        self.assertContains(
+            response,
+            'Tu avatar se actualizó correctamente en todo el sistema.',
+        )
+
+    def test_avatar_invalido_no_se_guarda(self):
+        response = self.client.post(self.url, {'avatar': 'desconocido'})
+
+        self.assertRedirects(response, self.url)
+        self.assertFalse(PerfilUsuario.objects.filter(user=self.user).exists())
 
 
 class SessionKeepaliveTests(TestCase):
@@ -1499,6 +1549,28 @@ class PagoInicialMatriculaTests(TestCase):
             saldo_pendiente_al_marcar=Decimal('90.00'),
         )
 
+    def _crear_recuperacion_cobrable(self, usuario):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=usuario,
+        )
+        recuperacion = RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=2,
+            fecha_marcada=date(2026, 8, 1),
+            saldo_pendiente_al_marcar=Decimal('25.00'),
+        )
+        return matricula, recuperacion
+
     def test_recuperaciones_lista_filtra_por_fecha_de_falta(self):
         admin = User.objects.create_superuser(
             username='admin_filtro_falta',
@@ -1606,7 +1678,7 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(abono.numero_modulo, 1)
         self.assertEqual(abono.tipo_pago, 'por_modulo')
 
-    def test_recuperacion_descuenta_modulo_pendiente_cubierto_por_abono(self):
+    def test_recuperacion_no_reutiliza_abono_modulo_existente(self):
         admin = User.objects.create_superuser(
             username='admin_recuperacion',
             password='clave12345',
@@ -1651,13 +1723,144 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(Abono.objects.filter(matricula=matricula).count(), 1)
         recup = RecuperacionPendiente.objects.get(matricula=matricula)
         self.assertEqual(recup.numero_modulo, 2)
-        self.assertTrue(recup.pagada)
-        self.assertEqual(recup.abono, abono)
-        self.assertEqual(recup.fecha_recuperacion, date(2026, 7, 10))
+        self.assertFalse(recup.pagada)
+        self.assertIsNone(recup.abono)
+        self.assertIsNone(recup.fecha_recuperacion)
         abono.refresh_from_db()
         self.assertEqual(abono.tipo_pago, 'por_modulo')
         matricula.refresh_from_db()
         self.assertEqual(matricula.valor_pagado, Decimal('60.00'))
+
+    def test_marcar_recuperacion_no_muestra_descuento_abono_modulo(self):
+        admin = User.objects.create_superuser(
+            username='admin_sin_descuento_recuperacion',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            registrado_por=admin,
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('modo_registro', response.context['form'].fields)
+        self.assertNotContains(response, 'Descontar con Abono + Módulo')
+        self.assertNotContains(response, 'Cómo usar el descuento')
+
+    def test_cobrar_recuperacion_muestra_distribucion_de_pago(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_distribucion',
+            password='clave12345',
+        )
+        _matricula, recuperacion = self._crear_recuperacion_cobrable(admin)
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse(
+                'academia:recuperacion_cobrar',
+                kwargs={'recup_pk': recuperacion.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Distribución de pago *')
+        self.assertContains(response, 'Pago Mixto (Dividir el monto en dos)')
+        self.assertContains(response, 'data-pago-mixto-resumen')
+        self.assertContains(response, 'data-mixto-suma')
+
+    def test_cobrar_recuperacion_guarda_pago_mixto(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_mixta',
+            password='clave12345',
+        )
+        matricula, recuperacion = self._crear_recuperacion_cobrable(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_cobrar',
+                kwargs={'recup_pk': recuperacion.pk},
+            ),
+            {
+                'fecha': '2026-08-01',
+                'monto': '25.00',
+                'cuenta_para_saldo': 'True',
+                'tipo_cobro': 'mixto',
+                'metodo': '',
+                'banco': '',
+                'monto_pago_1': '10.00',
+                'metodo_pago_1': 'efectivo',
+                'banco_1': '',
+                'monto_pago_2': '15.00',
+                'metodo_pago_2': 'transferencia',
+                'banco_2': 'pichincha',
+                'numero_recibo': '',
+                'observaciones': 'Recuperación con pago combinado.',
+            },
+        )
+
+        recuperacion.refresh_from_db()
+        abono = Abono.objects.get(matricula=matricula)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(recuperacion.pagada)
+        self.assertEqual(recuperacion.abono, abono)
+        self.assertEqual(abono.tipo_pago, 'recuperacion')
+        self.assertEqual(abono.monto, Decimal('25.00'))
+        self.assertEqual(abono.metodo, 'efectivo')
+        self.assertEqual(abono.monto_2, Decimal('15.00'))
+        self.assertEqual(abono.metodo_2, 'transferencia')
+        self.assertEqual(abono.banco_2, 'pichincha')
+
+    def test_cobrar_recuperacion_rechaza_suma_mixta_incorrecta(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_suma_invalida',
+            password='clave12345',
+        )
+        matricula, recuperacion = self._crear_recuperacion_cobrable(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_cobrar',
+                kwargs={'recup_pk': recuperacion.pk},
+            ),
+            {
+                'fecha': '2026-08-01',
+                'monto': '25.00',
+                'cuenta_para_saldo': 'True',
+                'tipo_cobro': 'mixto',
+                'metodo': '',
+                'banco': '',
+                'monto_pago_1': '10.00',
+                'metodo_pago_1': 'efectivo',
+                'banco_1': '',
+                'monto_pago_2': '10.00',
+                'metodo_pago_2': 'transferencia',
+                'banco_2': 'pichincha',
+                'numero_recibo': '',
+                'observaciones': '',
+            },
+        )
+
+        recuperacion.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('monto_pago_2', response.context['form'].errors)
+        self.assertFalse(recuperacion.pagada)
+        self.assertFalse(Abono.objects.filter(matricula=matricula).exists())
 
     def test_recuperacion_solo_muestra_modulos_sin_registro_de_pago(self):
         admin = User.objects.create_superuser(
@@ -1980,7 +2183,7 @@ class PagoInicialMatriculaTests(TestCase):
         matricula.refresh_from_db()
         self.assertEqual(matricula.valor_pagado, Decimal('50.00'))
 
-    def test_recuperacion_descuenta_modulo_posterior_cubierto_por_mismo_abono(self):
+    def test_recuperacion_posterior_no_reutiliza_un_mismo_abono(self):
         admin = User.objects.create_superuser(
             username='admin_recuperacion_modulos',
             password='clave12345',
@@ -2047,11 +2250,11 @@ class PagoInicialMatriculaTests(TestCase):
             matricula=matricula,
             numero_modulo=3,
         )
-        self.assertTrue(recup_modulo_3.pagada)
-        self.assertEqual(recup_modulo_3.abono, abono)
+        self.assertFalse(recup_modulo_3.pagada)
+        self.assertIsNone(recup_modulo_3.abono)
         self.assertEqual(Abono.objects.filter(matricula=matricula).count(), 1)
 
-    def test_recuperacion_no_descuenta_modulo_cubierto_solo_por_abono_general(self):
+    def test_modo_descuento_manipulado_se_ignora_y_crea_recuperacion_pendiente(self):
         admin = User.objects.create_superuser(
             username='admin_recuperacion_acumulado',
             password='clave12345',
@@ -2110,12 +2313,10 @@ class PagoInicialMatriculaTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(RecuperacionPendiente.objects.filter(matricula=matricula).exists())
-        self.assertIn(
-            'modo_registro',
-            response.context['form'].errors,
-        )
+        self.assertEqual(response.status_code, 302)
+        recuperacion = RecuperacionPendiente.objects.get(matricula=matricula)
+        self.assertFalse(recuperacion.pagada)
+        self.assertIsNone(recuperacion.abono)
         self.assertEqual(Abono.objects.filter(matricula=matricula).count(), 3)
 
     def test_reserva_modulo_reparte_monto_real_si_hay_varios_modulos(self):
@@ -2277,6 +2478,19 @@ class PagoInicialMatriculaTests(TestCase):
             password='clave12345',
         )
         self.client.force_login(admin)
+        Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('10.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
 
         response = self.client.get(
             reverse('academia:hoja_recaudacion'),
@@ -2293,9 +2507,17 @@ class PagoInicialMatriculaTests(TestCase):
             '<input type="hidden" name="fecha" value="2026-07-30" data-date-value>',
         )
         self.assertContains(response, '.hoja-totales { display: none !important; }')
-        self.assertContains(response, '.hoja-tabla th:nth-child(5)')
-        self.assertContains(response, '.hoja-tabla th:nth-child(6)')
-        self.assertContains(response, '.hoja-tabla td:nth-child(6) { display: none !important; }')
+        self.assertContains(
+            response,
+            '.hoja-tabla .col-cuota { display: table-cell !important; }',
+        )
+        self.assertContains(response, '.screen-only { display: none !important; }')
+        self.assertContains(response, '.print-only { display: inline !important; }')
+        self.assertContains(response, 'Saldo a recaudar')
+        self.assertNotContains(response, 'Saldo módulo')
+        self.assertContains(response, 'Módulo 1')
+        self.assertContains(response, 'Exportar a Excel')
+        self.assertNotContains(response, 'Exportar a PDF')
         self.assertNotContains(response, 'type="date" name="fecha"')
 
     def test_hoja_recaudacion_excel_no_incluye_fila_de_totales(self):
@@ -2347,6 +2569,7 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertNotIn('Saldo Pend.', encabezados)
         self.assertNotIn('A Recaudar (Cuota)', encabezados)
         self.assertIn('Recaudado', encabezados)
+        self.assertEqual(ws.cell(row=3, column=10).value, 'Módulo 1')
         self.assertIn(self.curso.nombre, primera_columna)
         self.assertNotIn('TOTAL', primera_columna)
 
@@ -2528,6 +2751,148 @@ class PagoInicialMatriculaTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn('tipo_pago', form.errors)
+
+    def _crear_matricula_pago_unico_online(self):
+        curso = Curso.objects.create(
+            nombre='Ciclo Corto Online Pago Único',
+            ofrece_online=True,
+            valor_online=Decimal('35.00'),
+            numero_modulos_online=2,
+            es_ciclo_corto=True,
+            pago_unico_online=True,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 8, 4),
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 8, 1),
+            valor_curso=Decimal('35.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 1),
+            monto=Decimal('10.00'),
+            tipo_pago='abono',
+            metodo='tarjeta',
+        )
+        matricula.refresh_from_db()
+        return matricula
+
+    def test_pago_unico_online_mantiene_dos_modulos_pero_una_obligacion(self):
+        matricula = self._crear_matricula_pago_unico_online()
+
+        self.assertEqual(matricula.curso.get_numero_modulos('online'), 2)
+        self.assertEqual(matricula.numero_cuotas_pago, 1)
+        self.assertEqual(matricula.cuotas_modulos_objetivo(), [Decimal('25.00')])
+        self.assertEqual(len(matricula.desglose_pagos_por_modulo()), 1)
+        self.assertEqual(
+            matricula.desglose_pagos_por_modulo()[0]['label'],
+            'Un solo pago',
+        )
+
+        pago = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 2),
+            monto=Decimal('25.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=1,
+        )
+        self.assertEqual(pago.get_modulo_display, 'Módulo 1')
+
+    def test_formulario_pago_unico_online_no_permite_cuota_del_modulo_dos(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        form = AbonoForm(
+            self._abono_data(numero_modulo='2'),
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('numero_modulo', form.errors)
+        self.assertIn('un solo pago', form.errors['numero_modulo'][0].lower())
+
+        form_valido = AbonoForm(
+            self._abono_data(numero_modulo='1'),
+            matricula=matricula,
+        )
+        self.assertTrue(form_valido.is_valid(), form_valido.errors)
+        self.assertEqual(
+            dict(form_valido.fields['tipo_pago'].choices)['solo_modulo'],
+            'Un solo pago',
+        )
+
+    def test_detalle_pago_unico_online_muestra_plan_y_selector_protegido(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        admin = User.objects.create_superuser(
+            username='admin_pago_unico_online',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:matricula_abonos', kwargs={'pk': matricula.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['pago_unico_online'])
+        self.assertContains(response, 'Plan financiero: un solo pago de $25,00')
+        self.assertContains(response, 'data-pago-unico-online="1"')
+        self.assertContains(response, '>Un solo pago</option>')
+
+    def test_pago_recuperacion_vincula_automaticamente_la_marca_pendiente(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        recuperacion = RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 8, 2),
+            fecha_programada=date(2026, 8, 10),
+            saldo_pendiente_al_marcar=Decimal('25.00'),
+        )
+        admin = User.objects.create_superuser(
+            username='admin_vincula_pago_recuperacion',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:abono_crear',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._abono_data(
+                fecha='2026-08-02',
+                tipo_pago='recuperacion',
+                numero_modulo='1',
+                tipo_cobro='un_solo_metodo',
+                metodo='efectivo',
+                monto_pago_1='',
+                metodo_pago_1='',
+                monto_pago_2='',
+                metodo_pago_2='',
+            ),
+        )
+
+        recuperacion.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(recuperacion.pagada)
+        self.assertEqual(recuperacion.fecha_recuperacion, date(2026, 8, 2))
+        self.assertIsNotNone(recuperacion.abono)
+        self.assertEqual(recuperacion.abono.tipo_pago, 'recuperacion')
+        self.assertEqual(
+            RecuperacionPendiente.objects.filter(matricula=matricula).count(),
+            1,
+        )
 
     def test_editar_pago_antiguo_conserva_abono_mas_modulo(self):
         matricula = Matricula.objects.create(
@@ -2720,7 +3085,8 @@ class PagosPorModuloFiltroTests(TestCase):
             fecha_inicio=date(2026, 7, 5),
         )
 
-    def _crear_matricula(self, cedula, nombres, modulo_pagado=None):
+    def _crear_matricula(self, cedula, nombres, modulo_pagado=None,
+                         tipo_matricula='reserva_abono', jornada=None):
         estudiante = Estudiante.objects.create(
             cedula=cedula,
             nombres=nombres,
@@ -2728,9 +3094,9 @@ class PagosPorModuloFiltroTests(TestCase):
         matricula = Matricula.objects.create(
             estudiante=estudiante,
             curso=self.curso,
-            jornada=self.jornada,
+            jornada=jornada or self.jornada,
             modalidad='presencial',
-            tipo_matricula='reserva_abono',
+            tipo_matricula=tipo_matricula,
             forma_pago='abono',
             fecha_matricula=date(2026, 7, 5),
             valor_curso=Decimal('90.00'),
@@ -2748,6 +3114,84 @@ class PagosPorModuloFiltroTests(TestCase):
             )
             matricula.refresh_from_db()
         return matricula
+
+    def test_matriz_online_pago_unico_no_genera_columna_modulo_dos(self):
+        curso = Curso.objects.create(
+            nombre='Curso Matriz Pago Único',
+            ofrece_online=True,
+            valor_online=Decimal('35.00'),
+            numero_modulos_online=2,
+            es_ciclo_corto=True,
+            pago_unico_online=True,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 8, 4),
+        )
+        estudiante = Estudiante.objects.create(
+            cedula='0999999999',
+            nombres='Estudiante Pago Único',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 8, 1),
+            valor_curso=Decimal('35.00'),
+        )
+
+        filas, modulos, _resumen, visibles = _construir_matriz_pagos(
+            curso,
+            modalidad='online',
+        )
+
+        self.assertEqual(modulos, [1])
+        self.assertEqual(visibles, [1])
+        self.assertEqual(len(filas), 1)
+        self.assertTrue(filas[0]['pago_unico_online'])
+        self.assertEqual(
+            [m['numero'] for m in filas[0]['modulos_data']],
+            [1],
+        )
+        self.assertEqual(filas[0]['matricula'].pk, matricula.pk)
+
+    def test_matriz_identifica_en_modulo_el_pago_de_recuperacion(self):
+        matricula = self._crear_matricula(
+            '0988888888', 'Estudiante Recuperación'
+        )
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 12),
+            monto=Decimal('30.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 10),
+            fecha_programada=date(2026, 7, 12),
+            saldo_pendiente_al_marcar=Decimal('90.00'),
+            pagada=True,
+            fecha_recuperacion=date(2026, 7, 12),
+            abono=abono,
+        )
+
+        filas, _modulos, _resumen, _visibles = _construir_matriz_pagos(
+            self.curso,
+        )
+        modulo = filas[0]['modulos_data'][0]
+
+        self.assertTrue(modulo['es_recuperacion'])
+        self.assertEqual(modulo['recuperacion_monto'], Decimal('30.00'))
+        self.assertEqual(modulo['recuperacion_recibos'], abono.numero_recibo)
 
     def test_filtro_estado_modulo_muestra_solo_el_modulo_filtrado(self):
         matricula_modulo_1 = self._crear_matricula(
@@ -2821,12 +3265,101 @@ class PagosPorModuloFiltroTests(TestCase):
             [1],
         )
 
+    def test_filtro_tipo_matricula_no_muestra_reserva_modulo_1(self):
+        self._crear_matricula(
+            '0955555555', 'Estudiante Reserva Abono', tipo_matricula='reserva_abono'
+        )
+        self._crear_matricula(
+            '0966666666', 'Estudiante Reserva Modulo Uno',
+            tipo_matricula='reserva_modulo_1'
+        )
+        admin = User.objects.create_superuser(
+            username='admin_filtro_tipo_matricula',
+            password='clave12345',
+        )
+
+        self.client.force_login(admin)
+        response = self.client.get(
+            reverse('academia:pagos_por_modulo'),
+            {
+                'curso': str(self.curso.pk),
+                'tipo_matricula': 'reserva_modulo_1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(
+            ('reserva_modulo_1', 'Reserva + Módulo 1'),
+            response.context['tipos_matricula'],
+        )
+        self.assertEqual(response.context['filtros']['tipo_matricula'], '')
+        self.assertEqual(len(response.context['matriculas_data']), 2)
+
+    def test_filtro_matricula_muestra_estudiante_con_jornada_y_filtra(self):
+        jornada_dos = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_jue',
+            fecha_inicio=date(2026, 7, 12),
+            ciudad='Guayaquil',
+        )
+        matricula_uno = self._crear_matricula(
+            '0977777777', 'Ana Pagos Modulo'
+        )
+        matricula_dos = self._crear_matricula(
+            '0988888888', 'Bruno Pagos Modulo', jornada=jornada_dos
+        )
+        admin = User.objects.create_superuser(
+            username='admin_filtro_matricula',
+            password='clave12345',
+        )
+
+        self.client.force_login(admin)
+        response = self.client.get(
+            reverse('academia:pagos_por_modulo'),
+            {'curso': str(self.curso.pk)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        opciones = response.context['estudiantes_jornada']
+        self.assertEqual(len(opciones), 2)
+        labels = [opcion['label'] for opcion in opciones]
+        self.assertTrue(
+            any('Ana Pagos Modulo' in label and 'Lun, Mié, Vie.' in label for label in labels)
+        )
+        self.assertTrue(
+            any('Bruno Pagos Modulo' in label and 'Martes y Jueves' in label for label in labels)
+        )
+
+        response = self.client.get(
+            reverse('academia:pagos_por_modulo'),
+            {
+                'curso': str(self.curso.pk),
+                'matricula': str(matricula_dos.pk),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['filtros']['matricula'], str(matricula_dos.pk))
+        self.assertIn(f'matricula={matricula_dos.pk}', response.context['export_querystring'])
+        self.assertEqual(
+            [x['matricula'].pk for x in response.context['matriculas_data']],
+            [matricula_dos.pk],
+        )
+        self.assertNotIn(
+            matricula_uno.pk,
+            [x['matricula'].pk for x in response.context['matriculas_data']],
+        )
+
 
 class PlanRecaudacionTests(TestCase):
     def setUp(self):
         self._seq = 0
 
-    def _matricula_con_adelanto(self, valor_curso, adelanto, semanas, modalidad='presencial'):
+    def _matricula_con_adelanto(
+        self, valor_curso, adelanto, semanas, modalidad='presencial',
+        es_ciclo_corto=False, pago_unico_online=False,
+    ):
         self._seq += 1
         curso = Curso.objects.create(
             nombre=f'Curso Recaudación Test {self._seq}',
@@ -2836,6 +3369,8 @@ class PlanRecaudacionTests(TestCase):
             valor_online=valor_curso,
             numero_modulos=semanas,
             numero_modulos_online=semanas,
+            es_ciclo_corto=es_ciclo_corto,
+            pago_unico_online=pago_unico_online,
         )
         jornada = JornadaCurso.objects.create(
             curso=curso,
@@ -2877,6 +3412,7 @@ class PlanRecaudacionTests(TestCase):
         self.assertEqual(plan['cuotas'], cuotas_esperadas)
         self.assertEqual(sum(plan['cuotas'], Decimal('0.00')), saldo_esperado)
         self.assertEqual(plan['cuota_sugerida'], cuotas_esperadas[0])
+        self.assertEqual(plan['saldo_modulo'], cuotas_esperadas[0])
         self.assertEqual(plan['modulo'], modulo_esperado)
 
     def test_presencial_90_reserva_10_en_4_semanas(self):
@@ -2916,6 +3452,131 @@ class PlanRecaudacionTests(TestCase):
         self._assert_plan(matricula, Decimal('25.00'), [
             Decimal('13.00'), Decimal('12.00'),
         ])
+
+    def test_ciclo_corto_online_35_reserva_10_en_un_solo_pago(self):
+        matricula = self._matricula_con_adelanto(
+            Decimal('35.00'), Decimal('10.00'), 2,
+            modalidad='online', es_ciclo_corto=True,
+            pago_unico_online=True,
+        )
+
+        self._assert_plan(
+            matricula, Decimal('25.00'), [Decimal('25.00')]
+        )
+        self.assertEqual(
+            matricula.curso.get_numero_modulos('online'),
+            2,
+        )
+
+        request = RequestFactory().get('/pagos/hoja-recaudacion/', {
+            'fecha': '2026-08-03',
+            'curso': str(matricula.curso_id),
+            'modalidad': 'online',
+        })
+        hojas, _filtros = _hojas_recaudacion_data(request)
+
+        self.assertEqual(
+            hojas[0]['items'][0]['cuota_sugerida'],
+            Decimal('25.00'),
+        )
+        self.assertEqual(hojas[0]['items'][0]['modulo_label'], 'Módulo 1')
+        self.assertEqual(hojas[0]['total_cuotas'], Decimal('25.00'))
+
+    def test_hoja_recaudacion_identifica_pago_de_recuperacion(self):
+        matricula = self._matricula_con_adelanto(
+            Decimal('35.00'), Decimal('10.00'), 2,
+            modalidad='online', es_ciclo_corto=True,
+            pago_unico_online=True,
+        )
+        recuperacion = RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 8, 2),
+            fecha_programada=date(2026, 8, 10),
+            saldo_pendiente_al_marcar=Decimal('25.00'),
+        )
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 2),
+            monto=Decimal('25.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+        recuperacion.pagada = True
+        recuperacion.fecha_recuperacion = abono.fecha
+        recuperacion.abono = abono
+        recuperacion.save()
+
+        request = RequestFactory().get('/pagos/hoja-recaudacion/', {
+            'fecha': '2026-08-02',
+            'curso': str(matricula.curso_id),
+            'modalidad': 'online',
+        })
+        hojas, _filtros = _hojas_recaudacion_data(request)
+
+        item = hojas[0]['items'][0]
+        self.assertEqual(item['recaudado'], Decimal('25.00'))
+        self.assertEqual(item['recuperacion'], '✱ Pagada · Módulo 1')
+
+    def test_hoja_recaudacion_usa_nombre_de_modulo_personalizado(self):
+        matricula = self._matricula_con_adelanto(
+            Decimal('35.00'), Decimal('10.00'), 2,
+            modalidad='online', es_ciclo_corto=True,
+            pago_unico_online=True,
+        )
+        matricula.curso.nombrar_modulos = True
+        matricula.curso.nombres_modulos = {
+            'online': ['Tributación inicial', 'Declaraciones'],
+        }
+        matricula.curso.save(update_fields=['nombrar_modulos', 'nombres_modulos'])
+
+        request = RequestFactory().get('/pagos/hoja-recaudacion/', {
+            'fecha': '2026-08-03',
+            'curso': str(matricula.curso_id),
+            'modalidad': 'online',
+        })
+        hojas, _filtros = _hojas_recaudacion_data(request)
+
+        self.assertEqual(
+            hojas[0]['items'][0]['modulo_label'],
+            'Módulo 1 - Tributación inicial',
+        )
+
+    def test_pago_unico_online_no_cambia_las_dos_cuotas_presenciales(self):
+        matricula = self._matricula_con_adelanto(
+            Decimal('35.00'), Decimal('10.00'), 2,
+            modalidad='presencial', es_ciclo_corto=True,
+            pago_unico_online=True,
+        )
+
+        self._assert_plan(matricula, Decimal('25.00'), [
+            Decimal('13.00'), Decimal('12.00'),
+        ])
+
+    def test_formulario_exige_ciclo_corto_para_pago_unico_online(self):
+        datos = {
+            'nombre': 'Curso Pago Único Formulario',
+            'ofrece_online': 'on',
+            'valor_presencial': '0.00',
+            'valor_online': '35.00',
+            'duracion': '2 semanas',
+            'numero_modulos': '2',
+            'numero_modulos_online': '2',
+            'pago_unico_online': 'on',
+            'activo': 'on',
+        }
+
+        form = CursoForm(data=datos)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('pago_unico_online', form.errors)
+
+        datos['es_ciclo_corto'] = 'on'
+        form = CursoForm(data=datos)
+
+        self.assertTrue(form.is_valid(), form.errors)
 
     def test_reserva_no_cubre_modulos_en_curso_economico(self):
         matricula = self._matricula_con_adelanto(
@@ -2998,20 +3659,38 @@ class PlanRecaudacionTests(TestCase):
             Decimal('25.00'), Decimal('25.00'), Decimal('25.00'),
         ], modulo_esperado=2)
 
-    def test_curso_110_adelanto_40_cubre_una_semana_y_reparte_en_3(self):
+    def test_curso_110_adelanto_40_cobra_solo_saldo_del_modulo_2(self):
         matricula = self._matricula_con_adelanto(
             Decimal('110.00'), Decimal('40.00'), 4
         )
 
-        # Caso Melanie: $110 en 4 semanas, pagó $40 en matrícula
-        # (reserva $10 + módulo 1 $25 + abono $5). Cubrió la semana 1 →
-        # $70 en 3 semanas se distribuye en dólares enteros y lo más parejo
-        # posible. Suma exacta: $70.
+        # Pagó $40: reserva $10 + módulo 1 $25 + $5 del módulo 2.
+        # La hoja cobra solo los $20 que faltan del módulo 2; no redistribuye
+        # los $70 pendientes entre módulos futuros.
         self._assert_plan(matricula, Decimal('70.00'), [
-            Decimal('24.00'), Decimal('23.00'), Decimal('23.00'),
+            Decimal('20.00'), Decimal('25.00'), Decimal('25.00'),
         ], modulo_esperado=2)
 
-    def test_estudiante_que_paga_menos_sube_la_ultima_cuota(self):
+    def test_cuota_manual_no_supera_saldo_del_modulo_vigente(self):
+        matricula = self._matricula_con_adelanto(
+            Decimal('110.00'), Decimal('40.00'), 4
+        )
+        CuotaManualRecaudacion.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 15),
+            monto=Decimal('70.00'),
+        )
+
+        plan = _plan_recaudacion_matricula(
+            matricula, date(2026, 7, 15)
+        )
+
+        self.assertEqual(plan['saldo_pendiente'], Decimal('70.00'))
+        self.assertEqual(plan['saldo_modulo'], Decimal('20.00'))
+        self.assertEqual(plan['cuota_sugerida'], Decimal('20.00'))
+        self.assertTrue(plan['cuota_manual'])
+
+    def test_abono_parcial_deja_solo_el_saldo_del_modulo_vigente(self):
         matricula = self._matricula_con_adelanto(
             Decimal('110.00'), Decimal('40.00'), 4
         )
@@ -3035,13 +3714,13 @@ class PlanRecaudacionTests(TestCase):
         )
         matricula.refresh_from_db()
 
-        # Pagó $80 acumulados: reserva $10 + 2 módulos de $25; el 3.º pide
-        # $85. Saldo $30 ÷ 2 semanas restantes = $15.00 / $15.00.
+        # Pagó $80 acumulados: reserva $10, dos módulos de $25 y $20 del
+        # módulo 3. Solo se cobran los $5 faltantes del módulo 3.
         self._assert_plan(matricula, Decimal('30.00'), [
-            Decimal('15.00'), Decimal('15.00'),
+            Decimal('5.00'), Decimal('25.00'),
         ], modulo_esperado=3)
 
-    def test_estudiante_que_paga_de_mas_deja_ultima_cuota_menor(self):
+    def test_pago_mayor_avanza_sin_redistribuir_modulos_futuros(self):
         matricula = self._matricula_con_adelanto(
             Decimal('110.00'), Decimal('10.00'), 4
         )
@@ -3053,10 +3732,11 @@ class PlanRecaudacionTests(TestCase):
         )
         matricula.refresh_from_db()
 
-        # Excepción del que paga de más: pagó $50, cubre el módulo 1.
-        # Saldo $60 ÷ 3 semanas restantes → las cuotas futuras BAJAN.
+        # Pagó $50: reserva $10, módulo 1 $25 y $15 del módulo 2.
+        # La hoja cobra los $10 que faltan del módulo 2 y no cambia los
+        # valores de los módulos 3 y 4.
         self._assert_plan(matricula, Decimal('60.00'), [
-            Decimal('20.00'), Decimal('20.00'), Decimal('20.00'),
+            Decimal('10.00'), Decimal('25.00'), Decimal('25.00'),
         ], modulo_esperado=2)
 
         for idx in range(2):
@@ -3097,6 +3777,7 @@ class PlanRecaudacionTests(TestCase):
         plan = _plan_recaudacion_matricula(matricula)
         self.assertEqual(matricula.saldo, Decimal('0.00'))
         self.assertEqual(plan['saldo_pendiente'], Decimal('0.00'))
+        self.assertEqual(plan['saldo_modulo'], Decimal('0.00'))
         self.assertEqual(sum(plan['cuotas'], Decimal('0.00')), Decimal('0.00'))
         self.assertEqual(plan['cuota_sugerida'], Decimal('0.00'))
 
@@ -3183,16 +3864,81 @@ class AlertasPagoPorJornadaTests(TestCase):
             ],
         )
 
-    def test_alerta_presencial_avanza_a_la_siguiente_semana(self):
+    def test_alerta_presencial_mantiene_primer_modulo_hasta_pagarlo(self):
         alerta = self._alerta_de(
             self.matricula_presencial,
             date(2026, 7, 8),
         )
 
+        self.assertEqual(alerta['numero_modulo'], 1)
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 1))
+        self.assertEqual(alerta['dias_atraso'], 7)
+        self.assertEqual(alerta['saldo_total'], Decimal('70.00'))
+        self.assertEqual(alerta['saldo_m1'], Decimal('18.00'))
+
+    def test_pago_modulo_oculta_alerta_hasta_siguiente_fecha_semanal(self):
+        # $10 de reserva + $18 del Módulo 1.
+        self.matricula_presencial.valor_pagado = Decimal('28.00')
+        self.matricula_presencial.save(update_fields=['valor_pagado'])
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 7, 7)
+            ids_con_alerta = {
+                alerta['matricula'].pk
+                for alerta in _calcular_alertas_pago()
+            }
+        self.assertNotIn(self.matricula_presencial.pk, ids_con_alerta)
+
+        alerta = self._alerta_de(
+            self.matricula_presencial,
+            date(2026, 7, 8),
+        )
         self.assertEqual(alerta['numero_modulo'], 2)
         self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 8))
         self.assertEqual(alerta['dias_atraso'], 0)
-        self.assertEqual(alerta['saldo_total'], Decimal('70.00'))
+        self.assertEqual(alerta['saldo_m1'], Decimal('18.00'))
+
+    def test_alerta_identifica_pago_de_recuperacion(self):
+        abono = Abono.objects.create(
+            matricula=self.matricula_presencial,
+            fecha=date(2026, 7, 7),
+            monto=Decimal('5.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=1,
+            cuenta_para_saldo=False,
+            metodo='efectivo',
+        )
+
+        alerta = self._alerta_de(
+            self.matricula_presencial,
+            date(2026, 7, 8),
+        )
+
+        self.assertTrue(alerta['recuperacion_pagada'])
+        self.assertEqual(alerta['recuperacion_modulos_label'], 'Módulo 1')
+        self.assertEqual(alerta['recuperacion_fecha'], date(2026, 7, 7))
+        self.assertEqual(alerta['recuperacion_recibo'], abono.numero_recibo)
+
+    def test_dashboard_ofrece_filtro_detallado_por_curso(self):
+        usuario = User.objects.create_superuser(
+            username='admin_alertas_curso',
+            password='clave-segura',
+        )
+        self.client.force_login(usuario)
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 7, 8)
+            response = self.client.get(reverse('academia:bienvenida'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="gm-course-filter"')
+        self.assertContains(response, 'data-curso-id="%s"' % self.curso_presencial.pk)
+        self.assertContains(response, self.curso_presencial.nombre)
+        self.assertEqual(response.context['alertas_cursos'], [{
+            'id': self.curso_presencial.pk,
+            'nombre': self.curso_presencial.nombre,
+            'cantidad': 1,
+        }])
 
     def test_fecha_matricula_no_cambia_el_calendario_de_la_jornada(self):
         segunda_matricula = Matricula.objects.create(
@@ -3220,7 +3966,7 @@ class AlertasPagoPorJornadaTests(TestCase):
             self.matricula_presencial.fecha_matricula,
             segunda_matricula.fecha_matricula,
         )
-        self.assertEqual(alerta_original['numero_modulo'], 3)
+        self.assertEqual(alerta_original['numero_modulo'], 1)
         self.assertEqual(
             alerta_original['numero_modulo'],
             alerta_anticipada['numero_modulo'],
@@ -3267,6 +4013,9 @@ class AlertasPagoPorJornadaTests(TestCase):
         self.assertNotIn(matricula.pk, matriculas_con_alerta)
 
     def test_alerta_presencial_se_detiene_en_el_ultimo_modulo(self):
+        # Cubre reserva y los tres primeros módulos; queda pendiente el cuarto.
+        self.matricula_presencial.valor_pagado = Decimal('63.00')
+        self.matricula_presencial.save(update_fields=['valor_pagado'])
         alerta = self._alerta_de(
             self.matricula_presencial,
             date(2026, 7, 29),
@@ -3278,6 +4027,8 @@ class AlertasPagoPorJornadaTests(TestCase):
 
     def test_curso_de_dos_modulos_genera_exactamente_dos_semanas(self):
         matricula = self._crear_matricula_presencial(numero_modulos=2)
+        matricula.valor_pagado = Decimal('25.00')
+        matricula.save(update_fields=['valor_pagado'])
 
         calendario = _calendario_vencimientos(matricula)
         alerta = self._alerta_de(matricula, date(2026, 7, 29))
@@ -3290,6 +4041,8 @@ class AlertasPagoPorJornadaTests(TestCase):
 
     def test_curso_de_cinco_modulos_genera_exactamente_cinco_semanas(self):
         matricula = self._crear_matricula_presencial(numero_modulos=5)
+        matricula.valor_pagado = Decimal('82.00')
+        matricula.save(update_fields=['valor_pagado'])
 
         calendario = _calendario_vencimientos(matricula)
         alerta = self._alerta_de(matricula, date(2026, 7, 29))
@@ -3308,7 +4061,7 @@ class AlertasPagoPorJornadaTests(TestCase):
         self.assertEqual(alerta['numero_modulo'], 5)
         self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 29))
 
-    def test_alerta_online_conserva_sus_dos_hitos(self):
+    def test_alerta_online_aplica_segundo_modulo_a_los_siete_dias(self):
         curso = Curso.objects.create(
             nombre='Curso Online Alertas',
             ofrece_presencial=False,
@@ -3335,11 +4088,24 @@ class AlertasPagoPorJornadaTests(TestCase):
             valor_pagado=Decimal('45.00'),
         )
 
-        alerta = self._alerta_de(matricula, date(2026, 7, 23))
+        alerta = self._alerta_de(matricula, date(2026, 7, 17))
 
         self.assertEqual(alerta['numero_modulo'], 2)
-        self.assertEqual(alerta['hito'], 'saldo_restante')
-        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 23))
+        self.assertEqual(alerta['hito'], 'modulo')
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 17))
+
+    def test_saldo_cero_elimina_alerta_definitivamente(self):
+        self.matricula_presencial.valor_pagado = Decimal('80.00')
+        self.matricula_presencial.save(update_fields=['valor_pagado'])
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 8, 1)
+            ids_con_alerta = {
+                alerta['matricula'].pk
+                for alerta in _calcular_alertas_pago()
+            }
+
+        self.assertNotIn(self.matricula_presencial.pk, ids_con_alerta)
 
     def test_ciclo_corto_online_genera_dos_cuotas_semanales(self):
         curso = Curso.objects.create(
@@ -3370,7 +4136,283 @@ class AlertasPagoPorJornadaTests(TestCase):
 
         calendario = _calendario_vencimientos(matricula)
         plan = _plan_recaudacion_matricula(matricula, date(2026, 8, 3))
+        alerta = self._alerta_de(matricula, date(2026, 8, 4))
 
         self.assertEqual(calendario[1][0], date(2026, 8, 3))
         self.assertEqual(calendario[2][0], date(2026, 8, 10))
         self.assertEqual(plan['cuotas'], [Decimal('13.00'), Decimal('12.00')])
+        self.assertEqual(alerta['saldo_m1'], Decimal('13.00'))
+        self.assertTrue(alerta['es_ciclo_corto'])
+        self.assertEqual(
+            alerta['ciclo_corto_label'],
+            'Ciclo corto · 2 pagos por módulo',
+        )
+
+    def test_ciclo_corto_online_con_pago_unico_genera_un_solo_cobro(self):
+        curso = Curso.objects.create(
+            nombre='Curso Corto Online Pago Único',
+            ofrece_presencial=False,
+            ofrece_online=True,
+            valor_online=Decimal('35.00'),
+            numero_modulos_online=2,
+            es_ciclo_corto=True,
+            pago_unico_online=True,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 8, 4),
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 30),
+            valor_curso=Decimal('35.00'),
+            valor_pagado=Decimal('10.00'),
+        )
+
+        calendario = _calendario_vencimientos(matricula)
+        plan = _plan_recaudacion_matricula(matricula, date(2026, 8, 3))
+        alerta = self._alerta_de(matricula, date(2026, 8, 4))
+
+        self.assertEqual(
+            calendario,
+            {1: (date(2026, 8, 3), 'pago_unico')},
+        )
+        self.assertEqual(plan['cuotas'], [Decimal('25.00')])
+        self.assertEqual(plan['cuota_sugerida'], Decimal('25.00'))
+        self.assertEqual(alerta['hito'], 'pago_unico')
+        self.assertEqual(alerta['saldo_m1'], Decimal('25.00'))
+        self.assertEqual(
+            alerta['ciclo_corto_label'],
+            'Ciclo corto · Un solo pago',
+        )
+
+
+class PagosFiltroRecuperacionTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_superuser(
+            username='admin_filtro_recuperacion',
+            password='clave-segura',
+        )
+        self.client.force_login(self.usuario)
+        self.curso = Curso.objects.create(
+            nombre='Curso Filtro Recuperación',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('80.00'),
+            numero_modulos=4,
+        )
+        self.jornada = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 8, 1),
+        )
+        estudiante_recuperacion = Estudiante.objects.create(
+            cedula='0911111111',
+            nombres='Estudiante Con Recuperación',
+        )
+        estudiante_normal = Estudiante.objects.create(
+            cedula='0922222222',
+            nombres='Estudiante Pago Normal',
+        )
+        self.matricula_recuperacion = Matricula.objects.create(
+            estudiante=estudiante_recuperacion,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            fecha_matricula=date(2026, 8, 1),
+            valor_curso=Decimal('80.00'),
+            valor_pagado=Decimal('0.00'),
+        )
+        self.matricula_normal = Matricula.objects.create(
+            estudiante=estudiante_normal,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            fecha_matricula=date(2026, 8, 1),
+            valor_curso=Decimal('80.00'),
+            valor_pagado=Decimal('0.00'),
+        )
+        Abono.objects.create(
+            matricula=self.matricula_recuperacion,
+            fecha=date(2026, 8, 1),
+            monto=Decimal('12.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=1,
+            cuenta_para_saldo=False,
+            metodo='efectivo',
+        )
+        Abono.objects.create(
+            matricula=self.matricula_normal,
+            fecha=date(2026, 8, 1),
+            monto=Decimal('10.00'),
+            tipo_pago='abono',
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+
+    def test_estado_recuperacion_filtra_solo_matriculas_con_ese_pago(self):
+        response = self.client.get(
+            reverse('academia:pagos_lista'),
+            {'estado': 'Recuperacion'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        matriculas = response.context['matriculas']
+        self.assertEqual(
+            [matricula.pk for matricula in matriculas],
+            [self.matricula_recuperacion.pk],
+        )
+        self.assertTrue(matriculas[0].tiene_pago_recuperacion)
+        self.assertEqual(
+            matriculas[0].total_pago_recuperacion,
+            Decimal('12.00'),
+        )
+        self.assertContains(response, 'value="Recuperacion" selected')
+        self.assertContains(response, '✱ Recuperación')
+        self.assertNotContains(response, 'Estudiante Pago Normal')
+
+
+class JornadaFeriadoTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_superuser(
+            username='admin_feriados',
+            email='admin@example.com',
+            password='clave-segura',
+        )
+        self.client.force_login(self.usuario)
+        self.curso = Curso.objects.create(
+            nombre='Curso Intensivo Feriados',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('110.00'),
+        )
+        self.sabado = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 8, 1),
+        )
+        self.domingo = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='domingos_intensivos',
+            fecha_inicio=date(2026, 8, 30),
+        )
+        self.regular = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_jue',
+            fecha_inicio=date(2026, 8, 4),
+        )
+        self.estudiante = Estudiante.objects.create(
+            cedula='0912345678',
+            nombres='Estudiante Feriado',
+        )
+        self.matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.sabado,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 7, 25),
+            valor_curso=Decimal('110.00'),
+            valor_pagado=Decimal('10.00'),
+        )
+
+    def _url_feriado(self, jornada):
+        return reverse(
+            'academia:jornada_marcar_feriado',
+            args=[self.curso.pk, jornada.pk],
+        )
+
+    def test_panel_muestra_check_solo_en_jornadas_intensivas_de_fin_de_semana(self):
+        response = self.client.get(
+            reverse('academia:curso_jornadas', args=[self.curso.pk]),
+            {'modalidad': 'presencial'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Día no laboral')
+        self.assertContains(response, 'Mover al 08/08/2026')
+        self.assertContains(response, 'Mover al 06/09/2026')
+        self.assertContains(response, self._url_feriado(self.sabado))
+        self.assertContains(response, self._url_feriado(self.domingo))
+        self.assertNotContains(response, self._url_feriado(self.regular))
+        self.assertEqual(response.content.count(b'class="feriado-form"'), 2)
+
+    def test_feriado_mueve_jornada_y_todos_sus_matriculados_siete_dias(self):
+        momento = timezone.make_aware(datetime(2026, 8, 1, 9, 15))
+
+        with patch('academia.views.timezone.now', return_value=momento):
+            response = self.client.post(
+                self._url_feriado(self.sabado),
+                {'modalidad_activa': 'presencial'},
+            )
+
+        self.assertRedirects(
+            response,
+            f"{reverse('academia:curso_jornadas', args=[self.curso.pk])}?modalidad=presencial",
+            fetch_redirect_response=False,
+        )
+        self.sabado.refresh_from_db()
+        self.matricula.refresh_from_db()
+        self.assertEqual(self.sabado.fecha_inicio, date(2026, 8, 8))
+        self.assertEqual(self.sabado.feriado_aplicado_en, momento)
+        self.assertEqual(self.matricula.jornada_id, self.sabado.pk)
+        self.assertEqual(self.matricula.jornada.fecha_inicio, date(2026, 8, 8))
+
+    def test_feriado_domingo_pasa_correctamente_al_mes_siguiente(self):
+        response = self.client.post(self._url_feriado(self.domingo))
+
+        self.assertEqual(response.status_code, 302)
+        self.domingo.refresh_from_db()
+        self.assertEqual(self.domingo.fecha_inicio, date(2026, 9, 6))
+        self.assertEqual(self.domingo.fecha_inicio.weekday(), 6)
+
+    def test_check_se_bloquea_y_se_reinicia_exactamente_a_las_24_horas(self):
+        primer_click = timezone.make_aware(datetime(2026, 8, 1, 8, 0))
+
+        with patch('academia.views.timezone.now', return_value=primer_click):
+            self.client.post(self._url_feriado(self.sabado))
+
+        with patch(
+            'academia.views.timezone.now',
+            return_value=primer_click + timedelta(hours=23, minutes=59),
+        ):
+            response_bloqueada = self.client.post(
+                self._url_feriado(self.sabado),
+                follow=True,
+            )
+
+        self.sabado.refresh_from_db()
+        self.assertEqual(self.sabado.fecha_inicio, date(2026, 8, 8))
+        self.assertContains(response_bloqueada, 'ya fue trasladada por feriado')
+        self.assertContains(response_bloqueada, 'Feriado aplicado')
+        self.assertContains(response_bloqueada, 'checked disabled')
+
+        with patch(
+            'academia.views.timezone.now',
+            return_value=primer_click + timedelta(hours=24),
+        ):
+            self.client.post(self._url_feriado(self.sabado))
+
+        self.sabado.refresh_from_db()
+        self.assertEqual(self.sabado.fecha_inicio, date(2026, 8, 15))
+
+    def test_endpoint_rechaza_jornadas_que_no_son_sabado_o_domingo_intensivo(self):
+        response = self.client.post(self._url_feriado(self.regular), follow=True)
+
+        self.regular.refresh_from_db()
+        self.assertEqual(self.regular.fecha_inicio, date(2026, 8, 4))
+        self.assertIsNone(self.regular.feriado_aplicado_en)
+        self.assertContains(
+            response,
+            'solo se aplica a Sábados Intensivos o Domingos Intensivos',
+        )

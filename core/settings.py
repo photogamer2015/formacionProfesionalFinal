@@ -69,6 +69,7 @@ TEMPLATES = [
                 'academia.context_processors.roles',
                 'academia.context_processors.feature_flags',
                 'academia.context_processors.recordatorios',
+                'academia.context_processors.perfil_usuario',
             ],
         },
     },

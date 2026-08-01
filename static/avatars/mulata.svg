@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="mulata-bg" x1="15" y1="7" x2="112" y2="121" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F1CC77"/>
+      <stop offset="1" stop-color="#B77C35"/>
+    </linearGradient>
+    <clipPath id="mulata-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#mulata-bg)"/>
+  <g clip-path="url(#mulata-clip)">
+    <path d="M22 130c3-25 19-39 42-39s39 14 42 39" fill="#3D9C91"/>
+    <path d="M35 65c-3-30 7-46 29-46s32 17 29 47l-8 36H43z" fill="#5A3828"/>
+    <path d="M56 82h16v18H56z" fill="#B97852"/>
+    <ellipse cx="64" cy="60" rx="23" ry="28" fill="#CB8D63"/>
+    <path d="M40 54c1-23 10-35 25-35 15 0 24 13 25 35-10-4-19-11-25-21-5 10-13 17-25 21z" fill="#6A422D"/>
+    <path d="M42 51c-5 15-4 34 5 49l7-12-4-40zM88 49L76 89l7 12c10-14 11-35 5-52z" fill="#62402E"/>
+    <ellipse cx="55" cy="61" rx="2.4" ry="3" fill="#30201A"/>
+    <ellipse cx="73" cy="61" rx="2.4" ry="3" fill="#30201A"/>
+    <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#91464A" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M43 107l14-11 7 8 8-8 14 11 8 23H34z" fill="#48AA9E"/>
+    <path d="M56 97l8 7 8-7-2 16H58z" fill="#E9FFFB"/>
+    <circle cx="46" cy="72" r="3" fill="#F7D150"/>
+    <circle cx="82" cy="72" r="3" fill="#F7D150"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

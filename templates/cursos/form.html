@@ -382,6 +382,17 @@
         </p>
     </div>
 
+    <div id="apartado-pago-unico-online" style="margin-top: 12px; background:#f1f8e9; border-left:4px solid #2e7d32; padding:12px; border-radius:4px; transition:opacity .2s;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:#1b5e20; cursor:pointer;">
+            {{ form.pago_unico_online }}
+            💵 Ciclo Corto Online — Un solo pago
+        </label>
+        <p style="margin-top:4px; font-size:12px; color:#5f6f61; margin-left:24px;">
+            Mantiene los 2 módulos académicos, pero en la Hoja de Recaudación cobra el saldo después de la reserva de $10 en una sola cuota. Presencial conserva sus 2 cuotas.
+        </p>
+        {{ form.pago_unico_online.errors }}
+    </div>
+
     <!-- Modulos Names -->
     <div style="margin-top: 16px; background: #f5f7ff; padding: 16px; border-radius: 8px; border: 1px solid #d0d4e0;">
         <label style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:#1a237e; cursor:pointer;">
@@ -540,6 +551,21 @@
     const modalCicloCorto = document.getElementById('modal-confirmar-ciclo-corto');
     const btnCancelCiclo = document.getElementById('btn-cancel-ciclo-corto');
     const btnConfirmCiclo = document.getElementById('btn-confirm-ciclo-corto');
+    const chkPagoUnicoOnline = document.getElementById('id_pago_unico_online');
+    const apartadoPagoUnico = document.getElementById('apartado-pago-unico-online');
+
+    function actualizarPagoUnicoOnline() {
+        if (!chkPagoUnicoOnline || !apartadoPagoUnico) return;
+        const disponible = Boolean(
+            chkCicloCorto && chkCicloCorto.checked && chkOnl && chkOnl.checked
+        );
+        chkPagoUnicoOnline.disabled = !disponible;
+        apartadoPagoUnico.style.opacity = disponible ? '1' : '.55';
+        apartadoPagoUnico.title = disponible
+            ? ''
+            : 'Activa Ciclo Corto y la modalidad Online para habilitar esta opción.';
+        if (!disponible) chkPagoUnicoOnline.checked = false;
+    }
 
     if (chkCicloCorto && modalCicloCorto) {
         chkCicloCorto.addEventListener('click', function(e) {
@@ -573,10 +599,19 @@
             if (modOnline) modOnline.value = '2';
 
             cerrarModalCiclo();
+            actualizarPagoUnicoOnline();
             // Disparar evento para actualizar inputs de nombres si están visibles
             if (modPresencial) modPresencial.dispatchEvent(new Event('input'));
         });
     }
+
+    if (chkCicloCorto) {
+        chkCicloCorto.addEventListener('change', actualizarPagoUnicoOnline);
+    }
+    if (chkOnl) {
+        chkOnl.addEventListener('change', actualizarPagoUnicoOnline);
+    }
+    actualizarPagoUnicoOnline();
 
     /* ── Lógica de Nombres de Módulos ── */
     const chkNombrar = document.getElementById('id_nombrar_modulos');

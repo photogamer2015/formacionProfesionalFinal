@@ -263,6 +263,9 @@
                             <span class="crm-badge mod">
                                 {% if modalidad == 'online' %}{{ curso.numero_modulos_online }}{% else %}{{ curso.numero_modulos }}{% endif %} módulo{% if modalidad == 'online' %}{{ curso.numero_modulos_online|pluralize }}{% else %}{{ curso.numero_modulos|pluralize }}{% endif %}
                             </span>
+                            {% if modalidad == 'online' and curso.es_ciclo_corto and curso.pago_unico_online %}
+                                <span class="crm-badge" style="background:#e8f5e9; color:#1b5e20;">💵 1 solo pago</span>
+                            {% endif %}
                             {% if curso.duracion %}
                                 <span class="crm-badge" style="background:#eceff1; color:#546e7a;">⏱ {{ curso.duracion }}</span>
                             {% endif %}

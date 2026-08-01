@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="afro-bg" x1="14" y1="8" x2="112" y2="119" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#79C8B5"/>
+      <stop offset="1" stop-color="#286F6C"/>
+    </linearGradient>
+    <clipPath id="afro-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#afro-bg)"/>
+  <g clip-path="url(#afro-clip)">
+    <path d="M22 130c3-25 19-39 42-39s39 14 42 39" fill="#F1A95D"/>
+    <g fill="#3A231F">
+      <circle cx="42" cy="35" r="16"/><circle cx="59" cy="27" r="17"/><circle cx="77" cy="30" r="17"/>
+      <circle cx="88" cy="44" r="16"/><circle cx="38" cy="52" r="17"/><circle cx="88" cy="61" r="14"/>
+    </g>
+    <path d="M56 82h16v17H56z" fill="#8E573E"/>
+    <ellipse cx="64" cy="61" rx="23" ry="28" fill="#A86B4C"/>
+    <path d="M41 54c2-21 10-31 24-31 14 0 22 10 23 30-9-4-17-10-23-19-5 9-13 16-24 20z" fill="#4A2C25"/>
+    <ellipse cx="55" cy="62" rx="2.4" ry="3" fill="#251B1A"/>
+    <ellipse cx="73" cy="62" rx="2.4" ry="3" fill="#251B1A"/>
+    <circle cx="54.4" cy="61" r=".8" fill="#FFF"/>
+    <circle cx="72.4" cy="61" r=".8" fill="#FFF"/>
+    <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#733A3D" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M44 106l13-10 7 8 8-8 13 10 8 24H36z" fill="#F6B46B"/>
+    <path d="M55 96l9 8 8-8-3 17H59z" fill="#FFF1DA"/>
+    <circle cx="43" cy="73" r="3" fill="#FFD052"/>
+    <circle cx="85" cy="73" r="3" fill="#FFD052"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

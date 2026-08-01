@@ -121,6 +121,7 @@
                 {{ form.banco_2 }}{{ form.banco_2.errors }}
             </div>
         </div>
+        {% include 'includes/pago_mixto_resumen.html' %}
         <small id="mixto-abono-error-msg" aria-live="polite" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600; font-size:12px;">
             ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Monto (USD)" principal.
         </small>
@@ -267,6 +268,7 @@
     const monto1Input = document.getElementById('id_monto_pago_1_abono');
     const monto2Input = document.getElementById('id_monto_pago_2_abono');
     const mixtoErrorMsg = document.getElementById('mixto-abono-error-msg');
+    const resumenMixto = mixtoContainer ? mixtoContainer.querySelector('[data-pago-mixto-resumen]') : null;
     const btnGuardar = document.querySelector('button[type="submit"]');
     const formPago = btnGuardar ? btnGuardar.closest('form') : null;
 
@@ -282,8 +284,9 @@
         }
         [monto1Input, monto2Input].forEach((input) => {
             if (!input) return;
-            input.style.borderColor = mostrar ? '#d32f2f' : '';
-            input.style.borderWidth = mostrar ? '2px' : '';
+            const validoMixto = !mostrar && tipoCobroSelect && tipoCobroSelect.value === 'mixto';
+            input.style.borderColor = mostrar ? '#d32f2f' : (validoMixto ? '#2e7d32' : '');
+            input.style.borderWidth = (mostrar || validoMixto) ? '2px' : '';
         });
     }
 
@@ -296,6 +299,11 @@
             const m1 = valorNumero(monto1Input);
             const m2 = valorNumero(monto2Input);
             const suma = m1 + m2;
+            const coincide = val > 0 && m1 > 0 && m2 > 0
+                && Math.abs(suma - val) <= 0.01;
+            if (window.PagoMixtoUI) {
+                window.PagoMixtoUI.actualizar(resumenMixto, val, suma, coincide);
+            }
             if (m1 <= 0 || m2 <= 0) {
                 esValido = false;
                 mostrarErrorMixto(true, 'Completa Monto 1 y Monto 2 con valores mayores a $0.00.');

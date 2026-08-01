@@ -125,6 +125,18 @@
         background: #121925;
         border-color: #34446a;
     }
+    .badge-recuperacion {
+        display: inline-block;
+        margin-top: 5px;
+        background: #fff3cd;
+        color: #8a5a00;
+        border: 1px solid #f2cd73;
+    }
+    body.dark-mode .badge-recuperacion {
+        background: #473716;
+        color: #ffd978;
+        border-color: #735b25;
+    }
     /* Celda de jornada/día — compacta */
     .jornada-cell {
         white-space: normal;
@@ -802,6 +814,7 @@
                 <option value="Parcial" {% if filtros.estado == 'Parcial' %}selected{% endif %}>Parcial</option>
                 <option value="Pendiente" {% if filtros.estado == 'Pendiente' %}selected{% endif %}>Pendiente financiero (sin abonos)</option>
                 <option value="ModuloPendiente" {% if filtros.estado == 'ModuloPendiente' %}selected{% endif %}>Falta de módulo</option>
+                <option value="Recuperacion" {% if filtros.estado == 'Recuperacion' %}selected{% endif %}>Recuperación</option>
                 <option value="Retiro" {% if filtros.estado == 'Retiro' %}selected{% endif %}>Retiro voluntario</option>
             </select>
         </div>
@@ -1037,6 +1050,11 @@
                         <span class="badge badge-parcial">◐ Parcial</span>
                     {% else %}
                         <span class="badge badge-pendiente">○ Pendiente</span>
+                    {% endif %}
+                    {% if m.tiene_pago_recuperacion %}
+                        <span class="badge badge-recuperacion">
+                            ✱ Recuperación · ${{ m.total_pago_recuperacion|floatformat:2 }}
+                        </span>
                     {% endif %}
                 </td>
                 <td>

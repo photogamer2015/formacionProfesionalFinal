@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="latina-bg" x1="17" y1="9" x2="108" y2="119" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4AE78"/>
+      <stop offset="1" stop-color="#B84C54"/>
+    </linearGradient>
+    <clipPath id="latina-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#latina-bg)"/>
+  <g clip-path="url(#latina-clip)">
+    <circle cx="102" cy="24" r="17" fill="#FFF" opacity=".10"/>
+    <path d="M22 130c3-26 19-39 42-39s39 13 42 39" fill="#FFF0DD"/>
+    <path d="M36 66c-4-29 6-47 28-47 23 0 33 19 28 49l-6 33H42z" fill="#322424"/>
+    <path d="M56 82h16v18H56z" fill="#C6815B"/>
+    <ellipse cx="64" cy="60" rx="23" ry="28" fill="#D9966D"/>
+    <path d="M40 53c2-23 11-34 25-34 15 0 24 12 25 35-10-3-19-10-25-20-5 10-13 16-25 19z" fill="#3C2928"/>
+    <path d="M42 50c-5 14-4 34 4 48l7-11-3-40zM87 49l-11 39 7 11c9-14 10-34 4-50z" fill="#392626"/>
+    <ellipse cx="55" cy="61" rx="2.3" ry="3" fill="#31201F"/>
+    <ellipse cx="73" cy="61" rx="2.3" ry="3" fill="#31201F"/>
+    <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#A9494D" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M43 107l14-11 7 8 8-8 14 11 8 23H34z" fill="#FFF6E8"/>
+    <path d="M51 99l13 14 13-14" fill="none" stroke="#D95D54" stroke-width="3"/>
+    <circle cx="47" cy="71" r="3" fill="#FFD262"/>
+    <circle cx="81" cy="71" r="3" fill="#FFD262"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

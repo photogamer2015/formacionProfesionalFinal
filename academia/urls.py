@@ -47,6 +47,8 @@ urlpatterns = [
          views.jornada_eliminar, name='jornada_eliminar'),
     path('cursos/<int:pk>/jornadas/editar/<int:jornada_pk>/',
          views.jornada_editar, name='jornada_editar'),
+    path('cursos/<int:pk>/jornadas/feriado/<int:jornada_pk>/',
+         views.jornada_marcar_feriado, name='jornada_marcar_feriado'),
     path('cursos/reinicio-jornada/', views.curso_reinicio_jornada, name='curso_reinicio_jornada'),
 
     # ── Cursos: lista por modalidad (catch-all, va al final) ────────

@@ -347,6 +347,7 @@
                     {{ mat_form.banco_2 }}{{ mat_form.banco_2.errors }}
                 </div>
             </div>
+            {% include 'includes/pago_mixto_resumen.html' %}
             <small id="mixto-error-msg" style="color: #d32f2f; display: none; margin-top: 10px; font-weight: 600;">
                 ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Valor pagado (USD)".
             </small>
@@ -1578,6 +1579,7 @@
         const monto1Input = document.getElementById('id_monto_pago_1');
         const monto2Input = document.getElementById('id_monto_pago_2');
         const mixtoErrorMsg = document.getElementById('mixto-error-msg');
+        const resumenMixto = mixtoContainer ? mixtoContainer.querySelector('[data-pago-mixto-resumen]') : null;
 
         function toggleDistribucionPago() {
             if (!tipoCobroSelect) return;
@@ -1598,6 +1600,7 @@
                 if (metodoPagoSelect2) metodoPagoSelect2.required = false;
                 if (metodoPagoSelect) metodoPagoSelect.required = true;
             }
+            validarSumaMixto();
             if (typeof toggleSubmitBtn === 'function') toggleSubmitBtn();
         }
 
@@ -1606,7 +1609,16 @@
                 const total = parseFloat(valorPagadoInput2.value) || 0;
                 const m1 = parseFloat(monto1Input.value) || 0;
                 const m2 = parseFloat(monto2Input.value) || 0;
-                if (Math.abs((m1 + m2) - total) > 0.01) {
+                const suma = m1 + m2;
+                const coincide = total > 0 && m1 > 0 && m2 > 0
+                    && Math.abs(suma - total) <= 0.01;
+                if (window.PagoMixtoUI) {
+                    window.PagoMixtoUI.actualizar(resumenMixto, total, suma, coincide);
+                }
+                [monto1Input, monto2Input].forEach((input) => {
+                    if (input) input.style.borderColor = coincide ? '#2e7d32' : '#d32f2f';
+                });
+                if (!coincide) {
                     mixtoErrorMsg.style.display = 'block';
                     return false;
                 } else {

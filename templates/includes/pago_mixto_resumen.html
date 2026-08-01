@@ -1,0 +1,36 @@
+<div data-pago-mixto-resumen
+     aria-live="polite"
+     style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-top:14px;">
+    <div style="background:#fff; border:1px solid #dce3ec; border-radius:8px; padding:10px 12px;">
+        <small style="display:block; color:#777; font-size:10px;">Monto total</small>
+        <strong data-mixto-total style="display:block; color:#1a237e; font-size:16px; margin-top:2px;">$0,00</strong>
+    </div>
+    <div style="background:#fff; border:1px solid #dce3ec; border-radius:8px; padding:10px 12px;">
+        <small style="display:block; color:#777; font-size:10px;">Suma distribuida</small>
+        <strong data-mixto-suma style="display:block; color:#1a237e; font-size:16px; margin-top:2px;">$0,00</strong>
+    </div>
+    <div style="background:#fff; border:1px solid #dce3ec; border-radius:8px; padding:10px 12px;">
+        <small style="display:block; color:#777; font-size:10px;">Diferencia</small>
+        <strong data-mixto-diferencia style="display:block; color:#c62828; font-size:16px; margin-top:2px;">$0,00</strong>
+    </div>
+</div>
+
+<script>
+    window.PagoMixtoUI = window.PagoMixtoUI || {
+        actualizar: function (contenedor, total, suma, coincide) {
+            if (!contenedor) return;
+            const formatear = function (valor) {
+                return '$' + Math.abs(Number(valor) || 0).toFixed(2).replace('.', ',');
+            };
+            const totalVista = contenedor.querySelector('[data-mixto-total]');
+            const sumaVista = contenedor.querySelector('[data-mixto-suma]');
+            const diferenciaVista = contenedor.querySelector('[data-mixto-diferencia]');
+            if (totalVista) totalVista.textContent = formatear(total);
+            if (sumaVista) sumaVista.textContent = formatear(suma);
+            if (diferenciaVista) {
+                diferenciaVista.textContent = formatear((Number(total) || 0) - (Number(suma) || 0));
+                diferenciaVista.style.color = coincide ? '#2e7d32' : '#c62828';
+            }
+        }
+    };
+</script>

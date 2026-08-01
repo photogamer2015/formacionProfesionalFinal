@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="pacman-bg" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#263C77"/>
+      <stop offset="1" stop-color="#0E1734"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#pacman-bg)"/>
+  <g fill="none" stroke="#4F6EC0" stroke-width="3" opacity=".55">
+    <path d="M13 31h26v13h19M115 31H89v13H76"/>
+    <path d="M13 97h26V84h19M115 97H89V84H76"/>
+    <path d="M31 13v11M97 13v11M31 115v-11M97 115v-11"/>
+  </g>
+  <path d="M65 64l34-22a41 41 0 1 0 0 44z" fill="#FFD82F"/>
+  <circle cx="63" cy="39" r="5" fill="#20305B"/>
+  <circle cx="105" cy="64" r="5" fill="#FFF"/>
+  <circle cx="118" cy="64" r="3" fill="#FFF" opacity=".75"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".35" stroke-width="3"/>
+</svg>

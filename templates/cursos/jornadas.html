@@ -115,6 +115,9 @@
                             <th>Ciudad</th>
                             <th>Estado</th>
                             <th>Mat.</th>
+                            {% if puede_editar_jornada %}
+                            <th>Día no laboral</th>
+                            {% endif %}
                             {% if puede_editar_jornada or puede_eliminar_jornada or es_admin %}
                             <th>Acción</th>
                             {% endif %}
@@ -135,8 +138,8 @@
                             </td>
                             <td>
                                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                    <strong>{{ j.matriculas.count }}</strong>
-                                    {% if j.matriculas.count > 0 %}
+                                    <strong>{{ j.num_matriculas }}</strong>
+                                    {% if j.num_matriculas > 0 %}
                                     <a href="{% url 'academia:matricula_lista' modalidad='presencial' %}?jornada={{ j.pk }}"
                                        class="btn btn-secondary btn-sm"
                                        style="padding:5px 10px;"
@@ -146,6 +149,41 @@
                                     {% endif %}
                                 </div>
                             </td>
+                            {% if puede_editar_jornada %}
+                            <td>
+                                {% if j.es_intensiva_feriado %}
+                                <form method="post"
+                                      action="{% url 'academia:jornada_marcar_feriado' curso.pk j.pk %}"
+                                      onsubmit="return false;"
+                                      class="feriado-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="modalidad_activa" value="presencial">
+                                    <label class="feriado-control"
+                                           title="Trasladar esta jornada al mismo día de la semana siguiente">
+                                        <input type="checkbox"
+                                               class="feriado-check"
+                                               aria-label="Marcar día no laboral para {{ j.descripcion_legible }}"
+                                               data-mensaje="La jornada se moverá del {{ j.fecha_inicio|date:'d/m/Y' }} al {{ j.fecha_siguiente_feriado|date:'d/m/Y' }}. {{ j.mensaje_matriculados_feriado }} automáticamente a la nueva fecha y este control quedará bloqueado durante 24 horas."
+                                               {% if j.feriado_disponible_en %}data-disponible-en="{{ j.feriado_disponible_en|date:'c' }}"{% endif %}
+                                               onchange="solicitarFeriado(this)"
+                                               {% if j.feriado_bloqueado %}checked disabled{% endif %}>
+                                        <span class="feriado-estado">
+                                            <strong>{% if j.feriado_bloqueado %}Feriado aplicado{% else %}Marcar feriado{% endif %}</strong>
+                                            <small class="feriado-disponibilidad">
+                                                {% if j.feriado_bloqueado %}
+                                                Disponible {{ j.feriado_disponible_en|date:"d/m/Y H:i" }}
+                                                {% else %}
+                                                Mover al {{ j.fecha_siguiente_feriado|date:"d/m/Y" }}
+                                                {% endif %}
+                                            </small>
+                                        </span>
+                                    </label>
+                                </form>
+                                {% else %}
+                                <span title="Disponible únicamente para fechas que coincidan con Sábados o Domingos Intensivos">—</span>
+                                {% endif %}
+                            </td>
+                            {% endif %}
                             {% if puede_editar_jornada or puede_eliminar_jornada or es_admin %}
                             <td>
                                 <div class="row-actions">
@@ -155,7 +193,7 @@
                                         Editar
                                     </button>
                                     {% endif %}
-                                    {% if es_admin and j.matriculas.count > 0 %}
+                                    {% if es_admin and j.num_matriculas > 0 %}
                                     <a href="{% url 'academia:cierre_preview' curso.pk %}?jornada={{ j.pk }}"
                                        class="btn btn-sm"
                                        style="background:#c62828; color:white;"
@@ -207,6 +245,9 @@
                             <th>Ciudad</th>
                             <th>Estado</th>
                             <th>Mat.</th>
+                            {% if puede_editar_jornada %}
+                            <th>Día no laboral</th>
+                            {% endif %}
                             {% if puede_editar_jornada or puede_eliminar_jornada or es_admin %}
                             <th>Acción</th>
                             {% endif %}
@@ -227,8 +268,8 @@
                             </td>
                             <td>
                                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                    <strong>{{ j.matriculas.count }}</strong>
-                                    {% if j.matriculas.count > 0 %}
+                                    <strong>{{ j.num_matriculas }}</strong>
+                                    {% if j.num_matriculas > 0 %}
                                     <a href="{% url 'academia:matricula_lista' modalidad='online' %}?jornada={{ j.pk }}"
                                        class="btn btn-secondary btn-sm"
                                        style="padding:5px 10px;"
@@ -238,6 +279,41 @@
                                     {% endif %}
                                 </div>
                             </td>
+                            {% if puede_editar_jornada %}
+                            <td>
+                                {% if j.es_intensiva_feriado %}
+                                <form method="post"
+                                      action="{% url 'academia:jornada_marcar_feriado' curso.pk j.pk %}"
+                                      onsubmit="return false;"
+                                      class="feriado-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="modalidad_activa" value="online">
+                                    <label class="feriado-control"
+                                           title="Trasladar esta jornada al mismo día de la semana siguiente">
+                                        <input type="checkbox"
+                                               class="feriado-check"
+                                               aria-label="Marcar día no laboral para {{ j.descripcion_legible }}"
+                                               data-mensaje="La jornada se moverá del {{ j.fecha_inicio|date:'d/m/Y' }} al {{ j.fecha_siguiente_feriado|date:'d/m/Y' }}. {{ j.mensaje_matriculados_feriado }} automáticamente a la nueva fecha y este control quedará bloqueado durante 24 horas."
+                                               {% if j.feriado_disponible_en %}data-disponible-en="{{ j.feriado_disponible_en|date:'c' }}"{% endif %}
+                                               onchange="solicitarFeriado(this)"
+                                               {% if j.feriado_bloqueado %}checked disabled{% endif %}>
+                                        <span class="feriado-estado">
+                                            <strong>{% if j.feriado_bloqueado %}Feriado aplicado{% else %}Marcar feriado{% endif %}</strong>
+                                            <small class="feriado-disponibilidad">
+                                                {% if j.feriado_bloqueado %}
+                                                Disponible {{ j.feriado_disponible_en|date:"d/m/Y H:i" }}
+                                                {% else %}
+                                                Mover al {{ j.fecha_siguiente_feriado|date:"d/m/Y" }}
+                                                {% endif %}
+                                            </small>
+                                        </span>
+                                    </label>
+                                </form>
+                                {% else %}
+                                <span title="Disponible únicamente para fechas que coincidan con Sábados o Domingos Intensivos">—</span>
+                                {% endif %}
+                            </td>
+                            {% endif %}
                             {% if puede_editar_jornada or puede_eliminar_jornada or es_admin %}
                             <td>
                                 <div class="row-actions">
@@ -247,7 +323,7 @@
                                         Editar
                                     </button>
                                     {% endif %}
-                                    {% if es_admin and j.matriculas.count > 0 %}
+                                    {% if es_admin and j.num_matriculas > 0 %}
                                     <a href="{% url 'academia:cierre_preview' curso.pk %}?jornada={{ j.pk }}"
                                        class="btn btn-sm"
                                        style="background:#c62828; color:white;"
@@ -365,6 +441,58 @@
 </div>
 
 <style>
+    .feriado-form {
+        margin: 0;
+    }
+
+    .feriado-control {
+        display: inline-flex;
+        align-items: flex-start;
+        gap: 7px;
+        min-width: 132px;
+        cursor: pointer;
+        line-height: 1.2;
+    }
+
+    .feriado-check {
+        width: 17px;
+        height: 17px;
+        margin: 1px 0 0;
+        flex: 0 0 auto;
+        accent-color: #ef6c00;
+        cursor: pointer;
+    }
+
+    .feriado-check:disabled {
+        cursor: not-allowed;
+    }
+
+    .feriado-estado {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 11px;
+    }
+
+    .feriado-estado strong {
+        color: #e65100;
+        white-space: nowrap;
+    }
+
+    .feriado-estado small {
+        color: #777;
+        font-size: 9px;
+        white-space: nowrap;
+    }
+
+    body.dark-mode .feriado-estado strong {
+        color: #ffb74d;
+    }
+
+    body.dark-mode .feriado-estado small {
+        color: #bbb;
+    }
+
     /* Modo oscuro para el modal de edición */
     body.dark-mode #modal-editar-jornada>div {
         background: #1e1e1e;
@@ -422,6 +550,8 @@
             toggleOtrosNuevo();
         }
 
+        programarReinicioFeriados();
+
         // Cerrar modal al hacer clic en el fondo
         document.getElementById('modal-editar-jornada').addEventListener('click', function (e) {
             if (e.target === this) cerrarModalEditar();
@@ -477,6 +607,39 @@
         const val = document.getElementById('edit-modalidad').value;
         document.getElementById('edit-label-ciudad').textContent =
             val === 'online' ? 'Sede (Opcional)' : 'Sede *';
+    }
+
+    function solicitarFeriado(input) {
+        if (!input.checked || input.disabled) return;
+        input.checked = false;
+        confirmarAccion(input.closest('form'), input.dataset.mensaje, 'warning');
+    }
+
+    function programarReinicioFeriados() {
+        document.querySelectorAll('.feriado-check[disabled][data-disponible-en]').forEach(input => {
+            const disponibleEn = new Date(input.dataset.disponibleEn).getTime();
+            if (!Number.isFinite(disponibleEn)) return;
+
+            const habilitar = () => {
+                input.disabled = false;
+                input.checked = false;
+                input.removeAttribute('data-disponible-en');
+                const estado = input.closest('.feriado-control')?.querySelector('.feriado-estado');
+                if (estado) {
+                    const titulo = estado.querySelector('strong');
+                    const detalle = estado.querySelector('.feriado-disponibilidad');
+                    if (titulo) titulo.textContent = 'Marcar feriado';
+                    if (detalle) detalle.textContent = 'Control disponible nuevamente';
+                }
+            };
+
+            const espera = disponibleEn - Date.now();
+            if (espera <= 0) {
+                habilitar();
+            } else {
+                window.setTimeout(habilitar, espera);
+            }
+        });
     }
 </script>
 {% endblock %}

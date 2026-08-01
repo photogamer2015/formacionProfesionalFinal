@@ -20,8 +20,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .forms import ComprobanteForm
-from .models import Comprobante, Curso, Matricula
-from .permisos import matricula_requerida, admin_requerido, es_admin
+from .models import (
+    ARCHIVOS_AVATAR_PERFIL, AVATARES_PERFIL, AVATAR_PERFIL_PREDETERMINADO,
+    Comprobante, Curso, Matricula, PerfilUsuario,
+)
+from .permisos import (
+    admin_requerido, es_admin, es_asesor, matricula_requerida,
+)
 from .busqueda import filtrar_queryset_busqueda
 
 
@@ -341,6 +346,57 @@ def comprobante_asesor_detalle(request, vendedora_id):
         return redirect('academia:comprobante_asesor_detalle', vendedora_id=request.user.id)
 
     asesor = get_object_or_404(User, pk=vendedora_id)
+    es_perfil_propio = asesor.pk == request.user.pk
+
+    if request.method == 'POST':
+        if not es_perfil_propio:
+            messages.error(
+                request,
+                'Solo cada usuario puede cambiar el avatar de su propio perfil.'
+            )
+            return redirect(
+                'academia:comprobante_asesor_detalle',
+                vendedora_id=asesor.pk,
+            )
+
+        avatar = (request.POST.get('avatar') or '').strip()
+        avatares_validos = {clave for clave, _etiqueta in AVATARES_PERFIL}
+        if avatar not in avatares_validos:
+            messages.error(request, 'Selecciona un avatar válido.')
+        else:
+            PerfilUsuario.objects.update_or_create(
+                user=asesor,
+                defaults={'avatar': avatar},
+            )
+            messages.success(
+                request,
+                'Tu avatar se actualizó correctamente en todo el sistema.'
+            )
+        return redirect(
+            'academia:comprobante_asesor_detalle',
+            vendedora_id=asesor.pk,
+        )
+
+    perfil = PerfilUsuario.objects.filter(user=asesor).first()
+    avatar_seleccionado = (
+        perfil.avatar if perfil else AVATAR_PERFIL_PREDETERMINADO
+    )
+    avatares = [
+        {
+            'clave': clave,
+            'etiqueta': etiqueta,
+            'archivo': ARCHIVOS_AVATAR_PERFIL[clave],
+        }
+        for clave, etiqueta in AVATARES_PERFIL
+    ]
+
+    if es_admin(asesor):
+        asesor_rol = 'Administrador'
+    elif es_asesor(asesor):
+        asesor_rol = 'Asesor'
+    else:
+        asesor_rol = 'Usuario'
+
     comprobantes = (
         Comprobante.objects.filter(
             Q(matricula__vendedora_id=vendedora_id) |
@@ -372,4 +428,12 @@ def comprobante_asesor_detalle(request, vendedora_id):
         'total_retiros': total_retiros,
         'suma_pago': suma_pago,
         'suma_diferencia': suma_diferencia,
+        'es_perfil_propio': es_perfil_propio,
+        'asesor_rol': asesor_rol,
+        'avatar_seleccionado': avatar_seleccionado,
+        'avatar_asesor_archivo': ARCHIVOS_AVATAR_PERFIL.get(
+            avatar_seleccionado,
+            ARCHIVOS_AVATAR_PERFIL[AVATAR_PERFIL_PREDETERMINADO],
+        ),
+        'avatares': avatares,
     })

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="leon-bg" x1="20" y1="10" x2="110" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE2A0"/>
+      <stop offset="1" stop-color="#E48936"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#leon-bg)"/>
+  <path d="M23 64c-10-11-3-25 9-28-2-13 12-22 23-15 7-11 25-9 30 3 13-4 24 8 19 21 12 6 13 23 3 31 6 13-6 25-19 23-6 12-23 14-32 5-11 7-27-1-27-15-13-2-18-18-6-25z" fill="#9C5425"/>
+  <path d="M38 46c-6-11-1-20 9-19l10 16M90 46c6-11 1-20-9-19L71 43" fill="#B8662C" stroke="#75401F" stroke-width="3" stroke-linejoin="round"/>
+  <ellipse cx="64" cy="66" rx="33" ry="35" fill="#E9A64C"/>
+  <ellipse cx="64" cy="77" rx="23" ry="20" fill="#F6C46E"/>
+  <path d="M47 59c4-4 8-4 12 0M69 59c4-4 8-4 12 0" fill="none" stroke="#57351F" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="53" cy="63" rx="3" ry="4" fill="#35271E"/>
+  <ellipse cx="75" cy="63" rx="3" ry="4" fill="#35271E"/>
+  <path d="M58 75c2-4 10-4 12 0-2 5-10 5-12 0z" fill="#51301E"/>
+  <path d="M64 79v8M64 86c-5 0-8-2-10-5M64 86c5 0 8-2 10-5" fill="none" stroke="#704125" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

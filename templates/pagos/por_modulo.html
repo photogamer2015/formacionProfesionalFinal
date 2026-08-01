@@ -211,12 +211,21 @@
         min-width: 100px;
         border-bottom: 1px solid #999;
     }
-    /* Chips de estado del módulo dentro de la recaudación */
-    .mod-chip-pagado  { background:#e8f5e9; color:#2e7d32; font-weight:700; padding:3px 8px; border-radius:6px; }
-    .mod-chip-parcial { background:#fff8e1; color:#856404; font-weight:700; padding:3px 8px; border-radius:6px; }
-    .mod-chip-pendiente { background:#ffebee; color:#c62828; font-weight:700; padding:3px 8px; border-radius:6px; }
-</style>
-{% endblock %}
+	    /* Chips de estado del módulo dentro de la recaudación */
+	    .mod-chip-pagado  { background:#e8f5e9; color:#2e7d32; font-weight:700; padding:3px 8px; border-radius:6px; }
+	    .mod-chip-parcial { background:#fff8e1; color:#856404; font-weight:700; padding:3px 8px; border-radius:6px; }
+	    .mod-chip-pendiente { background:#ffebee; color:#c62828; font-weight:700; padding:3px 8px; border-radius:6px; }
+	    .filtro-estudiante-jornada {
+	        grid-column: span 2;
+	        min-width: 0;
+	    }
+	    @media (max-width: 720px) {
+	        .filtro-estudiante-jornada {
+	            grid-column: 1 / -1;
+	        }
+	    }
+	</style>
+	{% endblock %}
 
 {% block content %}
 <div class="crumb no-print">
@@ -229,22 +238,21 @@
     <div>
         <h2 class="page-title">📊 Pagos por Módulo</h2>
         <p class="page-subtitle">
-            Control semanal del avance del curso. La matriz muestra únicamente
-            los <strong>pagos directos a cada módulo</strong> (tipo "Por Módulo").
+            Control semanal del avance del curso. La matriz muestra los
+            <strong>pagos directos de cada módulo</strong> e identifica en amarillo
+            los pagos realizados por recuperación.
             La reserva y los abonos libres se ven en la pantalla de pagos del
             estudiante y suman al saldo total, pero no aparecen aquí.
         </p>
     </div>
     {% if curso_sel %}
     <div class="no-print" style="display:flex; gap:6px; flex-wrap:wrap;">
-        {% with qs="?curso="|add:filtros.curso|add:"&modalidad="|add:filtros.modalidad|add:"&ciudad="|add:filtros.ciudad|add:"&tipo_matricula="|add:filtros.tipo_matricula|add:"&filtro_modulo_estado="|add:filtros.filtro_modulo_estado %}
-        <a href="{% url 'academia:pagos_por_modulo_export_excel' %}{{ qs }}"
+        <a href="{% url 'academia:pagos_por_modulo_export_excel' %}{% if export_querystring %}?{{ export_querystring }}{% endif %}"
            class="btn btn-secondary" title="Exportar a Excel">📊 Excel</a>
-        <a href="{% url 'academia:pagos_por_modulo_export_pdf' %}{{ qs }}"
+        <a href="{% url 'academia:pagos_por_modulo_export_pdf' %}{% if export_querystring %}?{{ export_querystring }}{% endif %}"
            class="btn btn-secondary" title="Exportar a PDF">📄 PDF</a>
         <button type="button" onclick="window.print()" class="btn btn-secondary"
             title="Imprimir">🖨️ Imprimir</button>
-        {% endwith %}
     </div>
     {% endif %}
 </div>
@@ -327,6 +335,24 @@
             <div style="font-size:10px; color:#999; margin-top:2px;">Selecciona un curso primero</div>
             {% endif %}
         </div>
+        <div class="filtro-estudiante-jornada">
+            <label class="form-label" style="font-size:11px;">Estudiante / Jornada</label>
+            <select name="matricula" id="filtro-matricula" class="form-input"
+                    {% if not curso_sel %}disabled{% endif %}
+                    style="{% if not curso_sel %}opacity:0.5; cursor:not-allowed;{% endif %}">
+                <option value="">— Todos los estudiantes —</option>
+                {% for opcion in estudiantes_jornada %}
+                <option value="{{ opcion.id }}" {% if filtros.matricula == opcion.id %}selected{% endif %}>
+                    {{ opcion.label }}
+                </option>
+                {% endfor %}
+            </select>
+            {% if not curso_sel %}
+            <div style="font-size:10px; color:#999; margin-top:2px;">Selecciona un curso primero</div>
+            {% elif not estudiantes_jornada %}
+            <div style="font-size:10px; color:#999; margin-top:2px;">No hay estudiantes con esos filtros</div>
+            {% endif %}
+        </div>
         <button type="submit" class="btn btn-primary">Aplicar</button>
     </form>
 </div>
@@ -335,6 +361,7 @@
 (function() {
     var cursoSel = document.getElementById('filtro-curso');
     var fechaSel = document.getElementById('filtro-fecha-jornada');
+    var matriculaSel = document.getElementById('filtro-matricula');
 
     if (cursoSel && fechaSel) {
         cursoSel.addEventListener('change', function() {
@@ -343,10 +370,19 @@
                 fechaSel.style.opacity = '0.5';
                 fechaSel.style.cursor = 'not-allowed';
                 fechaSel.value = '';
+                if (matriculaSel) {
+                    matriculaSel.disabled = true;
+                    matriculaSel.style.opacity = '0.5';
+                    matriculaSel.style.cursor = 'not-allowed';
+                    matriculaSel.value = '';
+                }
             } else {
                 // Cuando se cambia el curso, se envía el formulario para
                 // recargar las fechas de jornada disponibles del nuevo curso.
                 fechaSel.value = '';
+                if (matriculaSel) {
+                    matriculaSel.value = '';
+                }
                 document.getElementById('filtros-form').submit();
             }
         });
@@ -401,7 +437,7 @@
                 <th style="padding:12px 8px; text-align:center; min-width:90px;">Saldo</th>
                 {% for n in modulos_visibles %}
                 <th style="padding:12px 8px; text-align:center; min-width:90px; background:#283593;">
-                    Mód. {{ n }}
+                    {% if filtro_pago_unico_online and n == 1 %}Un solo pago{% else %}Mód. {{ n }}{% endif %}
                 </th>
                 {% endfor %}
                 <th style="padding:12px 8px; text-align:center; min-width:140px;">Asistencia</th>
@@ -500,6 +536,12 @@
                         {% if mod.fecha_pago %}
                         <div style="font-size:10px; color:#2e7d32; margin-top:2px;">{{ mod.fecha_pago|date:"d/m/Y" }}</div>
                         {% endif %}
+                        {% if mod.es_recuperacion %}
+                        <div title="{{ mod.recuperacion_recibos }}"
+                             style="display:inline-block; margin-top:5px; background:#fff3cd; border:1px solid #f0c36d; color:#8a5a00; padding:2px 6px; border-radius:6px; font-size:9px; font-weight:800; line-height:1.2;">
+                            ✱ Recuperación
+                        </div>
+                        {% endif %}
                     {% endif %}
                 </td>
                 {% endif %}
@@ -529,12 +571,14 @@
     <strong>Leyenda:</strong>
     <span style="background:#e8f5e9; padding:2px 8px; border-radius:6px; color:#2e7d32; font-weight:600;">✓ Pagado</span> ·
     <span style="background:#e8f5e9; padding:2px 8px; border-radius:6px; color:#2e7d32; font-weight:600;">✓ Programa Completo</span> ·
-    <span style="background:#ffebee; padding:2px 8px; border-radius:6px; color:#c62828; font-weight:600;">○ Sin pagar</span>
+    <span style="background:#ffebee; padding:2px 8px; border-radius:6px; color:#c62828; font-weight:600;">○ Sin pagar</span> ·
+    <span style="background:#fff3cd; border:1px solid #f0c36d; padding:2px 8px; border-radius:6px; color:#8a5a00; font-weight:700;">✱ Recuperación</span>
     <br><br>
     <em>
         Valor sugerido por módulo = Valor neto del curso / N° de módulos.
         Cada módulo se paga de forma independiente: solo cuentan en la matriz
-        los abonos asignados explícitamente a un módulo (tipo "Por Módulo").
+        los pagos asignados explícitamente a un módulo y los pagos de recuperación
+        que afectan el saldo del curso.
         Cuando el tipo de matrícula es <strong>Programa Completo</strong> y el saldo
         está en $0, los módulos se marcan como pagados aunque no haya un abono
         individual por módulo, porque el estudiante canceló el curso de una sola vez.

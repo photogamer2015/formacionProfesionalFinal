@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="morena-bg" x1="15" y1="7" x2="112" y2="121" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7799DC"/>
+      <stop offset="1" stop-color="#394677"/>
+    </linearGradient>
+    <clipPath id="morena-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#morena-bg)"/>
+  <g clip-path="url(#morena-clip)">
+    <path d="M22 130c3-25 19-39 42-39s39 14 42 39" fill="#D85D77"/>
+    <path d="M35 67c-4-31 7-48 29-48s33 18 29 49l-8 34H43z" fill="#211C25"/>
+    <path d="M56 82h16v18H56z" fill="#9E6248"/>
+    <ellipse cx="64" cy="60" rx="23" ry="28" fill="#B97858"/>
+    <path d="M40 53c1-22 10-34 25-34 16 0 25 13 25 35-11-3-20-10-26-20-4 9-12 16-24 19z" fill="#272028"/>
+    <path d="M42 50c-6 16-4 35 5 50l7-12-4-41zM88 48L76 89l7 12c10-14 11-36 5-53z" fill="#241D25"/>
+    <ellipse cx="55" cy="61" rx="2.4" ry="3" fill="#241A1C"/>
+    <ellipse cx="73" cy="61" rx="2.4" ry="3" fill="#241A1C"/>
+    <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#813E45" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M43 107l14-11 7 8 8-8 14 11 8 23H34z" fill="#E36780"/>
+    <path d="M57 96l7 8 8-8" fill="none" stroke="#FFD8DE" stroke-width="3"/>
+    <circle cx="45" cy="72" r="3" fill="#EEC34B"/>
+    <circle cx="83" cy="72" r="3" fill="#EEC34B"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

@@ -29,7 +29,8 @@ class CursoForm(forms.ModelForm):
             'ofrece_presencial', 'valor_presencial',
             'ofrece_online', 'valor_online',
             'duracion', 'numero_modulos', 'numero_modulos_online',
-            'es_ciclo_corto', 'nombrar_modulos', 'activo',
+            'es_ciclo_corto', 'pago_unico_online',
+            'nombrar_modulos', 'activo',
         ]
         widgets = {
             'categoria': forms.Select(attrs={'class': 'form-input', 'id': 'id_categoria'}),
@@ -47,6 +48,9 @@ class CursoForm(forms.ModelForm):
                 'placeholder': 'Ej.: 2',
             }),
             'es_ciclo_corto': forms.CheckboxInput(attrs={'class': 'form-checkbox', 'id': 'id_es_ciclo_corto'}),
+            'pago_unico_online': forms.CheckboxInput(attrs={
+                'class': 'form-checkbox', 'id': 'id_pago_unico_online',
+            }),
             'nombrar_modulos': forms.CheckboxInput(attrs={'class': 'form-checkbox', 'id': 'id_nombrar_modulos'}),
         }
 
@@ -62,6 +66,18 @@ class CursoForm(forms.ModelForm):
         if not ofrece_pres and not ofrece_onl:
             raise forms.ValidationError(
                 'Debes seleccionar al menos una modalidad (presencial u online).'
+            )
+
+        pago_unico_online = cleaned.get('pago_unico_online', False)
+        if pago_unico_online and not cleaned.get('es_ciclo_corto'):
+            self.add_error(
+                'pago_unico_online',
+                'El pago único online solo se puede activar en un ciclo corto.',
+            )
+        if pago_unico_online and not ofrece_onl:
+            self.add_error(
+                'pago_unico_online',
+                'Activa la modalidad online para usar el pago único.',
             )
             
         nombrar = cleaned.get('nombrar_modulos', False)
@@ -833,6 +849,9 @@ class AbonoForm(forms.ModelForm):
             self.initial['banco_2'] = self.instance.banco_2
 
         self.matricula = matricula
+        self.es_pago_unico_online = bool(
+            matricula and matricula.tiene_pago_unico_online
+        )
         self.fields['numero_recibo'].required = False
         self.fields['banco'].required = False
         self.fields['banco'].empty_label = '— Selecciona un banco —'
@@ -849,6 +868,11 @@ class AbonoForm(forms.ModelForm):
             choice for choice in Abono.TIPOS_PAGO
             if choice[0] != 'por_modulo' or conservar_abono_modulo
         ]
+        if self.es_pago_unico_online and not conservar_abono_modulo:
+            self.fields['tipo_pago'].choices = [
+                (valor, 'Un solo pago' if valor == 'solo_modulo' else label)
+                for valor, label in self.fields['tipo_pago'].choices
+            ]
 
         # Construir choices de módulos según el curso de la matrícula
         modulo_choices = [('', '— Selecciona módulo —')]
@@ -866,6 +890,9 @@ class AbonoForm(forms.ModelForm):
             # Fallback genérico
             modulo_choices += [(i, f'Módulo {i}') for i in range(1, 6)]
         self.fields['numero_modulo'].widget.choices = modulo_choices
+        self.fields['numero_modulo'].widget.attrs['data-pago-unico-online'] = (
+            '1' if self.es_pago_unico_online else '0'
+        )
 
     def clean_monto(self):
         monto = self.cleaned_data.get('monto')
@@ -913,6 +940,21 @@ class AbonoForm(forms.ModelForm):
                     f'El módulo {numero_modulo} no existe. Este curso tiene '
                     f'{n_mod_curso} módulo(s); elige uno entre 1 y {n_mod_curso}.'
                 )
+
+        # En el ciclo corto online con pago único solo existe la obligación
+        # económica N.º 1. El Módulo 2 continúa existiendo académicamente y
+        # puede usarse en Recuperación, pero nunca como una segunda cuota.
+        if (
+            tipo_pago in ('por_modulo', 'solo_modulo')
+            and numero_modulo
+            and self.es_pago_unico_online
+            and numero_modulo != 1
+        ):
+            self.add_error(
+                'numero_modulo',
+                'Este ciclo corto online tiene un solo pago. El Módulo 2 '
+                'es académico y no tiene una cuota independiente.',
+            )
 
         # Si tipo es abono o pago_completo, el módulo se limpia
         if tipo_pago in ('abono', 'pago_completo'):
@@ -1173,19 +1215,6 @@ class RecuperacionPendienteForm(forms.ModelForm):
     Formulario para marcar una clase a recuperación.
     Se usa en la edición de matrícula y en el listado de pagos.
     """
-    MODO_NORMAL = 'normal'
-    MODO_DESCONTAR_ABONO_MODULO = 'descontar_abono_modulo'
-
-    modo_registro = forms.ChoiceField(
-        choices=[
-            (MODO_NORMAL, 'Registrar recuperación normalmente'),
-            (MODO_DESCONTAR_ABONO_MODULO, 'Descontar con Abono + Módulo'),
-        ],
-        initial=MODO_NORMAL,
-        label='Forma de registro',
-        widget=forms.Select(attrs={'class': 'form-input', 'id': 'id_modo_registro'}),
-    )
-
     class Meta:
         model = RecuperacionPendiente
         fields = [
@@ -1292,8 +1321,6 @@ class RecuperacionPendienteForm(forms.ModelForm):
         numero_modulo = cleaned_data.get('numero_modulo')
         fecha_marcada = cleaned_data.get('fecha_marcada')
         fecha_programada = cleaned_data.get('fecha_programada')
-        modo_registro = cleaned_data.get('modo_registro') or self.MODO_NORMAL
-        cleaned_data['modo_registro'] = modo_registro
 
         if (
             fecha_marcada
@@ -1322,10 +1349,6 @@ class RecuperacionPendienteForm(forms.ModelForm):
                 if not tipo_equipo:
                     self.add_error('tipo_equipo', 'Debes seleccionar la clase a recuperar para este curso.')
 
-        if modo_registro == self.MODO_DESCONTAR_ABONO_MODULO:
-            if not numero_modulo:
-                self.add_error('modo_registro', 'Primero selecciona el módulo que se va a descontar.')
-        
         return cleaned_data
         self.fields['observaciones'].required = False
 
