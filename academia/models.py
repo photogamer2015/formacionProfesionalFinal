@@ -13,18 +13,35 @@ AVATARES_PERFIL = [
     ('pollito', 'Pollito'),
     ('leon', 'León'),
     ('mujer_rubia', 'Mujer rubia'),
+    ('pelirroja_clara', 'Mujer pelirroja clara'),
     ('mujer_afro_castana', 'Mujer afro castaña'),
     ('latina', 'Latina'),
     ('morena', 'Morena'),
+    ('pelirroja_morena', 'Mujer morena pelirroja'),
     ('mulata', 'Mulata'),
     ('pacman', 'Pac-Man'),
     ('gorra_mario', 'Gorra de Mario'),
     ('princesa_peach', 'Princesa Peach'),
+    ('logo_formacion', 'Logo Formación Profesional'),
 ]
 
 ARCHIVOS_AVATAR_PERFIL = {
-    clave: f'avatars/{clave}.svg'
+    clave: ('logo.png' if clave == 'logo_formacion' else f'avatars/{clave}.svg')
     for clave, _etiqueta in AVATARES_PERFIL
+}
+
+PORTADA_PERFIL_PREDETERMINADA = 'institucional'
+PORTADAS_PERFIL = [
+    ('institucional', 'Institucional'),
+    ('mariposas', 'Mariposas'),
+    ('castillo', 'Castillo'),
+    ('paisaje', 'Paisaje natural'),
+]
+ARCHIVOS_PORTADA_PERFIL = {
+    'institucional': '',
+    'mariposas': 'portadas/mariposas.jpg',
+    'castillo': 'portadas/castillo.jpg',
+    'paisaje': 'portadas/paisaje.jpg',
 }
 
 MODALIDADES = [
@@ -2704,6 +2721,11 @@ class PerfilUsuario(models.Model):
         choices=AVATARES_PERFIL,
         default=AVATAR_PERFIL_PREDETERMINADO,
     )
+    portada = models.CharField(
+        max_length=32,
+        choices=PORTADAS_PERFIL,
+        default=PORTADA_PERFIL_PREDETERMINADA,
+    )
     actualizado = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -2717,5 +2739,69 @@ class PerfilUsuario(models.Model):
             ARCHIVOS_AVATAR_PERFIL[AVATAR_PERFIL_PREDETERMINADO],
         )
 
+    @property
+    def portada_archivo(self):
+        return ARCHIVOS_PORTADA_PERFIL.get(
+            self.portada,
+            ARCHIVOS_PORTADA_PERFIL[PORTADA_PERFIL_PREDETERMINADA],
+        )
+
     def __str__(self):
         return f'{self.user.get_username()} · {self.get_avatar_display()}'
+
+
+class ActividadUsuario(models.Model):
+    """Bitácora diaria de las acciones realizadas dentro del sistema.
+
+    La bitácora conserva el nombre del usuario como una copia histórica para
+    que el reporte siga siendo comprensible incluso si la cuenta se elimina
+    posteriormente. No almacena contraseñas, formularios ni datos sensibles:
+    únicamente la acción, su contexto y la hora en que ocurrió.
+    """
+
+    CATEGORIAS = [
+        ('acceso', 'Acceso'),
+        ('consulta', 'Consulta'),
+        ('creacion', 'Creación'),
+        ('edicion', 'Edición'),
+        ('eliminacion', 'Eliminación'),
+        ('pago', 'Pago'),
+        ('exportacion', 'Exportación'),
+        ('administracion', 'Administración'),
+    ]
+
+    usuario = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='actividades_sistema',
+    )
+    usuario_nombre = models.CharField(
+        max_length=150,
+        help_text='Nombre visible del usuario al momento de la actividad.',
+    )
+    categoria = models.CharField(
+        max_length=20,
+        choices=CATEGORIAS,
+        default='consulta',
+    )
+    accion = models.CharField(max_length=220)
+    detalle = models.TextField(blank=True)
+    ruta = models.CharField(max_length=255, blank=True)
+    metodo_http = models.CharField(max_length=10, blank=True)
+    estado_http = models.PositiveSmallIntegerField(default=200)
+    direccion_ip = models.GenericIPAddressField(null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Actividad de usuario'
+        verbose_name_plural = 'Actividades de usuarios'
+        ordering = ['-creado', '-pk']
+        indexes = [
+            models.Index(fields=['usuario', 'creado'], name='actividad_usuario_fecha_idx'),
+            models.Index(fields=['categoria', 'creado'], name='actividad_categoria_fecha_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.usuario_nombre} · {self.accion} · {self.creado:%d/%m/%Y %H:%M}'

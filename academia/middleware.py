@@ -3,6 +3,8 @@ from datetime import datetime
 
 from django.utils import timezone
 
+from .auditoria import registrar_actividad
+
 
 class UltimaActividadMiddleware:
     """Registra la última actividad del usuario autenticado en su sesión.
@@ -21,8 +23,8 @@ class UltimaActividadMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        user = getattr(request, 'user', None)
-        if user is not None and user.is_authenticated:
+        user_antes = getattr(request, 'user', None)
+        if user_antes is not None and user_antes.is_authenticated:
             ahora = timezone.now()
             actualizar = True
             previa = request.session.get('ultima_actividad')
@@ -34,5 +36,18 @@ class UltimaActividadMiddleware:
                     actualizar = True
             if actualizar:
                 request.session['ultima_actividad'] = ahora.isoformat()
-                request.session['ultima_actividad_uid'] = user.id
-        return self.get_response(request)
+                request.session['ultima_actividad_uid'] = user_antes.id
+
+        response = self.get_response(request)
+
+        # En el inicio de sesión el usuario todavía era anónimo al entrar al
+        # middleware, pero ya está autenticado al volver de la vista. En el
+        # cierre de sesión ocurre lo contrario; por eso conservamos primero la
+        # cuenta autenticada disponible en cualquiera de los dos momentos.
+        user_despues = getattr(request, 'user', None)
+        usuario_auditable = (
+            user_antes if user_antes is not None and user_antes.is_authenticated
+            else user_despues
+        )
+        registrar_actividad(request, response, usuario_auditable)
+        return response

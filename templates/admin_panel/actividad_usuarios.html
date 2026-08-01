@@ -1,0 +1,280 @@
+{% extends 'base.html' %}
+
+{% block title %}Registro diario de usuarios{% endblock %}
+
+{% block extra_head %}
+<style>
+    .activity-header {
+        display:flex; justify-content:space-between; align-items:flex-start;
+        flex-wrap:wrap; gap:16px; margin-bottom:20px;
+    }
+    .activity-toolbar { display:flex; gap:8px; flex-wrap:wrap; }
+    .activity-filters {
+        display:grid; grid-template-columns:minmax(180px, .8fr) minmax(230px, 1.4fr)
+        minmax(170px, .8fr) auto; gap:14px; align-items:end;
+        padding:20px; margin-bottom:18px;
+    }
+    .activity-filters label {
+        display:block; margin-bottom:6px; font-size:12px; font-weight:800;
+        color:#1B2A4E; text-transform:uppercase; letter-spacing:.03em;
+    }
+    .activity-filters input, .activity-filters select {
+        width:100%; min-height:44px; padding:9px 12px; border:2px solid #dbe2ee;
+        border-radius:10px; background:#fff; color:#1B2A4E; font-size:14px;
+    }
+    .activity-day-nav {
+        display:flex; justify-content:space-between; align-items:center; gap:12px;
+        padding:13px 16px; margin-bottom:18px; background:#eef4ff;
+        border:1px solid #cfe0ff; border-radius:12px;
+    }
+    .activity-kpis {
+        display:grid; grid-template-columns:repeat(3, minmax(150px, 1fr));
+        gap:12px; margin-bottom:18px;
+    }
+    .activity-kpi {
+        padding:16px; border-radius:12px; background:#fff;
+        border:1px solid #e0e5ef; box-shadow:0 4px 12px rgba(27,42,78,.05);
+    }
+    .activity-kpi-label { color:#777; font-size:11px; font-weight:800; text-transform:uppercase; }
+    .activity-kpi-value { color:#1B2A4E; font-size:25px; font-weight:800; margin-top:4px; }
+    .activity-table-card { padding:0; overflow:hidden; }
+    .activity-table { width:100%; border-collapse:collapse; }
+    .activity-table th {
+        background:#1B2A4E; color:#fff; padding:12px 11px; text-align:left;
+        font-size:12px; text-transform:uppercase; letter-spacing:.02em;
+    }
+    .activity-table td { padding:12px 11px; border-bottom:1px solid #e8ebf1; vertical-align:top; }
+    .activity-table tr:last-child td { border-bottom:0; }
+    .activity-table tbody tr:hover { background:#f8faff; }
+    .activity-time { font-weight:800; color:#1B2A4E; white-space:nowrap; }
+    .activity-user { font-weight:750; color:#1B2A4E; }
+    .activity-username, .activity-technical { color:#7a8498; font-size:11px; margin-top:3px; }
+    .activity-action { font-weight:700; color:#1B2A4E; line-height:1.35; }
+    .activity-detail { color:#4e596d; font-size:12px; line-height:1.4; }
+    .activity-badge {
+        display:inline-flex; align-items:center; padding:4px 9px; border-radius:999px;
+        font-size:11px; font-weight:800; white-space:nowrap;
+    }
+    .activity-badge--acceso { background:#e8eaf6; color:#3949ab; }
+    .activity-badge--consulta { background:#e3f2fd; color:#1565c0; }
+    .activity-badge--creacion { background:#e8f5e9; color:#2e7d32; }
+    .activity-badge--edicion { background:#fff8e1; color:#a66b00; }
+    .activity-badge--eliminacion { background:#ffebee; color:#c62828; }
+    .activity-badge--pago { background:#e0f2f1; color:#00796b; }
+    .activity-badge--exportacion { background:#f3e5f5; color:#7b1fa2; }
+    .activity-badge--administracion { background:#eceff1; color:#455a64; }
+    .activity-status { font-size:11px; font-weight:800; white-space:nowrap; }
+    .activity-status--ok { color:#2e7d32; }
+    .activity-status--error { color:#c62828; }
+    .activity-empty { text-align:center; padding:52px 20px; }
+    .activity-empty-icon { font-size:42px; margin-bottom:12px; }
+    .activity-empty h3 { color:#1B2A4E; margin:0 0 7px; }
+    .activity-empty p { color:#6d7687; margin:0; }
+
+    body.dark-mode .activity-filters,
+    body.dark-mode .activity-kpi,
+    body.dark-mode .activity-table-card { background:#20242d; border-color:#394150; }
+    body.dark-mode .activity-filters label,
+    body.dark-mode .activity-kpi-value,
+    body.dark-mode .activity-time,
+    body.dark-mode .activity-user,
+    body.dark-mode .activity-action,
+    body.dark-mode .activity-empty h3 { color:#e8edf7; }
+    body.dark-mode .activity-filters input,
+    body.dark-mode .activity-filters select { background:#171a21; border-color:#454d5c; color:#fff; }
+    body.dark-mode .activity-day-nav { background:#1b2a43; border-color:#30496f; }
+    body.dark-mode .activity-table td { border-color:#343b48; }
+    body.dark-mode .activity-table tbody tr:hover { background:#262b35; }
+    body.dark-mode .activity-detail { color:#c8cfda; }
+
+    @media (max-width:900px) {
+        .activity-filters { grid-template-columns:1fr 1fr; }
+        .activity-table { min-width:900px; }
+        .activity-table-wrap { overflow-x:auto; }
+    }
+    @media (max-width:560px) {
+        .activity-filters, .activity-kpis { grid-template-columns:1fr; }
+        .activity-day-nav { align-items:stretch; flex-direction:column; text-align:center; }
+    }
+    @media print {
+        header.top, .global-back-button, .crumb, .no-print, .activity-filters,
+        .activity-day-nav, .activity-kpis { display:none !important; }
+        body, .container { background:#fff !important; }
+        .container { max-width:100% !important; padding:0 !important; }
+        .activity-header { margin-bottom:10px; }
+        .activity-table-card { box-shadow:none !important; border:0 !important; overflow:visible; }
+        .activity-table { font-size:9px; }
+        .activity-table th { background:#1B2A4E !important; color:#fff !important; padding:7px 6px; }
+        .activity-table td { padding:7px 6px; }
+        .activity-technical { display:none !important; }
+        * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+        @page { size:landscape; margin:10mm; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb no-print">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:admin_dashboard' %}">Registro Administrativo</a> &nbsp;›&nbsp;
+    Actividad de usuarios
+</div>
+
+<div class="activity-header">
+    <div>
+        <h2 class="page-title">🕘 Registro diario de usuarios</h2>
+        <p class="page-subtitle">
+            Actividades del <strong>{{ fecha|date:"l d \d\e F \d\e Y" }}</strong>
+            {% if usuario_seleccionado %}
+                · {{ usuario_seleccionado.get_full_name|default:usuario_seleccionado.username }}
+            {% else %}
+                · Todos los usuarios
+            {% endif %}
+        </p>
+    </div>
+    <div class="activity-toolbar no-print">
+        <a class="btn btn-secondary"
+           href="{% url 'academia:actividad_usuarios_pdf' %}?fecha={{ fecha|date:'Y-m-d' }}{% if usuario_id %}&usuario={{ usuario_id }}{% endif %}{% if categoria %}&categoria={{ categoria }}{% endif %}">
+            📄 PDF
+        </a>
+        <button type="button" class="btn btn-success" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+</div>
+
+<form method="get" class="card activity-filters no-print">
+    <div>
+        <label for="actividad-fecha">📅 Día</label>
+        <input id="actividad-fecha" type="date" name="fecha" value="{{ fecha|date:'Y-m-d' }}" required>
+    </div>
+    <div>
+        <label for="actividad-usuario">👤 Usuario</label>
+        <select id="actividad-usuario" name="usuario">
+            <option value="">Todos los usuarios</option>
+            {% for usuario in usuarios %}
+                <option value="{{ usuario.id }}" {% if usuario_id == usuario.id|stringformat:'s' %}selected{% endif %}>
+                    {{ usuario.get_full_name|default:usuario.username }} · @{{ usuario.username }}
+                    {% if not usuario.is_active %}(inactivo){% endif %}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="actividad-categoria">🏷️ Tipo de actividad</label>
+        <select id="actividad-categoria" name="categoria">
+            <option value="">Todos los tipos</option>
+            {% for codigo, etiqueta in categorias %}
+                <option value="{{ codigo }}" {% if categoria == codigo %}selected{% endif %}>{{ etiqueta }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="submit" class="btn btn-primary">Ver actividad</button>
+        <a href="{% url 'academia:actividad_usuarios' %}" class="btn btn-secondary">Hoy</a>
+    </div>
+</form>
+
+<div class="activity-day-nav no-print">
+    <a class="btn btn-secondary btn-sm"
+       href="?fecha={{ fecha_anterior|date:'Y-m-d' }}{% if usuario_id %}&usuario={{ usuario_id }}{% endif %}{% if categoria %}&categoria={{ categoria }}{% endif %}">
+        ← Día anterior
+    </a>
+    <div>
+        <strong>{{ fecha|date:"d/m/Y" }}</strong>
+        <div style="font-size:12px; color:#5f6f89; margin-top:2px;">
+            Cada día comienza una vista nueva; el historial anterior se conserva.
+        </div>
+    </div>
+    <a class="btn btn-secondary btn-sm {% if fecha >= hoy %}disabled{% endif %}"
+       {% if fecha < hoy %}href="?fecha={{ fecha_siguiente|date:'Y-m-d' }}{% if usuario_id %}&usuario={{ usuario_id }}{% endif %}{% if categoria %}&categoria={{ categoria }}{% endif %}"{% else %}aria-disabled="true"{% endif %}>
+        Día siguiente →
+    </a>
+</div>
+
+<div class="activity-kpis no-print">
+    <div class="activity-kpi">
+        <div class="activity-kpi-label">Actividades del día</div>
+        <div class="activity-kpi-value">{{ total_actividades }}</div>
+    </div>
+    <div class="activity-kpi">
+        <div class="activity-kpi-label">Usuario seleccionado</div>
+        <div class="activity-kpi-value" style="font-size:18px;">
+            {% if usuario_seleccionado %}
+                {{ usuario_seleccionado.get_full_name|default:usuario_seleccionado.username }}
+            {% else %}
+                Todos
+            {% endif %}
+        </div>
+    </div>
+    <div class="activity-kpi">
+        <div class="activity-kpi-label">Última actividad mostrada</div>
+        <div class="activity-kpi-value" style="font-size:18px;">
+            {% if actividades %}{{ actividades.0.creado|date:"H:i:s" }}{% else %}—{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card activity-table-card">
+    {% if actividades %}
+    <div class="activity-table-wrap">
+        <table class="activity-table">
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Usuario</th>
+                    <th>Tipo</th>
+                    <th>Actividad realizada</th>
+                    <th>Detalle</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for actividad in actividades %}
+                <tr>
+                    <td class="activity-time">{{ actividad.creado|date:"H:i:s" }}</td>
+                    <td>
+                        <div class="activity-user">{{ actividad.usuario_nombre }}</div>
+                        {% if actividad.usuario %}
+                            <div class="activity-username">@{{ actividad.usuario.username }}</div>
+                        {% else %}
+                            <div class="activity-username">Cuenta eliminada</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="activity-badge activity-badge--{{ actividad.categoria }}">
+                            {{ actividad.get_categoria_display }}
+                        </span>
+                    </td>
+                    <td class="activity-action">{{ actividad.accion }}</td>
+                    <td>
+                        <div class="activity-detail">{{ actividad.detalle|default:"—" }}</div>
+                        <div class="activity-technical">
+                            {{ actividad.metodo_http }} {{ actividad.ruta }}
+                            {% if actividad.direccion_ip %} · IP {{ actividad.direccion_ip }}{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if actividad.estado_http < 400 %}
+                            <span class="activity-status activity-status--ok">✓ Correcto</span>
+                        {% else %}
+                            <span class="activity-status activity-status--error">⚠ HTTP {{ actividad.estado_http }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="activity-empty">
+        <div class="activity-empty-icon">🕘</div>
+        {% if usuario_seleccionado %}
+            <h3>Aún este usuario no ha hecho nada en esta fecha</h3>
+            <p>{{ usuario_seleccionado.get_full_name|default:usuario_seleccionado.username }} no tiene actividades registradas el {{ fecha|date:"d/m/Y" }}.</p>
+        {% else %}
+            <h3>Aún no hay actividades registradas en esta fecha</h3>
+            <p>Cuando los usuarios utilicen el sistema, sus acciones aparecerán aquí con la hora exacta.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

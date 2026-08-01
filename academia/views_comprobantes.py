@@ -21,8 +21,10 @@ from django.views.decorators.http import require_POST
 
 from .forms import ComprobanteForm
 from .models import (
-    ARCHIVOS_AVATAR_PERFIL, AVATARES_PERFIL, AVATAR_PERFIL_PREDETERMINADO,
-    Comprobante, Curso, Matricula, PerfilUsuario,
+    ARCHIVOS_AVATAR_PERFIL, ARCHIVOS_PORTADA_PERFIL,
+    AVATARES_PERFIL, AVATAR_PERFIL_PREDETERMINADO,
+    PORTADAS_PERFIL, PORTADA_PERFIL_PREDETERMINADA,
+    Comprobante, Curso, Matricula, PerfilUsuario, RecuperacionPendiente,
 )
 from .permisos import (
     admin_requerido, es_admin, es_asesor, matricula_requerida,
@@ -352,26 +354,42 @@ def comprobante_asesor_detalle(request, vendedora_id):
         if not es_perfil_propio:
             messages.error(
                 request,
-                'Solo cada usuario puede cambiar el avatar de su propio perfil.'
+                'Solo cada usuario puede personalizar su propio perfil.'
             )
             return redirect(
                 'academia:comprobante_asesor_detalle',
                 vendedora_id=asesor.pk,
             )
 
-        avatar = (request.POST.get('avatar') or '').strip()
-        avatares_validos = {clave for clave, _etiqueta in AVATARES_PERFIL}
-        if avatar not in avatares_validos:
-            messages.error(request, 'Selecciona un avatar válido.')
+        preferencia = (request.POST.get('preferencia') or '').strip()
+        if preferencia == 'portada' or 'portada' in request.POST:
+            portada = (request.POST.get('portada') or '').strip()
+            portadas_validas = {clave for clave, _etiqueta in PORTADAS_PERFIL}
+            if portada not in portadas_validas:
+                messages.error(request, 'Selecciona una portada válida.')
+            else:
+                PerfilUsuario.objects.update_or_create(
+                    user=asesor,
+                    defaults={'portada': portada},
+                )
+                messages.success(
+                    request,
+                    'Tu portada se actualizó correctamente.'
+                )
         else:
-            PerfilUsuario.objects.update_or_create(
-                user=asesor,
-                defaults={'avatar': avatar},
-            )
-            messages.success(
-                request,
-                'Tu avatar se actualizó correctamente en todo el sistema.'
-            )
+            avatar = (request.POST.get('avatar') or '').strip()
+            avatares_validos = {clave for clave, _etiqueta in AVATARES_PERFIL}
+            if avatar not in avatares_validos:
+                messages.error(request, 'Selecciona un avatar válido.')
+            else:
+                PerfilUsuario.objects.update_or_create(
+                    user=asesor,
+                    defaults={'avatar': avatar},
+                )
+                messages.success(
+                    request,
+                    'Tu avatar se actualizó correctamente en todo el sistema.'
+                )
         return redirect(
             'academia:comprobante_asesor_detalle',
             vendedora_id=asesor.pk,
@@ -381,6 +399,9 @@ def comprobante_asesor_detalle(request, vendedora_id):
     avatar_seleccionado = (
         perfil.avatar if perfil else AVATAR_PERFIL_PREDETERMINADO
     )
+    portada_seleccionada = (
+        perfil.portada if perfil else PORTADA_PERFIL_PREDETERMINADA
+    )
     avatares = [
         {
             'clave': clave,
@@ -388,6 +409,14 @@ def comprobante_asesor_detalle(request, vendedora_id):
             'archivo': ARCHIVOS_AVATAR_PERFIL[clave],
         }
         for clave, etiqueta in AVATARES_PERFIL
+    ]
+    portadas = [
+        {
+            'clave': clave,
+            'etiqueta': etiqueta,
+            'archivo': ARCHIVOS_PORTADA_PERFIL[clave],
+        }
+        for clave, etiqueta in PORTADAS_PERFIL
     ]
 
     if es_admin(asesor):
@@ -406,12 +435,29 @@ def comprobante_asesor_detalle(request, vendedora_id):
         .order_by('-fecha_inscripcion', '-id')
     )
 
-    total_ventas = comprobantes.count()
-    total_retiros = comprobantes.filter(matricula__estado='retiro_voluntario').count()
-    total_activas = total_ventas - total_retiros
+    comprobantes_retirados = comprobantes.filter(
+        matricula__estado='retiro_voluntario',
+    )
+    comprobantes_pendientes = comprobantes.filter(
+        diferencia__gt=Decimal('0.00'),
+    ).exclude(
+        matricula__estado='retiro_voluntario',
+    )
+    recuperaciones = RecuperacionPendiente.objects.filter(
+        Q(matricula__vendedora_id=vendedora_id) |
+        Q(
+            matricula__vendedora__isnull=True,
+            matricula__comprobante__vendedora_id=vendedora_id,
+        )
+    ).select_related(
+        'matricula', 'matricula__estudiante', 'matricula__curso',
+    ).distinct()
 
-    suma_pago = comprobantes.aggregate(s=Sum('pago_abono'))['s'] or Decimal('0.00')
-    suma_diferencia = comprobantes.aggregate(s=Sum('diferencia'))['s'] or Decimal('0.00')
+    total_ventas = comprobantes.count()
+    total_retiros = comprobantes_retirados.count()
+    total_activas = total_ventas - total_retiros
+    total_saldos_pendientes = comprobantes_pendientes.count()
+    total_recuperaciones = recuperaciones.count()
 
     registros = (
         Matricula.objects.filter(registrado_por_id=vendedora_id)
@@ -426,8 +472,11 @@ def comprobante_asesor_detalle(request, vendedora_id):
         'total_ventas': total_ventas,
         'total_activas': total_activas,
         'total_retiros': total_retiros,
-        'suma_pago': suma_pago,
-        'suma_diferencia': suma_diferencia,
+        'total_saldos_pendientes': total_saldos_pendientes,
+        'total_recuperaciones': total_recuperaciones,
+        'comprobantes_pendientes': comprobantes_pendientes,
+        'comprobantes_retirados': comprobantes_retirados,
+        'recuperaciones': recuperaciones,
         'es_perfil_propio': es_perfil_propio,
         'asesor_rol': asesor_rol,
         'avatar_seleccionado': avatar_seleccionado,
@@ -436,4 +485,10 @@ def comprobante_asesor_detalle(request, vendedora_id):
             ARCHIVOS_AVATAR_PERFIL[AVATAR_PERFIL_PREDETERMINADO],
         ),
         'avatares': avatares,
+        'portada_seleccionada': portada_seleccionada,
+        'portada_asesor_archivo': ARCHIVOS_PORTADA_PERFIL.get(
+            portada_seleccionada,
+            ARCHIVOS_PORTADA_PERFIL[PORTADA_PERFIL_PREDETERMINADA],
+        ),
+        'portadas': portadas,
     })

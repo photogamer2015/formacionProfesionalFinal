@@ -4,7 +4,7 @@
 {% block title %}Perfil de {{ asesor.first_name|default:asesor.username }} — Formación Profesional EC{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'perfil.css' %}?v=20260730-3">
+<link rel="stylesheet" href="{% static 'perfil.css' %}?v=20260801-1">
 {% endblock %}
 
 {% block content %}
@@ -21,10 +21,25 @@
 </nav>
 
 <section class="profile-card" aria-labelledby="profile-name">
-    <div class="profile-cover" aria-hidden="true">
+    <div class="profile-cover{% if portada_asesor_archivo %} profile-cover-custom{% endif %}">
+        {% if portada_asesor_archivo %}
+        <img
+            class="profile-cover-image"
+            src="{% static portada_asesor_archivo %}"
+            alt="Portada {{ portada_seleccionada }} de {{ asesor.get_full_name|default:asesor.username }}"
+        >
+        <span class="profile-cover-shade" aria-hidden="true"></span>
+        {% else %}
         <span class="cover-orbit cover-orbit-one"></span>
         <span class="cover-orbit cover-orbit-two"></span>
         <span class="cover-mark">FP</span>
+        {% endif %}
+        {% if es_perfil_propio %}
+        <button type="button" class="profile-cover-edit" id="cover-dialog-open">
+            <span aria-hidden="true">▧</span>
+            Cambiar portada
+        </button>
+        {% endif %}
     </div>
 
     <div class="profile-main">
@@ -109,39 +124,153 @@
 </section>
 
 <section class="profile-stats" id="resumen" aria-label="Resumen del perfil">
-    <article class="profile-stat profile-stat-primary">
+    <button type="button" class="profile-stat profile-stat-primary" data-summary-target="summary-ventas" data-summary-title="Ventas registradas" aria-haspopup="dialog">
         <span class="profile-stat-icon" aria-hidden="true">↗</span>
         <div>
             <span class="profile-stat-label">Ventas registradas</span>
             <strong>{{ total_ventas }}</strong>
             <small>{{ total_activas }} activa{{ total_activas|pluralize }}</small>
         </div>
-    </article>
-    <article class="profile-stat profile-stat-success">
-        <span class="profile-stat-icon" aria-hidden="true">$</span>
+        <span class="profile-stat-open" aria-hidden="true">Ver detalles ›</span>
+    </button>
+    <button type="button" class="profile-stat profile-stat-success" data-summary-target="summary-recuperaciones" data-summary-title="Clases de recuperación" aria-haspopup="dialog">
+        <span class="profile-stat-icon" aria-hidden="true">✱</span>
         <div>
-            <span class="profile-stat-label">Total cobrado</span>
-            <strong>${{ suma_pago|floatformat:2 }}</strong>
-            <small>Ingresos iniciales</small>
+            <span class="profile-stat-label">Recuperación</span>
+            <strong>{{ total_recuperaciones }}</strong>
+            <small>Caso{{ total_recuperaciones|pluralize }} registrado{{ total_recuperaciones|pluralize }}</small>
         </div>
-    </article>
-    <article class="profile-stat profile-stat-warning">
+        <span class="profile-stat-open" aria-hidden="true">Ver detalles ›</span>
+    </button>
+    <button type="button" class="profile-stat profile-stat-warning" data-summary-target="summary-pendientes" data-summary-title="Estudiantes con saldo pendiente" aria-haspopup="dialog">
         <span class="profile-stat-icon" aria-hidden="true">◴</span>
         <div>
             <span class="profile-stat-label">Saldo pendiente</span>
-            <strong>${{ suma_diferencia|floatformat:2 }}</strong>
-            <small>Por recaudar</small>
+            <strong>{{ total_saldos_pendientes }}</strong>
+            <small>Estudiante{{ total_saldos_pendientes|pluralize }} por recaudar</small>
         </div>
-    </article>
-    <article class="profile-stat profile-stat-danger">
+        <span class="profile-stat-open" aria-hidden="true">Ver detalles ›</span>
+    </button>
+    <button type="button" class="profile-stat profile-stat-danger" data-summary-target="summary-retiros" data-summary-title="Matrículas retiradas" aria-haspopup="dialog">
         <span class="profile-stat-icon" aria-hidden="true">−</span>
         <div>
             <span class="profile-stat-label">Retiros</span>
             <strong>{{ total_retiros }}</strong>
-            <small>Del total de ventas</small>
+            <small>Matrícula{{ total_retiros|pluralize }} retirada{{ total_retiros|pluralize }}</small>
         </div>
-    </article>
+        <span class="profile-stat-open" aria-hidden="true">Ver detalles ›</span>
+    </button>
 </section>
+
+<template id="summary-ventas">
+    <p class="summary-dialog-intro">Estudiantes vinculados a las ventas de este perfil.</p>
+    <div class="summary-student-list">
+        {% for c in comprobantes %}
+        <article class="summary-student-item">
+            <span class="summary-student-avatar" aria-hidden="true">{{ c.nombre_persona|slice:":1"|upper }}</span>
+            <div class="summary-student-info">
+                <strong>{{ c.nombre_persona }}</strong>
+                <span>{{ c.curso.nombre }} · {{ c.get_modalidad_display }} · {{ c.fecha_inscripcion|date:"d/m/Y" }}</span>
+                <div class="summary-student-meta">
+                    <span>Pago inicial: ${{ c.pago_abono|floatformat:2 }}</span>
+                    <span>Saldo: ${{ c.diferencia|floatformat:2 }}</span>
+                </div>
+            </div>
+            {% if c.matricula and c.matricula.estudiante_id %}
+            <a href="{% url 'academia:estudiante_detalle' c.matricula.estudiante_id %}" class="summary-student-link">Ver ficha</a>
+            {% endif %}
+        </article>
+        {% empty %}
+        <div class="summary-dialog-empty">Aún no existen ventas registradas para este usuario.</div>
+        {% endfor %}
+    </div>
+</template>
+
+<template id="summary-recuperaciones">
+    <p class="summary-dialog-intro">Detalle de las clases marcadas para recuperación.</p>
+    <div class="summary-student-list">
+        {% for recuperacion in recuperaciones %}
+        <article class="summary-student-item">
+            <span class="summary-student-avatar summary-student-avatar-success" aria-hidden="true">{{ recuperacion.matricula.estudiante.nombres|slice:":1"|upper }}</span>
+            <div class="summary-student-info">
+                <strong>{{ recuperacion.matricula.estudiante.nombres }}</strong>
+                <span>{{ recuperacion.matricula.curso.nombre }} · {{ recuperacion.get_modulo_display }}</span>
+                <div class="summary-student-meta">
+                    <span>Marcada: {{ recuperacion.fecha_marcada|date:"d/m/Y" }}</span>
+                    {% if recuperacion.fecha_programada %}<span>Programada: {{ recuperacion.fecha_programada|date:"d/m/Y" }}</span>{% endif %}
+                    <span class="{% if recuperacion.pagada %}is-paid{% else %}is-pending{% endif %}">{% if recuperacion.pagada %}Pagada{% else %}Pendiente{% endif %}</span>
+                </div>
+            </div>
+            <a href="{% url 'academia:estudiante_detalle' recuperacion.matricula.estudiante_id %}" class="summary-student-link">Ver ficha</a>
+        </article>
+        {% empty %}
+        <div class="summary-dialog-empty">No hay clases de recuperación registradas.</div>
+        {% endfor %}
+    </div>
+</template>
+
+<template id="summary-pendientes">
+    <p class="summary-dialog-intro">Estudiantes activos que todavía tienen valores por recaudar.</p>
+    <div class="summary-student-list">
+        {% for c in comprobantes_pendientes %}
+        <article class="summary-student-item">
+            <span class="summary-student-avatar summary-student-avatar-warning" aria-hidden="true">{{ c.nombre_persona|slice:":1"|upper }}</span>
+            <div class="summary-student-info">
+                <strong>{{ c.nombre_persona }}</strong>
+                <span>{{ c.curso.nombre }} · {{ c.get_modalidad_display }}</span>
+                <div class="summary-student-meta">
+                    <span>Inscripción: {{ c.fecha_inscripcion|date:"d/m/Y" }}</span>
+                    <span class="is-pending">Saldo pendiente: ${{ c.diferencia|floatformat:2 }}</span>
+                </div>
+            </div>
+            {% if c.matricula and c.matricula.estudiante_id %}
+            <a href="{% url 'academia:estudiante_detalle' c.matricula.estudiante_id %}" class="summary-student-link">Ver ficha</a>
+            {% endif %}
+        </article>
+        {% empty %}
+        <div class="summary-dialog-empty">Este usuario no tiene estudiantes con saldo pendiente.</div>
+        {% endfor %}
+    </div>
+</template>
+
+<template id="summary-retiros">
+    <p class="summary-dialog-intro">Matrículas retiradas asociadas a este perfil.</p>
+    <div class="summary-student-list">
+        {% for c in comprobantes_retirados %}
+        <article class="summary-student-item">
+            <span class="summary-student-avatar summary-student-avatar-danger" aria-hidden="true">{{ c.nombre_persona|slice:":1"|upper }}</span>
+            <div class="summary-student-info">
+                <strong>{{ c.nombre_persona }}</strong>
+                <span>{{ c.curso.nombre }} · {{ c.get_modalidad_display }}</span>
+                <div class="summary-student-meta">
+                    <span>Inscripción: {{ c.fecha_inscripcion|date:"d/m/Y" }}</span>
+                    <span class="is-retired">Retiro voluntario</span>
+                </div>
+            </div>
+            {% if c.matricula and c.matricula.estudiante_id %}
+            <a href="{% url 'academia:estudiante_detalle' c.matricula.estudiante_id %}" class="summary-student-link">Ver ficha</a>
+            {% endif %}
+        </article>
+        {% empty %}
+        <div class="summary-dialog-empty">No existen matrículas retiradas para este usuario.</div>
+        {% endfor %}
+    </div>
+</template>
+
+<dialog class="profile-summary-dialog" id="profile-summary-dialog" aria-labelledby="profile-summary-dialog-title">
+    <header class="avatar-dialog-header">
+        <div>
+            <p class="profile-eyebrow">Detalle del indicador</p>
+            <h2 id="profile-summary-dialog-title">Detalle de estudiantes</h2>
+            <p>Información actualizada del perfil seleccionado.</p>
+        </div>
+        <button type="button" class="avatar-dialog-close" data-summary-close aria-label="Cerrar detalle">×</button>
+    </header>
+    <div class="summary-dialog-body" id="profile-summary-dialog-content"></div>
+    <footer class="avatar-dialog-actions">
+        <button type="button" class="avatar-button avatar-button-secondary" data-summary-close>Cerrar</button>
+    </footer>
+</dialog>
 
 <section class="profile-section-card" id="estudiantes">
     <header class="profile-section-header">
@@ -298,9 +427,43 @@
 </section>
 
 {% if es_perfil_propio %}
+<dialog class="avatar-dialog cover-dialog" id="cover-dialog" aria-labelledby="cover-dialog-title">
+    <form method="post" class="avatar-form" id="cover-form">
+        {% csrf_token %}
+        <input type="hidden" name="preferencia" value="portada">
+        <header class="avatar-dialog-header">
+            <div>
+                <p class="profile-eyebrow">Personaliza tu cuenta</p>
+                <h2 id="cover-dialog-title">Elige tu portada</h2>
+                <p>La portada se guardará únicamente para tu perfil.</p>
+            </div>
+            <button type="button" class="avatar-dialog-close" id="cover-dialog-close" aria-label="Cerrar selector">×</button>
+        </header>
+
+        <div class="cover-picker" role="radiogroup" aria-label="Portadas disponibles">
+            {% for portada in portadas %}
+            <label class="cover-option{% if portada.clave == portada_seleccionada %} is-selected{% endif %}">
+                <input type="radio" name="portada" value="{{ portada.clave }}" {% if portada.clave == portada_seleccionada %}checked{% endif %}>
+                <span class="cover-option-image{% if not portada.archivo %} cover-option-institutional{% endif %}">
+                    {% if portada.archivo %}<img src="{% static portada.archivo %}" alt="">{% else %}<strong>FP</strong>{% endif %}
+                    <span class="avatar-option-check" aria-hidden="true">✓</span>
+                </span>
+                <span class="avatar-option-label">{{ portada.etiqueta }}</span>
+            </label>
+            {% endfor %}
+        </div>
+
+        <footer class="avatar-dialog-actions">
+            <button type="button" class="avatar-button avatar-button-secondary" id="cover-dialog-cancel">Cancelar</button>
+            <button type="submit" class="avatar-button avatar-button-primary" id="cover-save-button">Guardar portada</button>
+        </footer>
+    </form>
+</dialog>
+
 <dialog class="avatar-dialog" id="avatar-dialog" aria-labelledby="avatar-dialog-title">
     <form method="post" class="avatar-form" id="avatar-form">
         {% csrf_token %}
+        <input type="hidden" name="preferencia" value="avatar">
         <header class="avatar-dialog-header">
             <div>
                 <p class="profile-eyebrow">Personaliza tu cuenta</p>
@@ -338,7 +501,5 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if es_perfil_propio %}
-<script src="{% static 'perfil.js' %}?v=20260730-3" defer></script>
-{% endif %}
+<script src="{% static 'perfil.js' %}?v=20260801-1" defer></script>
 {% endblock %}

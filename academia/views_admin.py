@@ -30,7 +30,7 @@ from django.views.decorators.http import require_POST
 from .busqueda import filtrar_queryset_busqueda
 from .forms import EgresoForm
 from .models import (
-    Abono, AbonoArchivado, Adicional, AdicionalArchivado, CategoriaEgreso,
+    Abono, AbonoArchivado, ActividadUsuario, Adicional, AdicionalArchivado, CategoriaEgreso,
     CierreAdministrativo, CierreCurso, Comprobante, Egreso, Matricula, Curso,
     JornadaCurso, RecuperacionPendiente, Sede,
 )
@@ -116,6 +116,205 @@ def _usuarios_actividad():
         )
     )
     return usuarios
+
+
+def _actividad_diaria_datos(request):
+    """Aplica los filtros compartidos por la pantalla y su PDF."""
+    User = get_user_model()
+    fecha_texto = request.GET.get('fecha', '').strip()
+    fecha = parse_date(fecha_texto) if fecha_texto else timezone.localdate()
+    if fecha is None:
+        fecha = timezone.localdate()
+
+    usuario_id = request.GET.get('usuario', '').strip()
+    categoria = request.GET.get('categoria', '').strip()
+    categorias_validas = {codigo for codigo, _ in ActividadUsuario.CATEGORIAS}
+
+    inicio_dia = timezone.make_aware(
+        datetime.combine(fecha, datetime.min.time()),
+        timezone.get_current_timezone(),
+    )
+    fin_dia = inicio_dia + timedelta(days=1)
+    actividades = ActividadUsuario.objects.select_related('usuario').filter(
+        creado__gte=inicio_dia,
+        creado__lt=fin_dia,
+    )
+    usuario_seleccionado = None
+    if usuario_id.isdigit():
+        usuario_seleccionado = User.objects.filter(pk=int(usuario_id)).first()
+        if usuario_seleccionado:
+            actividades = actividades.filter(usuario_id=usuario_seleccionado.pk)
+    if categoria in categorias_validas:
+        actividades = actividades.filter(categoria=categoria)
+    else:
+        categoria = ''
+
+    usuarios = User.objects.filter(
+        Q(is_active=True) | Q(actividades_sistema__isnull=False)
+    ).distinct().order_by('first_name', 'last_name', 'username')
+    actividades = actividades.order_by('-creado', '-pk')
+
+    return {
+        'actividades': actividades,
+        'usuarios': usuarios,
+        'usuario_seleccionado': usuario_seleccionado,
+        'usuario_id': str(usuario_seleccionado.pk) if usuario_seleccionado else '',
+        'categoria': categoria,
+        'fecha': fecha,
+    }
+
+
+@admin_requerido
+def actividad_usuarios(request):
+    """Bitácora diaria filtrable de todos los usuarios del sistema."""
+    datos = _actividad_diaria_datos(request)
+    actividades = list(datos['actividades'])
+    conteos = {}
+    for actividad in actividades:
+        conteos[actividad.categoria] = conteos.get(actividad.categoria, 0) + 1
+
+    datos.update({
+        'actividades': actividades,
+        'total_actividades': len(actividades),
+        'conteos': conteos,
+        'categorias': ActividadUsuario.CATEGORIAS,
+        'fecha_anterior': datos['fecha'] - timedelta(days=1),
+        'fecha_siguiente': datos['fecha'] + timedelta(days=1),
+        'hoy': timezone.localdate(),
+        'titulo': 'Registro diario de usuarios',
+    })
+    return render(request, 'admin_panel/actividad_usuarios.html', datos)
+
+
+@admin_requerido
+def actividad_usuarios_pdf(request):
+    """Genera el reporte PDF de la fecha y el usuario seleccionados."""
+    from xml.sax.saxutils import escape
+
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    datos = _actividad_diaria_datos(request)
+    actividades = list(datos['actividades'])
+    fecha = datos['fecha']
+    usuario = datos['usuario_seleccionado']
+    nombre_usuario = (
+        usuario.get_full_name().strip() or usuario.username
+        if usuario else 'Todos los usuarios'
+    )
+
+    salida = BytesIO()
+    documento = SimpleDocTemplate(
+        salida,
+        pagesize=landscape(A4),
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+        title='Registro diario de usuarios',
+        author='Formación Profesional EC',
+    )
+    estilos = getSampleStyleSheet()
+    titulo = ParagraphStyle(
+        'ActividadTitulo', parent=estilos['Title'], fontName='Helvetica-Bold',
+        fontSize=17, leading=20, textColor=colors.HexColor('#1B2A4E'),
+        alignment=TA_CENTER, spaceAfter=4 * mm,
+    )
+    subtitulo = ParagraphStyle(
+        'ActividadSubtitulo', parent=estilos['Normal'], fontName='Helvetica',
+        fontSize=9, leading=12, textColor=colors.HexColor('#555555'),
+        alignment=TA_CENTER,
+    )
+    celda = ParagraphStyle(
+        'ActividadCelda', parent=estilos['BodyText'], fontName='Helvetica',
+        fontSize=7.3, leading=9, textColor=colors.HexColor('#1B2A4E'),
+    )
+    celda_negrita = ParagraphStyle(
+        'ActividadCeldaNegrita', parent=celda, fontName='Helvetica-Bold',
+    )
+
+    historia = [
+        Paragraph('Registro diario de actividad de usuarios', titulo),
+        Paragraph(
+            f'Fecha: <b>{fecha:%d/%m/%Y}</b> &nbsp;&nbsp;|&nbsp;&nbsp; '
+            f'Usuario: <b>{escape(nombre_usuario)}</b> &nbsp;&nbsp;|&nbsp;&nbsp; '
+            f'Actividades: <b>{len(actividades)}</b>',
+            subtitulo,
+        ),
+        Spacer(1, 6 * mm),
+    ]
+
+    filas = [['Hora', 'Usuario', 'Tipo', 'Actividad', 'Detalle', 'Estado']]
+    for actividad in actividades:
+        hora_local = timezone.localtime(actividad.creado)
+        filas.append([
+            Paragraph(hora_local.strftime('%H:%M:%S'), celda_negrita),
+            Paragraph(escape(actividad.usuario_nombre), celda),
+            Paragraph(escape(actividad.get_categoria_display()), celda),
+            Paragraph(escape(actividad.accion), celda_negrita),
+            Paragraph(escape(actividad.detalle or '—'), celda),
+            Paragraph('Correcto' if actividad.estado_http < 400 else f'HTTP {actividad.estado_http}', celda),
+        ])
+
+    if actividades:
+        tabla = Table(
+            filas,
+            colWidths=[18 * mm, 34 * mm, 25 * mm, 57 * mm, 115 * mm, 23 * mm],
+            repeatRows=1,
+            hAlign='CENTER',
+        )
+        tabla.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B2A4E')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('ALIGN', (-1, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('GRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#CBD3E1')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F7FB')]),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        historia.append(tabla)
+    else:
+        if usuario:
+            mensaje = f'Aún {nombre_usuario} no ha realizado ninguna actividad en esta fecha.'
+        else:
+            mensaje = 'Aún no se ha registrado ninguna actividad en esta fecha.'
+        historia.append(Paragraph(escape(mensaje), estilos['Heading3']))
+
+    generado = timezone.localtime().strftime('%d/%m/%Y %H:%M')
+
+    def dibujar_pie(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor('#CBD3E1'))
+        canvas.setLineWidth(0.4)
+        canvas.line(doc.leftMargin, 8 * mm, landscape(A4)[0] - doc.rightMargin, 8 * mm)
+        canvas.setFillColor(colors.HexColor('#667085'))
+        canvas.setFont('Helvetica', 7)
+        canvas.drawString(doc.leftMargin, 4.8 * mm, f'Formación Profesional EC · Generado {generado}')
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            4.8 * mm,
+            f'Página {doc.page}',
+        )
+        canvas.restoreState()
+
+    documento.build(historia, onFirstPage=dibujar_pie, onLaterPages=dibujar_pie)
+    salida.seek(0)
+    sufijo = slugify(nombre_usuario) if usuario else 'todos-los-usuarios'
+    respuesta = HttpResponse(salida.getvalue(), content_type='application/pdf')
+    respuesta['Content-Disposition'] = (
+        f'attachment; filename="registro-actividad-{fecha:%Y-%m-%d}-{sufijo}.pdf"'
+    )
+    return respuesta
 
 
 def _ingresos_periodo(desde, hasta):

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="pelirroja-morena-bg" x1="14" y1="7" x2="114" y2="121" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D98A68"/>
+      <stop offset="1" stop-color="#713A62"/>
+    </linearGradient>
+    <linearGradient id="pelirroja-morena-cabello" x1="43" y1="19" x2="87" y2="103" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B83A35"/>
+      <stop offset="1" stop-color="#641D2A"/>
+    </linearGradient>
+    <clipPath id="pelirroja-morena-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#pelirroja-morena-bg)"/>
+  <g clip-path="url(#pelirroja-morena-clip)">
+    <path d="M20 131c3-27 20-41 44-41s41 14 44 41" fill="#D29B37"/>
+    <path d="M34 68c-5-32 7-50 30-50s35 19 30 51l-8 36H41z" fill="url(#pelirroja-morena-cabello)"/>
+    <path d="M56 81h16v19H56z" fill="#9F654C"/>
+    <ellipse cx="64" cy="59" rx="23" ry="28" fill="#B97858"/>
+    <path d="M40 52c1-23 10-35 25-35 17 0 27 14 27 37-12-3-21-11-27-21-4 9-13 16-25 19z" fill="#A62E31"/>
+    <path d="M42 49c-7 17-5 37 5 52l8-13-5-42zM89 47L76 89l8 13c10-15 12-38 5-55z" fill="#711F2B"/>
+    <path d="M46 40c7-14 17-21 28-20-8 4-14 11-17 21z" fill="#C94D3F" opacity=".88"/>
+    <ellipse cx="55" cy="60" rx="2.4" ry="3" fill="#2D1B1C"/>
+    <ellipse cx="73" cy="60" rx="2.4" ry="3" fill="#2D1B1C"/>
+    <path d="M58 73c4 3 8 3 12 0" fill="none" stroke="#7B3741" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M43 107l14-11 7 8 8-8 14 11 8 24H34z" fill="#E0AA3D"/>
+    <path d="M57 96l7 8 8-8" fill="none" stroke="#FFF1C5" stroke-width="3"/>
+    <circle cx="45" cy="71" r="3.1" fill="#F2C64A"/>
+    <circle cx="83" cy="71" r="3.1" fill="#F2C64A"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".42" stroke-width="3"/>
+</svg>

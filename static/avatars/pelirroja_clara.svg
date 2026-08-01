@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="pelirroja-clara-bg" x1="13" y1="8" x2="116" y2="119" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD7BF"/>
+      <stop offset="1" stop-color="#D65A50"/>
+    </linearGradient>
+    <linearGradient id="pelirroja-clara-cabello" x1="44" y1="22" x2="87" y2="101" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C64A32"/>
+      <stop offset="1" stop-color="#7E231F"/>
+    </linearGradient>
+    <clipPath id="pelirroja-clara-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#pelirroja-clara-bg)"/>
+  <g clip-path="url(#pelirroja-clara-clip)">
+    <path d="M20 131c3-27 20-41 44-41s41 14 44 41" fill="#176E78"/>
+    <path d="M34 69c-5-32 6-51 30-51s36 19 30 52l-8 35H41z" fill="url(#pelirroja-clara-cabello)"/>
+    <path d="M56 81h16v19H56z" fill="#EAB18C"/>
+    <ellipse cx="64" cy="59" rx="23" ry="28" fill="#F3C4A2"/>
+    <path d="M40 52c1-23 10-35 25-35 17 0 27 14 27 37-11-4-20-12-26-22-5 10-13 17-26 20z" fill="#B83B2C"/>
+    <path d="M42 49c-7 17-5 37 5 52l8-13-5-42zM89 47L76 89l8 13c10-15 12-38 5-55z" fill="#8E2924"/>
+    <path d="M43 47c5-17 14-27 27-28-8 4-13 11-16 22z" fill="#D75A3B" opacity=".9"/>
+    <ellipse cx="55" cy="60" rx="2.3" ry="3" fill="#3E2A2B"/>
+    <ellipse cx="73" cy="60" rx="2.3" ry="3" fill="#3E2A2B"/>
+    <path d="M58 73c4 3 8 3 12 0" fill="none" stroke="#BF5E67" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M43 107l14-11 7 8 8-8 14 11 8 24H34z" fill="#208792"/>
+    <path d="M57 96l7 8 8-8" fill="none" stroke="#D9FBF7" stroke-width="3"/>
+    <circle cx="45" cy="71" r="3.1" fill="#F6C952"/>
+    <circle cx="83" cy="71" r="3.1" fill="#F6C952"/>
+    <g fill="#BE684B" opacity=".8">
+      <circle cx="57" cy="67" r=".8"/><circle cx="61" cy="68" r=".75"/>
+      <circle cx="71" cy="67" r=".8"/><circle cx="67" cy="68" r=".75"/>
+    </g>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".42" stroke-width="3"/>
+</svg>

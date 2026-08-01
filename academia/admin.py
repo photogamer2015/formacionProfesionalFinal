@@ -4,8 +4,29 @@ from .models import (
     Estudiante, Matricula, PersonaExterna, RecuperacionPendiente,
     AssistantQueryLog, CierreCurso, MatriculaArchivada, AbonoArchivado,
     EstudianteArchivado, AdicionalArchivado, CierreAdministrativo, Sede,
-    Aviso, PerfilUsuario, Recordatorio,
+    ActividadUsuario, Aviso, PerfilUsuario, Recordatorio,
 )
+
+
+@admin.register(ActividadUsuario)
+class ActividadUsuarioAdmin(admin.ModelAdmin):
+    list_display = ('creado', 'usuario_nombre', 'categoria', 'accion', 'estado_http')
+    list_filter = ('categoria', 'creado')
+    search_fields = ('usuario_nombre', 'usuario__username', 'accion', 'detalle', 'ruta')
+    date_hierarchy = 'creado'
+    readonly_fields = (
+        'usuario', 'usuario_nombre', 'categoria', 'accion', 'detalle', 'ruta',
+        'metodo_http', 'estado_http', 'direccion_ip', 'creado',
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Sede)
@@ -38,8 +59,8 @@ class RecordatorioAdmin(admin.ModelAdmin):
 
 @admin.register(PerfilUsuario)
 class PerfilUsuarioAdmin(admin.ModelAdmin):
-    list_display = ('user', 'avatar', 'actualizado')
-    list_filter = ('avatar',)
+    list_display = ('user', 'avatar', 'portada', 'actualizado')
+    list_filter = ('avatar', 'portada')
     search_fields = ('user__username', 'user__first_name', 'user__last_name')
 
 

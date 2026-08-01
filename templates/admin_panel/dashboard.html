@@ -131,6 +131,7 @@ body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
             <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="15">Últ. 15 días</button>
             <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="30">Últ. 30 días</button>
         </form>
+        <a href="{% url 'academia:actividad_usuarios' %}" class="btn btn-secondary no-print" title="Ver qué hizo cada usuario durante el día">🕘 Actividad de usuarios</a>
         <a href="{% url 'academia:admin_egresos_lista' %}" class="btn btn-secondary">📒 Ver todos los egresos</a>
         <a href="{% url 'academia:sedes_lista' %}" class="btn btn-secondary no-print" title="Administrar sedes / campus">🏢 Sedes</a>
         <a href="{% url 'academia:admin_egreso_crear' %}" class="btn btn-success">+ Nuevo egreso</a>

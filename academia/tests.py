@@ -19,7 +19,7 @@ from .forms import (
     AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, MatriculaForm,
 )
 from .models import (
-    Abono, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
+    Abono, ActividadUsuario, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
     CuotaManualRecaudacion, Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
     MatriculaArchivada, PerfilUsuario, PersonaExterna,
     RecuperacionPendiente, Sede,
@@ -31,6 +31,87 @@ from .views_pagos import (
     _construir_matriz_pagos, _hojas_recaudacion_data,
     _plan_recaudacion_matricula,
 )
+
+
+class ActividadUsuarioTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username='admin_actividad',
+            password='clave12345',
+            first_name='Ana',
+            last_name='Administradora',
+        )
+        self.asesor = User.objects.create_user(
+            username='asesor_actividad',
+            password='clave12345',
+            first_name='Carlos',
+            last_name='Asesor',
+        )
+
+    def test_middleware_registra_navegacion_autenticada_con_hora(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:bienvenida'))
+
+        self.assertEqual(response.status_code, 200)
+        actividad = ActividadUsuario.objects.get(usuario=self.asesor)
+        self.assertEqual(actividad.usuario_nombre, 'Carlos Asesor')
+        self.assertEqual(actividad.accion, 'Consultó el panel de inicio')
+        self.assertEqual(actividad.categoria, 'consulta')
+        self.assertEqual(actividad.ruta, reverse('academia:bienvenida'))
+        self.assertIsNotNone(actividad.creado)
+
+    def test_middleware_no_registra_keepalive_tecnico(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:session_keepalive'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ActividadUsuario.objects.filter(usuario=self.asesor).exists())
+
+    def test_registro_diario_filtra_usuario_y_muestra_mensaje_vacio(self):
+        self.client.force_login(self.admin)
+        fecha_sin_actividad = timezone.localdate() + timedelta(days=5)
+
+        response = self.client.get(reverse('academia:actividad_usuarios'), {
+            'fecha': fecha_sin_actividad.isoformat(),
+            'usuario': self.asesor.pk,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Aún este usuario no ha hecho nada en esta fecha')
+        self.assertContains(response, 'Carlos Asesor')
+
+    def test_registro_diario_es_exclusivo_de_administradores(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:actividad_usuarios'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], reverse('academia:bienvenida'))
+
+    def test_pdf_de_actividad_respeta_usuario_y_fecha(self):
+        ActividadUsuario.objects.create(
+            usuario=self.asesor,
+            usuario_nombre='Carlos Asesor',
+            categoria='pago',
+            accion='Registró un pago de estudiante',
+            detalle='Matrícula: 49',
+            ruta='/matricula/49/abonos/crear/',
+            metodo_http='POST',
+            estado_http=302,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse('academia:actividad_usuarios_pdf'), {
+            'fecha': timezone.localdate().isoformat(),
+            'usuario': self.asesor.pk,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+        self.assertIn('registro-actividad-', response['Content-Disposition'])
 
 
 class LoginCaptchaTests(TestCase):
@@ -272,6 +353,15 @@ class PerfilUsuarioTests(TestCase):
         self.assertContains(response, 'Elige tu avatar')
         self.assertContains(response, 'avatars/corona.svg')
         self.assertContains(response, 'Princesa Peach')
+        self.assertContains(response, 'Mujer pelirroja clara')
+        self.assertContains(response, 'avatars/pelirroja_clara.svg')
+        self.assertContains(response, 'Mujer morena pelirroja')
+        self.assertContains(response, 'avatars/pelirroja_morena.svg')
+        self.assertContains(response, 'Logo Formación Profesional')
+        self.assertContains(response, 'Elige tu portada')
+        self.assertContains(response, 'portadas/mariposas.jpg')
+        self.assertContains(response, 'portadas/castillo.jpg')
+        self.assertContains(response, 'portadas/paisaje.jpg')
 
     def test_usuario_puede_guardar_avatar_y_el_header_lo_refleja(self):
         response = self.client.post(
@@ -296,6 +386,100 @@ class PerfilUsuarioTests(TestCase):
 
         self.assertRedirects(response, self.url)
         self.assertFalse(PerfilUsuario.objects.filter(user=self.user).exists())
+
+    def test_usuario_puede_elegir_logo_como_avatar(self):
+        response = self.client.post(
+            self.url,
+            {'avatar': 'logo_formacion'},
+            follow=True,
+        )
+
+        self.assertRedirects(response, self.url)
+        self.assertEqual(
+            PerfilUsuario.objects.get(user=self.user).avatar,
+            'logo_formacion',
+        )
+        self.assertContains(response, 'Logo Formación Profesional')
+
+    def test_usuario_puede_guardar_portada_sin_perder_avatar(self):
+        PerfilUsuario.objects.create(user=self.user, avatar='leon')
+
+        response = self.client.post(
+            self.url,
+            {'preferencia': 'portada', 'portada': 'castillo'},
+            follow=True,
+        )
+
+        self.assertRedirects(response, self.url)
+        perfil = PerfilUsuario.objects.get(user=self.user)
+        self.assertEqual(perfil.portada, 'castillo')
+        self.assertEqual(perfil.avatar, 'leon')
+        self.assertEqual(response.context['portada_seleccionada'], 'castillo')
+        self.assertContains(response, 'Tu portada se actualizó correctamente.')
+        self.assertContains(response, 'profile-cover-custom')
+
+    def test_portada_invalida_no_se_guarda(self):
+        response = self.client.post(
+            self.url,
+            {'preferencia': 'portada', 'portada': 'desconocida'},
+        )
+
+        self.assertRedirects(response, self.url)
+        self.assertFalse(PerfilUsuario.objects.filter(user=self.user).exists())
+
+    def test_resumen_muestra_conteos_no_montos(self):
+        curso = Curso.objects.create(
+            nombre='Curso para indicadores del perfil',
+            valor_presencial=Decimal('100.00'),
+        )
+
+        def crear_matricula(cedula, pagado, estado='activa'):
+            estudiante = Estudiante.objects.create(
+                cedula=cedula,
+                nombres=f'Estudiante {cedula}',
+            )
+            return Matricula.objects.create(
+                estudiante=estudiante,
+                curso=curso,
+                modalidad='presencial',
+                estado=estado,
+                tipo_matricula='reserva_abono',
+                fecha_matricula=date(2026, 8, 1),
+                valor_curso=Decimal('100.00'),
+                valor_pagado=pagado,
+                registrado_por=self.user,
+                vendedora=self.user,
+            )
+
+        pendiente = crear_matricula('0900000001', Decimal('10.00'))
+        crear_matricula('0900000002', Decimal('10.00'), 'retiro_voluntario')
+        crear_matricula('0900000003', Decimal('100.00'))
+        for numero_modulo in (1, 2):
+            RecuperacionPendiente.objects.create(
+                matricula=pendiente,
+                numero_modulo=numero_modulo,
+                fecha_marcada=date(2026, 8, 1),
+                saldo_pendiente_al_marcar=Decimal('90.00'),
+            )
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_ventas'], 3)
+        self.assertEqual(response.context['total_saldos_pendientes'], 1)
+        self.assertEqual(response.context['total_retiros'], 1)
+        self.assertEqual(response.context['total_recuperaciones'], 2)
+        self.assertContains(response, 'Recuperación')
+        self.assertContains(response, 'Estudiante por recaudar')
+        self.assertNotContains(response, 'Total cobrado')
+        self.assertContains(response, 'data-summary-target="summary-ventas"')
+        self.assertContains(response, 'data-summary-target="summary-recuperaciones"')
+        self.assertContains(response, 'data-summary-target="summary-pendientes"')
+        self.assertContains(response, 'data-summary-target="summary-retiros"')
+        self.assertContains(response, 'id="profile-summary-dialog"')
+        self.assertContains(response, 'Detalle de las clases marcadas para recuperación.')
+        self.assertContains(response, 'Saldo pendiente: $90,00')
+        self.assertContains(response, 'Retiro voluntario')
 
 
 class SessionKeepaliveTests(TestCase):

@@ -1449,6 +1449,22 @@ function filterGmCards() {
     {% endif %}
 
     {% if es_admin %}
+    <a href="{% url 'academia:actividad_usuarios' %}" class="card-box card-admin" style="animation-delay:.37s;">
+        <div class="card-header">
+            <div class="card-title">Actividad de Usuarios</div>
+            <div class="card-icon-wrap">🕘</div>
+        </div>
+        <div class="card-desc">
+            Registro diario con la fecha, hora y acciones realizadas por cada usuario. Incluye impresión y PDF.
+        </div>
+        <div class="card-footer">
+            <span class="status-admin">🔒 Admin</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
+
+    {% if es_admin %}
     <a href="{% url 'academia:avisos_lista' %}" class="card-box card-avisos" style="animation-delay:.38s;">
         <div class="card-header">
             <div class="card-title">Avisos del panel</div>
