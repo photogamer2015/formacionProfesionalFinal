@@ -27,6 +27,13 @@
         padding:13px 16px; margin-bottom:18px; background:#eef4ff;
         border:1px solid #cfe0ff; border-radius:12px;
     }
+    .activity-retention-notice {
+        display:flex; gap:10px; align-items:flex-start; padding:12px 14px;
+        margin-bottom:18px; border-radius:12px; background:#fff8e1;
+        border:1px solid #f4d37a; color:#6d4c00; font-size:13px;
+        line-height:1.45;
+    }
+    .activity-retention-notice strong { color:#8a5a00; }
     .activity-kpis {
         display:grid; grid-template-columns:repeat(3, minmax(150px, 1fr));
         gap:12px; margin-bottom:18px;
@@ -83,6 +90,10 @@
     body.dark-mode .activity-filters input,
     body.dark-mode .activity-filters select { background:#171a21; border-color:#454d5c; color:#fff; }
     body.dark-mode .activity-day-nav { background:#1b2a43; border-color:#30496f; }
+    body.dark-mode .activity-retention-notice {
+        background:#3a2d12; border-color:#785d1d; color:#ffe3a3;
+    }
+    body.dark-mode .activity-retention-notice strong { color:#ffd269; }
     body.dark-mode .activity-table td { border-color:#343b48; }
     body.dark-mode .activity-table tbody tr:hover { background:#262b35; }
     body.dark-mode .activity-detail { color:#c8cfda; }
@@ -98,7 +109,7 @@
     }
     @media print {
         header.top, .global-back-button, .crumb, .no-print, .activity-filters,
-        .activity-day-nav, .activity-kpis { display:none !important; }
+        .activity-day-nav, .activity-retention-notice, .activity-kpis { display:none !important; }
         body, .container { background:#fff !important; }
         .container { max-width:100% !important; padding:0 !important; }
         .activity-header { margin-bottom:10px; }
@@ -173,6 +184,23 @@
     </div>
 </form>
 
+<div class="activity-retention-notice no-print" role="status">
+    <span aria-hidden="true">⏱</span>
+    <div>
+        {% if actividad_limpieza_eliminados %}
+            {% if actividad_limpieza_eliminados == 1 %}
+                <strong>Se borró automáticamente 1 registro vencido.</strong>
+            {% else %}
+                <strong>Se borraron automáticamente {{ actividad_limpieza_eliminados }} registros vencidos.</strong>
+            {% endif %}
+            La limpieza se ejecuta a partir de las {{ actividad_retencion_horas }} horas para evitar datos guardados sin necesidad.
+        {% else %}
+            <strong>Limpieza automática activa.</strong>
+            El registro diario de usuarios se borra automáticamente a partir de las {{ actividad_retencion_horas }} horas para evitar datos guardados sin necesidad.
+        {% endif %}
+    </div>
+</div>
+
 <div class="activity-day-nav no-print">
     <a class="btn btn-secondary btn-sm"
        href="?fecha={{ fecha_anterior|date:'Y-m-d' }}{% if usuario_id %}&usuario={{ usuario_id }}{% endif %}{% if categoria %}&categoria={{ categoria }}{% endif %}">
@@ -181,7 +209,7 @@
     <div>
         <strong>{{ fecha|date:"d/m/Y" }}</strong>
         <div style="font-size:12px; color:#5f6f89; margin-top:2px;">
-            Cada día comienza una vista nueva; el historial anterior se conserva.
+            Cada día comienza una vista nueva; los registros vencen automáticamente a las {{ actividad_retencion_horas }} horas.
         </div>
     </div>
     <a class="btn btn-secondary btn-sm {% if fecha >= hoy %}disabled{% endif %}"
@@ -269,10 +297,18 @@
         <div class="activity-empty-icon">🕘</div>
         {% if usuario_seleccionado %}
             <h3>Aún este usuario no ha hecho nada en esta fecha</h3>
-            <p>{{ usuario_seleccionado.get_full_name|default:usuario_seleccionado.username }} no tiene actividades registradas el {{ fecha|date:"d/m/Y" }}.</p>
+            {% if fecha_expirada_por_retencion %}
+                <p>Las actividades del {{ fecha|date:"d/m/Y" }} ya se borraron automáticamente porque superaron las {{ actividad_retencion_horas }} horas.</p>
+            {% else %}
+                <p>{{ usuario_seleccionado.get_full_name|default:usuario_seleccionado.username }} no tiene actividades registradas el {{ fecha|date:"d/m/Y" }}.</p>
+            {% endif %}
         {% else %}
             <h3>Aún no hay actividades registradas en esta fecha</h3>
-            <p>Cuando los usuarios utilicen el sistema, sus acciones aparecerán aquí con la hora exacta.</p>
+            {% if fecha_expirada_por_retencion %}
+                <p>Las actividades del {{ fecha|date:"d/m/Y" }} ya se borraron automáticamente porque superaron las {{ actividad_retencion_horas }} horas.</p>
+            {% else %}
+                <p>Cuando los usuarios utilicen el sistema, sus acciones aparecerán aquí con la hora exacta.</p>
+            {% endif %}
         {% endif %}
     </div>
     {% endif %}

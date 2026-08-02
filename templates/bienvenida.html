@@ -1189,16 +1189,25 @@ function toggleGmSearch(e) {
     }
 }
 
+function normalizarBusquedaGm(valor) {
+    return (valor || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+}
+
 function filterGmCards() {
     const input = document.getElementById('gm-search-input');
     const course = document.getElementById('gm-course-filter');
-    const query = input.value.trim().toLowerCase();
+    const query = normalizarBusquedaGm(input.value);
     const courseId = course.value;
     const panel = document.getElementById('gm-panel');
     const cards = panel.querySelectorAll('.gm-card');
     let visible = 0;
     cards.forEach(card => {
-        const text = card.innerText.toLowerCase();
+        const text = normalizarBusquedaGm(card.innerText);
         const matchesText = !query || text.includes(query);
         const matchesCourse = !courseId || card.dataset.cursoId === courseId;
         const matches = matchesText && matchesCourse;

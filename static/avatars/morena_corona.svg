@@ -18,11 +18,13 @@
     <ellipse cx="64" cy="60" rx="23" ry="28" fill="#BA7B5A"/>
     <path d="M39 54c2-23 11-36 26-36 16 0 25 13 27 36-12-3-21-10-28-21-4 10-12 17-25 21z" fill="#2A232B"/>
     <path d="M42 51c-6 16-4 36 5 51l7-13-4-42zM88 49L76 90l7 13c10-15 12-37 5-54z" fill="#241E25"/>
-    <path d="M43 32l9 15 12-22 12 22 9-15 4 25H39z" fill="url(#morena-corona-crown)" stroke="#B97012" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="43" cy="32" r="4" fill="#FFF0A1"/>
-    <circle cx="64" cy="25" r="4.5" fill="#FFF0A1"/>
-    <circle cx="85" cy="32" r="4" fill="#FFF0A1"/>
-    <path d="M48 50h32" stroke="#FFF4B8" stroke-width="4" stroke-linecap="round"/>
+    <g transform="translate(0 -7)">
+      <path d="M43 32l9 15 12-22 12 22 9-15 4 25H39z" fill="url(#morena-corona-crown)" stroke="#B97012" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="43" cy="32" r="4" fill="#FFF0A1"/>
+      <circle cx="64" cy="25" r="4.5" fill="#FFF0A1"/>
+      <circle cx="85" cy="32" r="4" fill="#FFF0A1"/>
+      <path d="M48 50h32" stroke="#FFF4B8" stroke-width="4" stroke-linecap="round"/>
+    </g>
     <ellipse cx="55" cy="62" rx="2.4" ry="3.1" fill="#241A1C"/>
     <ellipse cx="73" cy="62" rx="2.4" ry="3.1" fill="#241A1C"/>
     <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#813E45" stroke-width="2.5" stroke-linecap="round"/>

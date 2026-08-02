@@ -54,6 +54,18 @@ def _rango_mes(anio, mes):
 # Minutos sin actividad tras los cuales dejamos de considerar a alguien "en línea".
 EN_LINEA_MINUTOS = 5
 
+# Horas que se conserva la bitácora diaria antes de limpiarla automáticamente.
+ACTIVIDAD_RETENCION_HORAS = 48
+
+
+def _limpiar_actividad_vencida():
+    """Elimina actividad antigua para que la bitácora diaria no crezca sin límite."""
+    limite = timezone.now() - timedelta(hours=ACTIVIDAD_RETENCION_HORAS)
+    eliminados, _detalle = ActividadUsuario.objects.filter(
+        creado__lt=limite,
+    ).delete()
+    return eliminados, limite
+
 
 def _usuarios_actividad():
     """Lista de usuarios con su última conexión y si están en línea.
@@ -121,6 +133,7 @@ def _usuarios_actividad():
 def _actividad_diaria_datos(request):
     """Aplica los filtros compartidos por la pantalla y su PDF."""
     User = get_user_model()
+    limpieza_eliminados, limpieza_limite = _limpiar_actividad_vencida()
     fecha_texto = request.GET.get('fecha', '').strip()
     fecha = parse_date(fecha_texto) if fecha_texto else timezone.localdate()
     if fecha is None:
@@ -153,6 +166,7 @@ def _actividad_diaria_datos(request):
         Q(is_active=True) | Q(actividades_sistema__isnull=False)
     ).distinct().order_by('first_name', 'last_name', 'username')
     actividades = actividades.order_by('-creado', '-pk')
+    fecha_expirada_por_retencion = fin_dia <= limpieza_limite
 
     return {
         'actividades': actividades,
@@ -161,6 +175,9 @@ def _actividad_diaria_datos(request):
         'usuario_id': str(usuario_seleccionado.pk) if usuario_seleccionado else '',
         'categoria': categoria,
         'fecha': fecha,
+        'actividad_limpieza_eliminados': limpieza_eliminados,
+        'actividad_retencion_horas': ACTIVIDAD_RETENCION_HORAS,
+        'fecha_expirada_por_retencion': fecha_expirada_por_retencion,
     }
 
 

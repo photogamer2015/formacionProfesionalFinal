@@ -298,7 +298,7 @@
         </div>
     </div>
 
-    {% if puede_ver_actividad_perfil %}
+    {% if mostrar_detalle_operativo_perfil %}
     <nav class="profile-tabs" aria-label="Secciones del perfil">
         <a href="#resumen" class="is-active">Resumen</a>
         <a href="#estudiantes">Estudiantes</a>
@@ -307,7 +307,7 @@
     {% endif %}
 </section>
 
-{% if puede_ver_actividad_perfil %}
+{% if mostrar_detalle_operativo_perfil %}
 <section class="profile-stats" id="resumen" aria-label="Resumen del perfil">
     <button type="button" class="profile-stat profile-stat-primary" data-summary-target="summary-ventas" data-summary-title="Ventas registradas" aria-haspopup="dialog">
         <span class="profile-stat-icon" aria-hidden="true">↗</span>

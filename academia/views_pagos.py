@@ -1826,6 +1826,13 @@ def matricula_abonos(request, pk):
     matricula = get_object_or_404(
         Matricula.objects.select_related(
             'estudiante', 'curso', 'curso__categoria', 'jornada'
+        ).prefetch_related(
+            Prefetch(
+                'recuperaciones_pendientes',
+                queryset=RecuperacionPendiente.objects.select_related(
+                    'abono',
+                ).order_by('pagada', '-fecha_marcada', '-creado'),
+            )
         ),
         pk=pk
     )

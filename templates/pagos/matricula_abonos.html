@@ -198,7 +198,8 @@
     <h3 style="color:#c9a227; font-size:15px; margin-bottom:10px;">
         ✱ Clases pendientes de recuperación
     </h3>
-    <table class="table-data" style="width:100%;">
+    <div style="overflow-x:auto;">
+    <table class="table-data" style="width:100%; min-width:1120px;">
         <thead>
             <tr>
                 <th>Módulo</th>
@@ -206,6 +207,7 @@
                 <th>Fecha para recuperar</th>
                 <th>Saldo arrastrado</th>
                 <th>Estado</th>
+                <th>Pago recuperación</th>
                 <th>Observaciones</th>
                 <th></th>
             </tr>
@@ -220,17 +222,39 @@
                 <td>
                     {% if r.pagada %}
                     <span class="badge badge-pagado">✓ Pagada {{ r.fecha_recuperacion|date:"d/m/Y" }}</span>
-                    {% if r.abono %}
-                    <div style="font-size:10px; color:#666; margin-top:3px;">
-                        {% if r.abono.tipo_pago == 'recuperacion' %}
-                        {{ r.abono.numero_recibo }}
-                        {% else %}
-                        Descontada con {{ r.abono.numero_recibo }}
-                        {% endif %}
-                    </div>
-                    {% endif %}
                     {% else %}
                     <span class="badge badge-pendiente">○ Pendiente</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if r.abono %}
+                        {% if r.abono.tipo_pago == 'recuperacion' %}
+                        <div style="font-weight:800; color:#2e7d32;">${{ r.abono.monto|floatformat:2 }}</div>
+                        <div style="font-size:11px; color:#1a237e; font-family:monospace; margin-top:2px;">
+                            {{ r.abono.numero_recibo }}
+                        </div>
+                        <div style="font-size:11px; color:#666; margin-top:2px;">
+                            {{ r.abono.fecha|date:"d/m/Y" }} · {{ r.abono.get_metodo_display }}
+                            {% if r.abono.monto_2 %} · Pago mixto{% endif %}
+                        </div>
+                        {% if r.abono.banco %}
+                        <div style="font-size:10px; color:#888;">{{ r.abono.get_banco_display }}</div>
+                        {% endif %}
+                        {% if not r.abono.cuenta_para_saldo %}
+                        <div style="font-size:10px; color:#8a5a00; font-weight:700;">Cobro aparte</div>
+                        {% endif %}
+                        {% else %}
+                        <div style="font-weight:800; color:#6a1b9a;">Descontada</div>
+                        <div style="font-size:11px; color:#1a237e; font-family:monospace; margin-top:2px;">
+                            {{ r.abono.numero_recibo }}
+                        </div>
+                        <div style="font-size:11px; color:#666; margin-top:2px;">
+                            Pago usado: ${{ r.abono.monto|floatformat:2 }}
+                        </div>
+                        {% endif %}
+                    {% else %}
+                    <div style="font-weight:800; color:#c62828;">Por cobrar</div>
+                    <div style="font-size:11px; color:#666; margin-top:2px;">Sin pago registrado</div>
                     {% endif %}
                 </td>
                 <td style="font-size:12px; color:#666;">
@@ -257,6 +281,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {% endif %}
 
@@ -692,6 +717,7 @@
     const labelModuloPago = document.getElementById('label-modulo-pago');
     const esPagoUnicoOnline = moduloSelectPago && moduloSelectPago.dataset.pagoUnicoOnline === '1';
     const avisoModuloRegistrado = document.getElementById('aviso-modulo-registrado');
+    const saldoPendientePago = Number('{{ saldo_pendiente|stringformat:".2f" }}') || 0;
     const modulosRegistradosNode = document.getElementById('modulos-registrados-pago');
     const modulosRegistradosPago = new Set(
         modulosRegistradosNode
@@ -792,6 +818,14 @@
         }
     }
 
+    function autocompletarMontoPagoCompleto(tipoPago) {
+        if (!montoInput || tipoPago !== 'pago_completo' || saldoPendientePago <= 0) {
+            return;
+        }
+        montoInput.value = saldoPendientePago.toFixed(2);
+        montoInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
     function actualizar() {
         if (!tipoSel) return;
         const v = tipoSel.value;
@@ -811,6 +845,7 @@
         if (fechaFaltaInput) {
             fechaFaltaInput.required = (v === 'recuperacion');
         }
+        autocompletarMontoPagoCompleto(v);
     }
     if (tipoSel) {
         tipoSel.addEventListener('change', () => {

@@ -83,6 +83,36 @@ class ActividadUsuarioTests(TestCase):
         self.assertContains(response, 'Aún este usuario no ha hecho nada en esta fecha')
         self.assertContains(response, 'Carlos Asesor')
 
+    def test_registro_diario_limpia_actividad_mayor_a_48_horas(self):
+        vieja = ActividadUsuario.objects.create(
+            usuario=self.asesor,
+            usuario_nombre='Carlos Asesor',
+            categoria='consulta',
+            accion='Consultó información antigua',
+        )
+        reciente = ActividadUsuario.objects.create(
+            usuario=self.asesor,
+            usuario_nombre='Carlos Asesor',
+            categoria='consulta',
+            accion='Consultó información reciente',
+        )
+        ActividadUsuario.objects.filter(pk=vieja.pk).update(
+            creado=timezone.now() - timedelta(hours=49),
+        )
+        ActividadUsuario.objects.filter(pk=reciente.pk).update(
+            creado=timezone.now() - timedelta(hours=47),
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse('academia:actividad_usuarios'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ActividadUsuario.objects.filter(pk=vieja.pk).exists())
+        self.assertTrue(ActividadUsuario.objects.filter(pk=reciente.pk).exists())
+        self.assertEqual(response.context['actividad_limpieza_eliminados'], 1)
+        self.assertContains(response, 'Se borró automáticamente 1 registro vencido.')
+        self.assertContains(response, 'a partir de las 48 horas')
+
     def test_registro_diario_es_exclusivo_de_administradores(self):
         self.client.force_login(self.asesor)
 
@@ -785,6 +815,25 @@ class PerfilSocialTests(TestCase):
         self.assertNotContains(response, 'Ventas registradas')
         self.assertNotContains(response, 'Estudiantes matriculados')
         self.assertNotContains(response, self.otro.email)
+
+    def test_admin_ve_perfil_ajeno_solo_con_tarjeta_publica(self):
+        PerfilUsuario.objects.filter(user=self.otro).update(
+            descripcion_personal='Perfil visible para la comunidad.',
+            hobbies_favoritos=['viajes'],
+        )
+        self.client.force_login(self.tercero)
+
+        response = self.client.get(self.perfil_url(self.otro))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['puede_ver_actividad_perfil'])
+        self.assertFalse(response.context['mostrar_detalle_operativo_perfil'])
+        self.assertContains(response, 'Perfil visible para la comunidad.')
+        self.assertContains(response, 'Viajar')
+        self.assertNotContains(response, 'class="profile-tabs"')
+        self.assertNotContains(response, 'Ventas registradas')
+        self.assertNotContains(response, 'Estudiantes matriculados')
+        self.assertNotContains(response, 'Actividad en el sistema')
 
 
 class RecordatorioAvatarTests(TestCase):
@@ -2362,6 +2411,38 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(abono.monto_2, Decimal('15.00'))
         self.assertEqual(abono.metodo_2, 'transferencia')
         self.assertEqual(abono.banco_2, 'pichincha')
+
+    def test_matricula_abonos_muestra_pago_en_tabla_de_recuperaciones(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_pago_tabla',
+            password='clave12345',
+        )
+        matricula, recuperacion = self._crear_recuperacion_cobrable(admin)
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 2),
+            monto=Decimal('25.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=recuperacion.numero_modulo,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        recuperacion.pagada = True
+        recuperacion.fecha_recuperacion = abono.fecha
+        recuperacion.abono = abono
+        recuperacion.save()
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:matricula_abonos', kwargs={'pk': matricula.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Pago recuperación')
+        self.assertContains(response, '$25,00')
+        self.assertContains(response, abono.numero_recibo)
+        self.assertContains(response, 'Efectivo')
 
     def test_cobrar_recuperacion_rechaza_suma_mixta_incorrecta(self):
         admin = User.objects.create_superuser(
@@ -4892,6 +4973,25 @@ class AlertasPagoPorJornadaTests(TestCase):
             'nombre': self.curso_presencial.nombre,
             'cantidad': 1,
         }])
+
+    def test_dashboard_busqueda_de_alertas_ignora_tildes_y_mayusculas(self):
+        usuario = User.objects.create_superuser(
+            username='admin_alertas_busqueda',
+            password='clave-segura',
+        )
+        self.estudiante.nombres = 'Osmár Alertas'
+        self.estudiante.save(update_fields=['nombres'])
+        self.client.force_login(usuario)
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 7, 8)
+            response = self.client.get(reverse('academia:bienvenida'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'normalizarBusquedaGm')
+        self.assertContains(response, ".normalize('NFD')")
+        self.assertContains(response, r'[\u0300-\u036f]')
+        self.assertContains(response, 'Osmár Alertas')
 
     def test_fecha_matricula_no_cambia_el_calendario_de_la_jornada(self):
         segunda_matricula = Matricula.objects.create(

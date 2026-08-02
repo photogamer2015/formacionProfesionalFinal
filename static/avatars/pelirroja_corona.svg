@@ -22,11 +22,13 @@
     <ellipse cx="64" cy="61" rx="23" ry="28" fill="#F3C29B"/>
     <path d="M39 53c1-22 10-35 26-35 17 0 27 14 28 36-12-3-21-11-27-22-5 10-13 17-27 21z" fill="#B63B2A"/>
     <path d="M42 50c-6 18-4 38 5 54l8-14-5-43zM89 48L76 91l8 13c10-15 12-38 5-56z" fill="#84251F"/>
-    <path d="M44 31l9 15 11-21 11 21 9-15 4 25H40z" fill="url(#pelirroja-corona-crown)" stroke="#C27A13" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="44" cy="31" r="4" fill="#FFEFA2"/>
-    <circle cx="64" cy="25" r="4.4" fill="#FFEFA2"/>
-    <circle cx="84" cy="31" r="4" fill="#FFEFA2"/>
-    <path d="M48 49h32" stroke="#FFF4B8" stroke-width="4" stroke-linecap="round"/>
+    <g transform="translate(0 -7)">
+      <path d="M44 31l9 15 11-21 11 21 9-15 4 25H40z" fill="url(#pelirroja-corona-crown)" stroke="#C27A13" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="44" cy="31" r="4" fill="#FFEFA2"/>
+      <circle cx="64" cy="25" r="4.4" fill="#FFEFA2"/>
+      <circle cx="84" cy="31" r="4" fill="#FFEFA2"/>
+      <path d="M48 49h32" stroke="#FFF4B8" stroke-width="4" stroke-linecap="round"/>
+    </g>
     <ellipse cx="55" cy="62" rx="2.4" ry="3.2" fill="#3E2A2B"/>
     <ellipse cx="73" cy="62" rx="2.4" ry="3.2" fill="#3E2A2B"/>
     <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#BF5E67" stroke-width="2.5" stroke-linecap="round"/>

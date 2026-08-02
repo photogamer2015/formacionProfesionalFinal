@@ -363,12 +363,15 @@ def comprobante_asesor_detalle(request, vendedora_id):
     Muestra el perfil social de un usuario registrado.
 
     La información social es visible para cualquier usuario autenticado. Los
-    indicadores, estudiantes y actividad siguen limitados al dueño del perfil
-    y a los administradores.
+    indicadores, estudiantes y actividad se muestran únicamente en el perfil
+    propio para que al consultar otro usuario solo aparezca su tarjeta pública.
     """
     asesor = get_object_or_404(User, pk=vendedora_id)
     es_perfil_propio = asesor.pk == request.user.pk
     puede_ver_actividad_perfil = es_perfil_propio or es_admin(request.user)
+    mostrar_detalle_operativo_perfil = (
+        es_perfil_propio and puede_ver_actividad_perfil
+    )
     editar_mural = (
         es_perfil_propio
         and (request.GET.get('editar_mural') or '').strip() == '1'
@@ -523,7 +526,7 @@ def comprobante_asesor_detalle(request, vendedora_id):
     else:
         asesor_rol = 'Usuario'
 
-    if puede_ver_actividad_perfil:
+    if mostrar_detalle_operativo_perfil:
         comprobantes = (
             Comprobante.objects.filter(
                 Q(matricula__vendedora_id=vendedora_id) |
@@ -587,6 +590,7 @@ def comprobante_asesor_detalle(request, vendedora_id):
         'recuperaciones': recuperaciones,
         'es_perfil_propio': es_perfil_propio,
         'puede_ver_actividad_perfil': puede_ver_actividad_perfil,
+        'mostrar_detalle_operativo_perfil': mostrar_detalle_operativo_perfil,
         'editar_mural': editar_mural,
         'asesor_rol': asesor_rol,
         'avatar_seleccionado': avatar_seleccionado,
