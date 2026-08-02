@@ -186,7 +186,12 @@
         outline: 1px solid rgba(228,81,3,.72);
         outline-offset: -2px;
     }
-    .date-picker-day.is-selected {
+    .date-picker-day.is-in-range {
+        background: rgba(27,42,78,.10);
+    }
+    .date-picker-day.is-selected,
+    .date-picker-day.is-selected-start,
+    .date-picker-day.is-selected-end {
         background: var(--fp-navy);
         color: #ffffff;
         font-weight: 800;
@@ -229,6 +234,9 @@
     body.dark-mode .date-picker-day:hover {
         background: rgba(126,167,255,.10);
     }
+    body.dark-mode .date-picker-day.is-in-range {
+        background: rgba(126,167,255,.16);
+    }
     body.dark-mode .date-picker-preset.is-active {
         color: #dfe8ff;
         background: rgba(126,167,255,.16);
@@ -265,36 +273,117 @@
     }
 
     @media print {
-        body { background: white !important; }
+        @page {
+            size: A4 landscape;
+            margin: 8mm;
+        }
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        html,
+        body {
+            width: auto !important;
+            min-width: 0 !important;
+            background: white !important;
+        }
         .no-print, .crumb, .top-bar, header, nav, .menu, .sidebar,
         .global-back-button, #assistant-widget { display: none !important; }
-        .hoja-recaudacion { page-break-after: always; box-shadow: none !important; border: none !important; padding: 8px !important; }
+        .container {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .hoja-recaudacion {
+            width: 100% !important;
+            page-break-after: always;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
         .hoja-recaudacion:last-of-type { page-break-after: auto; }
-        .hoja-tabla th { background:#f0ad4e !important; color:white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .hoja-encabezado {
+            margin-bottom: 6px !important;
+            padding: 0 !important;
+            background: transparent !important;
+            color: #444 !important;
+            font-size: 10px !important;
+            line-height: 1.18 !important;
+            letter-spacing: .45px !important;
+        }
+        .hoja-meta {
+            grid-template-columns: 1fr 1fr 1.35fr 1.05fr !important;
+            gap: 5px !important;
+            margin: 8px 0 9px !important;
+            font-size: 9px !important;
+            line-height: 1.22 !important;
+        }
+        .hoja-meta div {
+            padding: 0 !important;
+            background: transparent !important;
+            border-radius: 0 !important;
+        }
+        .hoja-meta strong {
+            color: #1a237e !important;
+        }
+        .hoja-tabla th { background:#f0ad4e !important; color:white !important; }
         .hoja-tabla .col-cuota { display: table-cell !important; }
         .screen-only { display: none !important; }
         .print-only { display: inline !important; }
         .hoja-tabla {
             width: 100% !important;
             table-layout: fixed !important;
-            font-size: 8px !important;
+            border-collapse: collapse !important;
+            font-size: 7.4px !important;
+            line-height: 1.18 !important;
         }
         .hoja-tabla th,
         .hoja-tabla td {
-            padding: 3px 4px !important;
-            overflow-wrap: anywhere;
+            padding: 2.4px 3px !important;
+            border: .5px solid #cfcfcf !important;
+            vertical-align: top !important;
+            white-space: normal !important;
+            overflow: hidden !important;
+            overflow-wrap: anywhere !important;
+            word-break: normal !important;
         }
-        .hoja-tabla th { font-size: 7px !important; line-height: 1.15; }
+        .hoja-tabla th {
+            font-size: 6.4px !important;
+            line-height: 1.08 !important;
+            text-align: center !important;
+            letter-spacing: .25px !important;
+        }
+        .hoja-tabla td:nth-child(1),
+        .hoja-tabla td:nth-child(3),
+        .hoja-tabla td:nth-child(4),
+        .hoja-tabla td:nth-child(9) {
+            text-align: center !important;
+        }
+        .hoja-tabla td:nth-child(5),
+        .hoja-tabla td:nth-child(6) {
+            text-align: right !important;
+            white-space: nowrap !important;
+        }
         .hoja-tabla th:nth-child(1),  .hoja-tabla td:nth-child(1)  { width: 3% !important; }
-        .hoja-tabla th:nth-child(2),  .hoja-tabla td:nth-child(2)  { width: 20% !important; }
-        .hoja-tabla th:nth-child(3),  .hoja-tabla td:nth-child(3)  { width: 11% !important; }
-        .hoja-tabla th:nth-child(4),  .hoja-tabla td:nth-child(4)  { width: 6% !important; }
-        .hoja-tabla th:nth-child(5),  .hoja-tabla td:nth-child(5)  { width: 11% !important; white-space: nowrap; }
-        .hoja-tabla th:nth-child(6),  .hoja-tabla td:nth-child(6)  { width: 9% !important; white-space: nowrap; }
-        .hoja-tabla th:nth-child(7),  .hoja-tabla td:nth-child(7)  { width: 16% !important; }
-        .hoja-tabla th:nth-child(8),  .hoja-tabla td:nth-child(8)  { width: 10% !important; }
-        .hoja-tabla th:nth-child(9),  .hoja-tabla td:nth-child(9)  { width: 7% !important; }
-        .hoja-tabla th:nth-child(10), .hoja-tabla td:nth-child(10) { width: 7% !important; }
+        .hoja-tabla th:nth-child(2),  .hoja-tabla td:nth-child(2)  { width: 22% !important; }
+        .hoja-tabla th:nth-child(3),  .hoja-tabla td:nth-child(3)  { width: 9% !important; }
+        .hoja-tabla th:nth-child(4),  .hoja-tabla td:nth-child(4)  { width: 8% !important; }
+        .hoja-tabla th:nth-child(5),  .hoja-tabla td:nth-child(5)  { width: 9% !important; }
+        .hoja-tabla th:nth-child(6),  .hoja-tabla td:nth-child(6)  { width: 8% !important; }
+        .hoja-tabla th:nth-child(7),  .hoja-tabla td:nth-child(7)  { width: 13% !important; }
+        .hoja-tabla th:nth-child(8),  .hoja-tabla td:nth-child(8)  { width: 12% !important; }
+        .hoja-tabla th:nth-child(9),  .hoja-tabla td:nth-child(9)  { width: 6% !important; }
+        .hoja-tabla th:nth-child(10), .hoja-tabla td:nth-child(10) { width: 10% !important; }
+        .hoja-tabla thead {
+            display: table-header-group;
+        }
+        .hoja-tabla tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
         .hoja-totales { display: none !important; }
     }
 
@@ -389,22 +478,20 @@
     <div>
         <h2 class="page-title">🖨️ Hoja de Recaudación</h2>
         <p class="page-subtitle">
-            Genera hojas por curso y jornada para una fecha y ciudad determinadas. Replica el formato físico
+            Genera hojas por curso y jornada para una fecha o rango y ciudad determinados. Replica el formato físico
             de las recaudaciones diarias.
         </p>
     </div>
     {% if hojas %}
     <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        {% with qs="?fecha="|add:filtros.fecha|add:"&ciudad="|add:filtros.ciudad|add:"&curso="|add:filtros.curso|add:"&jornada="|add:filtros.jornada|add:"&modalidad="|add:filtros.modalidad %}
-        <a href="{% url 'academia:hoja_recaudacion_export_excel' %}{{ qs }}"
+        <a href="{% url 'academia:hoja_recaudacion_export_excel' %}{% if filtros.querystring %}?{{ filtros.querystring }}{% endif %}"
            class="btn btn-secondary" title="Exportar a Excel">📊 Excel</a>
         <button type="button" onclick="window.print()" class="btn btn-success">🖨️ Imprimir</button>
-        {% endwith %}
     </div>
     {% endif %}
 </div>
 
-{% if hojas %}
+{% if hojas and not filtros.es_rango %}
 {% comment %}
    Modo manual de recaudación: al activarlo, la columna "A Recaudar (Módulo)"
    se vuelve editable por estudiante y los totales se recalculan al instante.
@@ -438,23 +525,31 @@
 
 {# ─── Filtros ───────────────────────────────── #}
 <div class="card-box no-print" style="margin-bottom:18px; padding:16px;">
-    <form method="get" style="display:grid; grid-template-columns: 1fr 1fr 1fr 2fr 2fr auto; gap:10px; align-items:end;">
+    <form method="get" style="display:grid; grid-template-columns: minmax(260px, 1.45fr) 1fr 1fr 2fr 2fr auto; gap:10px; align-items:end;">
         <div>
-            <label class="form-label" style="font-size:11px;">Fecha *</label>
-            <div class="recaudacion-date-picker" data-single-date-picker>
-                <input type="hidden" name="fecha" value="{{ filtros.fecha }}" data-date-value>
+            <label class="form-label" style="font-size:11px;">Fecha / rango *</label>
+            <div class="recaudacion-date-picker" data-single-date-picker data-date-range-picker>
+                <input type="hidden" name="fecha_desde" value="{{ filtros.fecha_desde }}" data-date-start>
+                <input type="hidden" name="fecha_hasta" value="{{ filtros.fecha_hasta }}" data-date-end>
+                <input type="hidden" name="fecha" value="{{ filtros.fecha }}" data-date-legacy>
                 <button type="button" class="date-picker-trigger" data-date-trigger aria-haspopup="dialog" aria-expanded="false">
                     <span aria-hidden="true">📅</span>
-                    <span class="date-picker-trigger-text" data-date-label>Fecha</span>
+                    <span class="date-picker-trigger-text" data-date-label>Fecha / rango</span>
                     <span class="date-picker-trigger-caret" aria-hidden="true">▾</span>
                 </button>
                 <div class="date-picker-popover" data-date-popover hidden>
                     <div class="date-picker-layout">
                         <div class="date-picker-presets">
-                            <div class="date-picker-presets-title">Fecha</div>
+                            <div class="date-picker-presets-title">Fecha / rango</div>
                             <button type="button" class="date-picker-preset" data-date-preset="all">Sin filtro</button>
                             <button type="button" class="date-picker-preset" data-date-preset="today">Hoy</button>
                             <button type="button" class="date-picker-preset" data-date-preset="yesterday">Ayer</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="last7">Últimos 7 días</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="last14">Últimos 14 días</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="last30">Últimos 30 días</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="thisWeek">Esta semana</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="thisMonth">Este mes</button>
+                            <button type="button" class="date-picker-preset" data-date-preset="lastMonth">El mes pasado</button>
                         </div>
                         <div class="date-picker-main">
                             <div class="date-picker-calendars">
@@ -522,12 +617,14 @@
 (function () {
     'use strict';
 
-    var picker = document.querySelector('[data-single-date-picker]');
+    var picker = document.querySelector('[data-date-range-picker]');
     if (picker) {
         var monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
         var fullMonthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
         var weekDays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-        var hiddenDate = picker.querySelector('[data-date-value]');
+        var startHidden = picker.querySelector('[data-date-start]');
+        var endHidden = picker.querySelector('[data-date-end]');
+        var legacyHidden = picker.querySelector('[data-date-legacy]');
         var trigger = picker.querySelector('[data-date-trigger]');
         var popover = picker.querySelector('[data-date-popover]');
         var label = picker.querySelector('[data-date-label]');
@@ -537,7 +634,8 @@
         var clearButton = picker.querySelector('[data-date-clear]');
         var cancelButton = picker.querySelector('[data-date-cancel]');
         var applyButton = picker.querySelector('[data-date-apply]');
-        var draftDate = null;
+        var draftStart = null;
+        var draftEnd = null;
         var viewYear;
         var viewMonth;
 
@@ -579,37 +677,90 @@
             return next;
         }
 
+        function compareDates(a, b) {
+            return toISO(a).localeCompare(toISO(b));
+        }
+
         function sameDate(a, b) {
             return Boolean(a && b && toISO(a) === toISO(b));
+        }
+
+        function startOfWeek(date) {
+            var result = cloneDate(date);
+            var day = (result.getDay() + 6) % 7;
+            result.setDate(result.getDate() - day);
+            return result;
+        }
+
+        function endOfWeek(date) {
+            return addDays(startOfWeek(date), 6);
         }
 
         function formatDate(date) {
             return date.getDate() + ' ' + monthNames[date.getMonth()] + ' ' + date.getFullYear();
         }
 
-        function presetDate(key) {
-            if (key === 'all') return null;
-            if (key === 'today') return today();
-            if (key === 'yesterday') return addDays(today(), -1);
-            return null;
+        function presetRange(key) {
+            var current = today();
+            if (key === 'all') return { start: null, end: null };
+            if (key === 'today') return { start: current, end: current };
+            if (key === 'yesterday') {
+                var yesterday = addDays(current, -1);
+                return { start: yesterday, end: yesterday };
+            }
+            if (key === 'last7') return { start: addDays(current, -6), end: current };
+            if (key === 'last14') return { start: addDays(current, -13), end: current };
+            if (key === 'last30') return { start: addDays(current, -29), end: current };
+            if (key === 'thisWeek') return { start: startOfWeek(current), end: endOfWeek(current) };
+            if (key === 'thisMonth') {
+                return {
+                    start: new Date(current.getFullYear(), current.getMonth(), 1),
+                    end: new Date(current.getFullYear(), current.getMonth() + 1, 0),
+                };
+            }
+            if (key === 'lastMonth') {
+                return {
+                    start: new Date(current.getFullYear(), current.getMonth() - 1, 1),
+                    end: new Date(current.getFullYear(), current.getMonth(), 0),
+                };
+            }
+            return { start: null, end: null };
+        }
+
+        function normalizeDraft() {
+            if (draftStart && draftEnd && compareDates(draftStart, draftEnd) > 0) {
+                var previousStart = draftStart;
+                draftStart = draftEnd;
+                draftEnd = previousStart;
+            }
         }
 
         function setViewFromDraft() {
-            var reference = draftDate || today();
+            var reference = draftStart || draftEnd || today();
             viewYear = reference.getFullYear();
             viewMonth = reference.getMonth();
         }
 
         function updateLabel() {
-            var current = parseISO(hiddenDate.value);
-            label.textContent = current ? 'Fecha: ' + formatDate(current) : 'Fecha';
-            picker.classList.toggle('has-value', Boolean(current));
+            var currentStart = parseISO(startHidden.value);
+            var currentEnd = parseISO(endHidden.value);
+            var text = 'Fecha / rango';
+            if (currentStart && currentEnd) {
+                text = sameDate(currentStart, currentEnd)
+                    ? 'Fecha: ' + formatDate(currentStart)
+                    : 'Rango: ' + formatDate(currentStart) + ' - ' + formatDate(currentEnd);
+            }
+            label.textContent = text;
+            picker.classList.toggle('has-value', Boolean(currentStart || currentEnd));
         }
 
         function renderPresetState() {
             presets.forEach(function (button) {
-                var selected = presetDate(button.dataset.datePreset);
-                var active = (!draftDate && !selected) || sameDate(draftDate, selected);
+                var range = presetRange(button.dataset.datePreset);
+                var active = (
+                    (!draftStart && !draftEnd && !range.start && !range.end) ||
+                    (sameDate(draftStart, range.start) && sameDate(draftEnd, range.end))
+                );
                 button.classList.toggle('is-active', active);
             });
         }
@@ -622,7 +773,6 @@
             var lastDay = new Date(year, month + 1, 0).getDate();
             var leading = (firstDay.getDay() + 6) % 7;
             var todayISO = toISO(today());
-            var selectedISO = toISO(draftDate);
             var html = '<div class="date-picker-calendar-head">';
             html += offset === 0
                 ? '<button type="button" class="date-picker-nav" data-month-nav="-1" aria-label="Mes anterior">‹</button>'
@@ -642,10 +792,19 @@
             for (var dayNum = 1; dayNum <= lastDay; dayNum += 1) {
                 var date = new Date(year, month, dayNum);
                 var iso = toISO(date);
+                var selectedStart = draftStart && iso === toISO(draftStart);
+                var selectedEnd = draftEnd && iso === toISO(draftEnd);
+                var inRange = (
+                    draftStart && draftEnd &&
+                    compareDates(date, draftStart) >= 0 &&
+                    compareDates(date, draftEnd) <= 0
+                );
                 var classes = [
                     'date-picker-day',
                     iso === todayISO ? 'is-today' : '',
-                    iso === selectedISO ? 'is-selected' : '',
+                    inRange ? 'is-in-range' : '',
+                    selectedStart ? 'is-selected-start' : '',
+                    selectedEnd ? 'is-selected-end' : '',
                 ].filter(Boolean).join(' ');
                 html += '<button type="button" class="' + classes + '" data-date-day="' + iso + '">' + dayNum + '</button>';
             }
@@ -654,6 +813,7 @@
         }
 
         function render() {
+            normalizeDraft();
             calendars.forEach(function (calendar) {
                 renderMonth(calendar, Number(calendar.dataset.calendarOffset || 0));
             });
@@ -675,7 +835,8 @@
         }
 
         function openPicker() {
-            draftDate = parseISO(hiddenDate.value);
+            draftStart = parseISO(startHidden.value);
+            draftEnd = parseISO(endHidden.value);
             setViewFromDraft();
             popover.hidden = false;
             trigger.setAttribute('aria-expanded', 'true');
@@ -703,7 +864,16 @@
             var presetButton = event.target.closest('[data-date-preset]');
 
             if (dayButton) {
-                draftDate = parseISO(dayButton.dataset.dateDay);
+                var selected = parseISO(dayButton.dataset.dateDay);
+                if (!draftStart || (draftStart && draftEnd)) {
+                    draftStart = selected;
+                    draftEnd = null;
+                } else if (compareDates(selected, draftStart) < 0) {
+                    draftEnd = draftStart;
+                    draftStart = selected;
+                } else {
+                    draftEnd = selected;
+                }
                 render();
                 return;
             }
@@ -717,26 +887,41 @@
             }
 
             if (presetButton) {
-                draftDate = presetDate(presetButton.dataset.datePreset);
+                var range = presetRange(presetButton.dataset.datePreset);
+                draftStart = range.start;
+                draftEnd = range.end;
                 setViewFromDraft();
                 render();
             }
         });
 
         clearButton.addEventListener('click', function () {
-            draftDate = null;
+            draftStart = null;
+            draftEnd = null;
             render();
         });
         cancelButton.addEventListener('click', closePicker);
         applyButton.addEventListener('click', function () {
-            hiddenDate.value = toISO(draftDate);
+            if (draftStart && !draftEnd) draftEnd = cloneDate(draftStart);
+            if (!draftStart && draftEnd) draftStart = cloneDate(draftEnd);
+            normalizeDraft();
+            startHidden.value = toISO(draftStart);
+            endHidden.value = toISO(draftEnd);
+            legacyHidden.value = (
+                draftStart && draftEnd && sameDate(draftStart, draftEnd)
+                    ? toISO(draftStart)
+                    : ''
+            );
             trigger.removeAttribute('aria-invalid');
             updateLabel();
             closePicker();
         });
         if (dateForm) {
             dateForm.addEventListener('submit', function (event) {
-                if (!hiddenDate.value) {
+                if (startHidden.value && !endHidden.value) {
+                    endHidden.value = startHidden.value;
+                }
+                if (!startHidden.value) {
                     event.preventDefault();
                     trigger.setAttribute('aria-invalid', 'true');
                     openPicker();
@@ -819,9 +1004,9 @@
 </script>
 
 {# ─── Hojas por jornada ─────────────────────── #}
-{% if not filtros.fecha %}
+{% if not filtros.fecha_desde %}
 <div class="card-box" style="padding:30px; text-align:center; background:#f5f7ff;">
-    <p style="font-size:15px; color:#666;">📅 Selecciona una fecha para generar las hojas de recaudación.</p>
+    <p style="font-size:15px; color:#666;">📅 Selecciona una fecha o rango para generar las hojas de recaudación.</p>
 </div>
 {% elif not filtros.curso %}
 <div class="card-box" style="padding:30px; text-align:center; background:#f5f7ff;">
@@ -847,7 +1032,14 @@
     </div>
 
     <div class="hoja-meta">
-        <div><strong>FECHA:</strong> {{ hoja.dia_semana }} {{ hoja.fecha|date:"d \d\e F \d\e Y" }}</div>
+        <div>
+            <strong>{% if hoja.es_rango %}PERÍODO{% else %}FECHA{% endif %}:</strong>
+            {% if hoja.es_rango %}
+                {{ hoja.periodo_label }}
+            {% else %}
+                {{ hoja.dia_semana }} {{ hoja.fecha|date:"d \d\e F \d\e Y" }}
+            {% endif %}
+        </div>
         <div><strong>CIUDAD:</strong> {{ hoja.ciudad }}</div>
         <div><strong>JORNADA:</strong> {{ hoja.jornada_label }}</div>
         <div><strong>RESPONSABLE:</strong> {{ hoja.responsable }} · <strong>ESTUDIANTES:</strong> {{ hoja.items|length }}</div>

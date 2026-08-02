@@ -219,8 +219,13 @@
 	        grid-column: span 2;
 	        min-width: 0;
 	    }
+	    .filtro-fecha-modulo {
+	        grid-column: span 2;
+	        min-width: 0;
+	    }
 	    @media (max-width: 720px) {
-	        .filtro-estudiante-jornada {
+	        .filtro-estudiante-jornada,
+	        .filtro-fecha-modulo {
 	            grid-column: 1 / -1;
 	        }
 	    }
@@ -307,6 +312,7 @@
                     <optgroup label="── Módulo {{ n }}">
                         <option value="{{ n }}_Pagado"   {% if filtros.filtro_modulo_estado == n|stringformat:"s"|add:"_Pagado"   %}selected{% endif %}>✓ Módulo {{ n }} — Pagado</option>
                         <option value="{{ n }}_Pendiente"{% if filtros.filtro_modulo_estado == n|stringformat:"s"|add:"_Pendiente"%}selected{% endif %}>○ Módulo {{ n }} — Pendiente</option>
+                        <option value="{{ n }}_Recuperacion"{% if filtros.filtro_modulo_estado == n|stringformat:"s"|add:"_Recuperacion"%}selected{% endif %}>✱ Módulo {{ n }} — Recuperación</option>
                     </optgroup>
                     {% endfor %}
                 {% else %}
@@ -314,6 +320,7 @@
                     <optgroup label="── Módulo {{ n }}">
                         <option value="{{ n }}_Pagado">✓ Módulo {{ n }} — Pagado</option>
                         <option value="{{ n }}_Pendiente">○ Módulo {{ n }} — Pendiente</option>
+                        <option value="{{ n }}_Recuperacion">✱ Módulo {{ n }} — Recuperación</option>
                     </optgroup>
                     {% endfor %}
                 {% endif %}
@@ -333,6 +340,32 @@
             </select>
             {% if not curso_sel %}
             <div style="font-size:10px; color:#999; margin-top:2px;">Selecciona un curso primero</div>
+            {% endif %}
+        </div>
+        <div class="filtro-fecha-modulo">
+            <label class="form-label" style="font-size:11px;">Fecha de módulo</label>
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(120px, 1fr)); gap:8px;">
+                <div>
+                    <div style="font-size:10px; color:#6b7280; margin-bottom:2px;">Desde</div>
+                    <input type="date" name="fecha_modulo_desde" class="form-input"
+                           value="{{ filtros.fecha_modulo_desde }}"
+                           data-fecha-modulo-input
+                           {% if not curso_sel %}disabled{% endif %}
+                           style="{% if not curso_sel %}opacity:0.5; cursor:not-allowed;{% endif %}">
+                </div>
+                <div>
+                    <div style="font-size:10px; color:#6b7280; margin-bottom:2px;">Hasta</div>
+                    <input type="date" name="fecha_modulo_hasta" class="form-input"
+                           value="{{ filtros.fecha_modulo_hasta }}"
+                           data-fecha-modulo-input
+                           {% if not curso_sel %}disabled{% endif %}
+                           style="{% if not curso_sel %}opacity:0.5; cursor:not-allowed;{% endif %}">
+                </div>
+            </div>
+            {% if not curso_sel %}
+            <div style="font-size:10px; color:#999; margin-top:2px;">Selecciona un curso primero</div>
+            {% elif filtros.fecha_modulo_label %}
+            <div style="font-size:10px; color:#1a237e; margin-top:2px;">Filtrando módulos con fecha {{ filtros.fecha_modulo_label }}</div>
             {% endif %}
         </div>
         <div class="filtro-estudiante-jornada">
@@ -365,6 +398,18 @@
     var cursoSel = document.getElementById('filtro-curso');
     var fechaSel = document.getElementById('filtro-fecha-jornada');
     var matriculaSel = document.getElementById('filtro-matricula');
+    var fechaModuloInputs = Array.prototype.slice.call(
+        document.querySelectorAll('[data-fecha-modulo-input]')
+    );
+
+    function resetFechaModuloInputs() {
+        fechaModuloInputs.forEach(function(input) {
+            input.value = '';
+            input.disabled = true;
+            input.style.opacity = '0.5';
+            input.style.cursor = 'not-allowed';
+        });
+    }
 
     if (cursoSel && fechaSel) {
         cursoSel.addEventListener('change', function() {
@@ -379,13 +424,17 @@
                     matriculaSel.style.cursor = 'not-allowed';
                     matriculaSel.value = '';
                 }
+                resetFechaModuloInputs();
             } else {
                 // Cuando se cambia el curso, se envía el formulario para
-                // recargar las fechas de jornada disponibles del nuevo curso.
+                // recargar las fechas disponibles del nuevo curso.
                 fechaSel.value = '';
                 if (matriculaSel) {
                     matriculaSel.value = '';
                 }
+                fechaModuloInputs.forEach(function(input) {
+                    input.value = '';
+                });
                 document.getElementById('filtros-form').submit();
             }
         });
@@ -419,6 +468,7 @@
         Curso: <strong>{{ curso_sel.nombre }}</strong> &nbsp;·&nbsp;
         Modalidad: <strong>{% if filtros.modalidad %}{{ filtros.modalidad|title }}{% else %}Todas{% endif %}</strong> &nbsp;·&nbsp;
         Ciudad: <strong>{{ filtros.ciudad|default:"Todas" }}</strong> &nbsp;·&nbsp;
+        {% if filtros.fecha_modulo_label %}Fecha módulo: <strong>{{ filtros.fecha_modulo_label }}</strong> &nbsp;·&nbsp;{% endif %}
         Estudiantes: <strong>{{ matriculas_data|length }}</strong>
     </span>
 </div>
@@ -539,12 +589,12 @@
                         {% if mod.fecha_pago %}
                         <div style="font-size:10px; color:#2e7d32; margin-top:2px;">{{ mod.fecha_pago|date:"d/m/Y" }}</div>
                         {% endif %}
-                        {% if mod.es_recuperacion %}
-                        <div title="{{ mod.recuperacion_recibos }}"
-                             style="display:inline-block; margin-top:5px; background:#fff3cd; border:1px solid #f0c36d; color:#8a5a00; padding:2px 6px; border-radius:6px; font-size:9px; font-weight:800; line-height:1.2;">
-                            ✱ Recuperación
-                        </div>
-                        {% endif %}
+                    {% endif %}
+                    {% if mod.es_recuperacion %}
+                    <div title="{{ mod.recuperacion_recibos|default:'Recuperación marcada' }}"
+                         style="display:inline-block; margin-top:5px; background:#fff3cd; border:1px solid #f0c36d; color:#8a5a00; padding:2px 6px; border-radius:6px; font-size:9px; font-weight:800; line-height:1.2;">
+                        ✱ Recuperación
+                    </div>
                     {% endif %}
                 </td>
                 {% endif %}

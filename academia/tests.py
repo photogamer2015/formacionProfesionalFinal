@@ -2781,9 +2781,14 @@ class PagoInicialMatriculaTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-single-date-picker')
+        self.assertContains(response, 'data-date-range-picker')
         self.assertContains(
             response,
-            '<input type="hidden" name="fecha" value="2026-07-30" data-date-value>',
+            '<input type="hidden" name="fecha_desde" value="2026-07-30" data-date-start>',
+        )
+        self.assertContains(
+            response,
+            '<input type="hidden" name="fecha_hasta" value="2026-07-30" data-date-end>',
         )
         self.assertContains(response, '.hoja-totales { display: none !important; }')
         self.assertContains(
@@ -2798,6 +2803,67 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertContains(response, 'Exportar a Excel')
         self.assertNotContains(response, 'Exportar a PDF')
         self.assertNotContains(response, 'type="date" name="fecha"')
+
+    def test_hoja_recaudacion_rango_suma_pagos_del_periodo(self):
+        admin = User.objects.create_superuser(
+            username='admin_rango_hoja_recaudacion',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('35.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 29),
+            monto=Decimal('5.00'),
+            tipo_pago='abono',
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 30),
+            monto=Decimal('10.00'),
+            tipo_pago='abono',
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 1),
+            monto=Decimal('20.00'),
+            tipo_pago='abono',
+            cuenta_para_saldo=True,
+            metodo='transferencia',
+            banco='guayaquil',
+            registrado_por=admin,
+        )
+
+        request = RequestFactory().get('/pagos/hoja-recaudacion/', {
+            'fecha_desde': '2026-07-30',
+            'fecha_hasta': '2026-08-01',
+            'curso': str(self.curso.id),
+        })
+        hojas, filtros = _hojas_recaudacion_data(request)
+
+        self.assertTrue(filtros['es_rango'])
+        self.assertEqual(filtros['fecha'], '')
+        self.assertEqual(filtros['periodo_label'], '30/07/2026 - 01/08/2026')
+        self.assertEqual(hojas[0]['items'][0]['recaudado'], Decimal('30.00'))
+        self.assertEqual(hojas[0]['total_efectivo'], Decimal('10.00'))
+        self.assertEqual(hojas[0]['total_transferencia'], Decimal('20.00'))
 
     def test_hoja_recaudacion_excel_no_incluye_fila_de_totales(self):
         admin = User.objects.create_superuser(
@@ -3365,7 +3431,8 @@ class PagosPorModuloFiltroTests(TestCase):
         )
 
     def _crear_matricula(self, cedula, nombres, modulo_pagado=None,
-                         tipo_matricula='reserva_abono', jornada=None):
+                         tipo_matricula='reserva_abono', jornada=None,
+                         fecha_pago_modulo=None):
         estudiante = Estudiante.objects.create(
             cedula=cedula,
             nombres=nombres,
@@ -3385,7 +3452,7 @@ class PagosPorModuloFiltroTests(TestCase):
         if modulo_pagado:
             Abono.objects.create(
                 matricula=matricula,
-                fecha=date(2026, 7, 5),
+                fecha=fecha_pago_modulo or date(2026, 7, 5),
                 monto=Decimal('30.00'),
                 tipo_pago='por_modulo',
                 numero_modulo=modulo_pagado,
@@ -3472,6 +3539,95 @@ class PagosPorModuloFiltroTests(TestCase):
         self.assertEqual(modulo['recuperacion_monto'], Decimal('30.00'))
         self.assertEqual(modulo['recuperacion_recibos'], abono.numero_recibo)
 
+    def test_filtro_estado_modulo_recuperacion_muestra_recuperaciones(self):
+        matricula_recuperacion = self._crear_matricula(
+            '0987777777', 'Estudiante Con Recuperación'
+        )
+        matricula_normal = self._crear_matricula(
+            '0986666666', 'Estudiante Sin Recuperación'
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula_recuperacion,
+            numero_modulo=2,
+            fecha_marcada=date(2026, 7, 9),
+            saldo_pendiente_al_marcar=Decimal('90.00'),
+        )
+
+        matriculas, modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
+            self.curso,
+            filtro_modulo_estado='2_Recuperacion',
+        )
+
+        self.assertEqual(modulos, [1, 2, 3])
+        self.assertEqual(modulos_visibles, [2])
+        self.assertEqual(
+            [x['matricula'].pk for x in matriculas],
+            [matricula_recuperacion.pk],
+        )
+        self.assertNotIn(
+            matricula_normal.pk,
+            [x['matricula'].pk for x in matriculas],
+        )
+        modulo = matriculas[0]['modulos_visibles_data'][0]
+        self.assertEqual(modulo['numero'], 2)
+        self.assertEqual(modulo['estado'], 'Pendiente')
+        self.assertTrue(modulo['es_recuperacion'])
+
+    def test_filtro_fecha_modulo_filtra_por_rango_de_fecha_pago(self):
+        matricula_antes = self._crear_matricula(
+            '0985555555', 'Estudiante Antes',
+            modulo_pagado=1,
+            fecha_pago_modulo=date(2026, 7, 8),
+        )
+        matricula_dentro = self._crear_matricula(
+            '0984444444', 'Estudiante Dentro',
+            modulo_pagado=1,
+            fecha_pago_modulo=date(2026, 7, 12),
+        )
+        matricula_otro_modulo = self._crear_matricula(
+            '0983333333', 'Estudiante Otro Modulo',
+            modulo_pagado=2,
+            fecha_pago_modulo=date(2026, 7, 14),
+        )
+        matricula_despues = self._crear_matricula(
+            '0982222222', 'Estudiante Despues',
+            modulo_pagado=1,
+            fecha_pago_modulo=date(2026, 7, 22),
+        )
+
+        matriculas, _modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
+            self.curso,
+            fecha_modulo_desde=date(2026, 7, 10),
+            fecha_modulo_hasta=date(2026, 7, 15),
+        )
+
+        self.assertEqual(modulos_visibles, [1, 2, 3])
+        self.assertCountEqual(
+            [x['matricula'].pk for x in matriculas],
+            [matricula_dentro.pk, matricula_otro_modulo.pk],
+        )
+        self.assertNotIn(
+            matricula_antes.pk,
+            [x['matricula'].pk for x in matriculas],
+        )
+        self.assertNotIn(
+            matricula_despues.pk,
+            [x['matricula'].pk for x in matriculas],
+        )
+
+        matriculas, _modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
+            self.curso,
+            filtro_modulo_estado='1_Pagado',
+            fecha_modulo_desde=date(2026, 7, 10),
+            fecha_modulo_hasta=date(2026, 7, 15),
+        )
+
+        self.assertEqual(modulos_visibles, [1])
+        self.assertEqual(
+            [x['matricula'].pk for x in matriculas],
+            [matricula_dentro.pk],
+        )
+
     def test_filtro_estado_modulo_muestra_solo_el_modulo_filtrado(self):
         matricula_modulo_1 = self._crear_matricula(
             '0911111111', 'Estudiante Modulo 1', modulo_pagado=1
@@ -3529,12 +3685,19 @@ class PagosPorModuloFiltroTests(TestCase):
             {
                 'curso': str(self.curso.pk),
                 'filtro_modulo_estado': '1_Pagado',
+                'fecha_modulo_desde': '2026-07-05',
+                'fecha_modulo_hasta': '2026-07-05',
             },
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['modulos'], [1, 2, 3])
         self.assertEqual(response.context['modulos_visibles'], [1])
+        self.assertContains(response, 'Módulo 1 — Recuperación')
+        self.assertContains(response, 'name="fecha_modulo_desde"')
+        self.assertEqual(response.context['filtros']['fecha_modulo_label'], '05/07/2026')
+        self.assertIn('fecha_modulo_desde=2026-07-05', response.context['export_querystring'])
+        self.assertIn('fecha_modulo_hasta=2026-07-05', response.context['export_querystring'])
         self.assertEqual(len(response.context['matriculas_data']), 1)
         self.assertEqual(
             [

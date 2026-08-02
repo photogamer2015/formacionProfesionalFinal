@@ -2301,12 +2301,15 @@ def _opciones_matriculas_estudiantes_pagos_modulo(curso_sel, modalidad='',
 
 def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                             tipo_matricula='', filtro_modulo_estado='',
-                            fecha_jornada='', matricula_id=''):
+                            fecha_jornada='', matricula_id='',
+                            fecha_modulo_desde=None, fecha_modulo_hasta=None):
     """
     Construye la matriz estudiantes x modulos para un curso.
     filtro_modulo_estado: cadena con formato "<num>_<estado>",
-    por ejemplo "2_Parcial" o "1_Pagado". Filtra por el modulo
-    y estado indicados. Cadena vacia = sin filtro.
+    por ejemplo "2_Parcial", "1_Pagado" o "3_Recuperacion".
+    Filtra por el modulo y estado indicados. Cadena vacia = sin filtro.
+    fecha_modulo_desde/fecha_modulo_hasta filtran por la fecha de pago que
+    se muestra dentro de cada celda de módulo.
     """
     if modalidad in ('presencial', 'online'):
         n_mod = (
@@ -2364,6 +2367,10 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
         modulos_data = []
         for d in desglose:
             numero = d['numero']
+            recuperaciones_modulo = [
+                recuperacion for recuperacion in todas_recuperaciones
+                if recuperacion.numero_modulo == numero
+            ]
             pagos_recuperacion = {
                 abono.pk: abono
                 for abono in todos_abonos
@@ -2373,10 +2380,9 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                     and abono.numero_modulo == numero
                 )
             }
-            for recuperacion in todas_recuperaciones:
+            for recuperacion in recuperaciones_modulo:
                 if (
                     recuperacion.pagada
-                    and recuperacion.numero_modulo == numero
                     and recuperacion.abono
                     and recuperacion.abono.cuenta_para_saldo
                 ):
@@ -2389,7 +2395,7 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                 'esperado': d['esperado'],
                 'fecha_pago': d['fecha_ultimo_pago'],
                 'aplica': True,
-                'es_recuperacion': bool(pagos_recuperacion),
+                'es_recuperacion': bool(recuperaciones_modulo or pagos_recuperacion),
                 'recuperacion_monto': sum(
                     (a.monto for a in pagos_recuperacion.values()),
                     Decimal('0.00'),
@@ -2504,24 +2510,61 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
     # Bajo la regla visual binaria, "Pagado" agrupa cualquier módulo que
     # haya recibido al menos un pago directo (estado interno Pagado o
     # Parcial). "Pendiente" sigue siendo solo los módulos sin pagos.
+    # "Recuperacion" filtra matrículas con recuperación marcada o cobrada
+    # en ese módulo, aunque el pago del módulo siga pendiente.
     if filtro_modulo_estado:
         partes = filtro_modulo_estado.split('_', 1)
-        if len(partes) == 2 and partes[0].isdigit() and partes[1] in ('Pagado', 'Parcial', 'Pendiente'):
+        if len(partes) == 2 and partes[0].isdigit() and partes[1] in ('Pagado', 'Parcial', 'Pendiente', 'Recuperacion'):
             num_filtro = int(partes[0])
             est_filtro = partes[1]
             if num_filtro in modulos:
                 modulos_visibles = [num_filtro]
-            if est_filtro == 'Pagado':
-                estados_match = ('Pagado', 'Parcial')
+            if est_filtro == 'Recuperacion':
+                matriculas = [
+                    x for x in matriculas
+                    if any(
+                        mod['numero'] == num_filtro
+                        and mod.get('aplica', True)
+                        and mod.get('es_recuperacion')
+                        for mod in x['modulos_data']
+                    )
+                ]
             else:
-                estados_match = (est_filtro,)
-            matriculas = [
-                x for x in matriculas
-                if any(
-                    mod['numero'] == num_filtro and mod['estado'] in estados_match
-                    for mod in x['modulos_data']
-                )
-            ]
+                if est_filtro == 'Pagado':
+                    estados_match = ('Pagado', 'Parcial')
+                else:
+                    estados_match = (est_filtro,)
+                matriculas = [
+                    x for x in matriculas
+                    if any(
+                        mod['numero'] == num_filtro
+                        and mod.get('aplica', True)
+                        and mod['estado'] in estados_match
+                        for mod in x['modulos_data']
+                    )
+                ]
+
+    if fecha_modulo_desde or fecha_modulo_hasta:
+        if fecha_modulo_desde and fecha_modulo_hasta and fecha_modulo_desde > fecha_modulo_hasta:
+            fecha_modulo_desde, fecha_modulo_hasta = fecha_modulo_hasta, fecha_modulo_desde
+
+        def _modulo_en_rango_fecha(mod):
+            fecha_pago = mod.get('fecha_pago')
+            if not mod.get('aplica', True) or not fecha_pago:
+                return False
+            if fecha_modulo_desde and fecha_pago < fecha_modulo_desde:
+                return False
+            if fecha_modulo_hasta and fecha_pago > fecha_modulo_hasta:
+                return False
+            return True
+
+        matriculas = [
+            x for x in matriculas
+            if any(
+                mod['numero'] in modulos_visibles and _modulo_en_rango_fecha(mod)
+                for mod in x['modulos_data']
+            )
+        ]
 
     for x in matriculas:
         x['modulos_visibles_data'] = [
@@ -2599,6 +2642,10 @@ def pagos_por_modulo(request):
     filtro_modulo_estado = request.GET.get('filtro_modulo_estado', '').strip()
     fecha_jornada = request.GET.get('fecha_jornada', '').strip()
     matricula_id = request.GET.get('matricula', '').strip()
+    (
+        fecha_modulo_desde, fecha_modulo_hasta,
+        fecha_modulo_desde_date, fecha_modulo_hasta_date,
+    ) = _rango_fecha_modulo_desde_request(request)
 
     curso_sel = None
     matriculas = []
@@ -2614,6 +2661,9 @@ def pagos_por_modulo(request):
     matricula_id = _normalizar_matricula_filtro_pagos_modulo(
         matricula_id, curso_sel
     )
+    if not curso_sel:
+        fecha_modulo_desde = fecha_modulo_hasta = ''
+        fecha_modulo_desde_date = fecha_modulo_hasta_date = None
 
     if curso_sel:
         matriculas, modulos, resumen_por_modulo, modulos_visibles = _construir_matriz_pagos(
@@ -2624,6 +2674,8 @@ def pagos_por_modulo(request):
             filtro_modulo_estado=filtro_modulo_estado,
             fecha_jornada=fecha_jornada,
             matricula_id=matricula_id,
+            fecha_modulo_desde=fecha_modulo_desde_date,
+            fecha_modulo_hasta=fecha_modulo_hasta_date,
         )
     # Fechas de jornada disponibles para el curso seleccionado
     fechas_jornada = []
@@ -2652,6 +2704,8 @@ def pagos_por_modulo(request):
         'filtro_modulo_estado': filtro_modulo_estado,
         'fecha_jornada': fecha_jornada,
         'matricula': matricula_id,
+        'fecha_modulo_desde': fecha_modulo_desde,
+        'fecha_modulo_hasta': fecha_modulo_hasta,
     })
 
     return render(request, 'pagos/por_modulo.html', {
@@ -2678,6 +2732,12 @@ def pagos_por_modulo(request):
             'filtro_modulo_estado': filtro_modulo_estado,
             'fecha_jornada': fecha_jornada,
             'matricula': matricula_id,
+            'fecha_modulo_desde': fecha_modulo_desde,
+            'fecha_modulo_hasta': fecha_modulo_hasta,
+            'fecha_modulo_label': _periodo_fecha_modulo_label(
+                fecha_modulo_desde_date,
+                fecha_modulo_hasta_date,
+            ),
         },
     })
 
@@ -2710,6 +2770,35 @@ def _rango_fecha_get(request, desde_param, hasta_param):
         fecha_desde, fecha_hasta = fecha_desde_date.isoformat(), fecha_hasta_date.isoformat()
 
     return fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date
+
+
+def _rango_fecha_modulo_desde_request(request):
+    """
+    Lee el rango de fecha de módulo. Si el usuario llena un solo extremo,
+    se trata como búsqueda exacta de ese día para evitar rangos abiertos.
+    """
+    fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date = _rango_fecha_get(
+        request,
+        'fecha_modulo_desde',
+        'fecha_modulo_hasta',
+    )
+
+    if fecha_desde_date and not fecha_hasta_date:
+        fecha_hasta_date = fecha_desde_date
+        fecha_hasta = fecha_desde
+    elif fecha_hasta_date and not fecha_desde_date:
+        fecha_desde_date = fecha_hasta_date
+        fecha_desde = fecha_hasta
+
+    return fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date
+
+
+def _periodo_fecha_modulo_label(fecha_desde, fecha_hasta):
+    if not fecha_desde or not fecha_hasta:
+        return ''
+    if fecha_desde == fecha_hasta:
+        return fecha_desde.strftime('%d/%m/%Y')
+    return f'{fecha_desde:%d/%m/%Y} - {fecha_hasta:%d/%m/%Y}'
 
 
 def _filtrar_recuperaciones(request):
@@ -3206,6 +3295,108 @@ def recuperacion_eliminar(request, recup_pk):
 DIAS_SEMANA_ES = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
 
 
+def _rango_recaudacion_desde_request(request):
+    """Normaliza fecha única o rango de fechas de la hoja de recaudación."""
+    fecha_legacy = (request.GET.get('fecha') or '').strip()
+    fecha_desde = (request.GET.get('fecha_desde') or '').strip()
+    fecha_hasta = (request.GET.get('fecha_hasta') or '').strip()
+
+    fecha_desde_date = parse_date(fecha_desde) if fecha_desde else None
+    fecha_hasta_date = parse_date(fecha_hasta) if fecha_hasta else None
+
+    if fecha_desde and not fecha_desde_date:
+        fecha_desde = ''
+    if fecha_hasta and not fecha_hasta_date:
+        fecha_hasta = ''
+
+    if not fecha_desde_date and not fecha_hasta_date:
+        fecha_legacy_date = parse_date(fecha_legacy) if fecha_legacy else None
+        if fecha_legacy_date:
+            fecha_desde_date = fecha_legacy_date
+            fecha_hasta_date = fecha_legacy_date
+            fecha_desde = fecha_hasta = fecha_legacy_date.isoformat()
+        else:
+            fecha_legacy = ''
+    elif fecha_desde_date and not fecha_hasta_date:
+        fecha_hasta_date = fecha_desde_date
+        fecha_hasta = fecha_desde
+    elif fecha_hasta_date and not fecha_desde_date:
+        fecha_desde_date = fecha_hasta_date
+        fecha_desde = fecha_hasta
+
+    if (
+        fecha_desde_date and fecha_hasta_date
+        and fecha_desde_date > fecha_hasta_date
+    ):
+        fecha_desde_date, fecha_hasta_date = fecha_hasta_date, fecha_desde_date
+        fecha_desde, fecha_hasta = (
+            fecha_desde_date.isoformat(), fecha_hasta_date.isoformat()
+        )
+
+    fecha = (
+        fecha_desde
+        if fecha_desde_date and fecha_hasta_date and fecha_desde_date == fecha_hasta_date
+        else ''
+    )
+    return fecha, fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date
+
+
+def _recaudacion_periodo_label(fecha_desde, fecha_hasta):
+    if not fecha_desde or not fecha_hasta:
+        return ''
+    if fecha_desde == fecha_hasta:
+        return fecha_desde.strftime('%d/%m/%Y')
+    return f'{fecha_desde:%d/%m/%Y} - {fecha_hasta:%d/%m/%Y}'
+
+
+def _recaudacion_periodo_slug(fecha_desde, fecha_hasta):
+    if not fecha_desde or not fecha_hasta:
+        return 'sin_fecha'
+    if fecha_desde == fecha_hasta:
+        return fecha_desde.strftime('%Y%m%d')
+    return f'{fecha_desde:%Y%m%d}_{fecha_hasta:%Y%m%d}'
+
+
+def _recaudacion_filtros(fecha, fecha_desde, fecha_hasta, ciudad,
+                         curso_id, jornada_id, modalidad):
+    fecha_desde_date = parse_date(fecha_desde) if fecha_desde else None
+    fecha_hasta_date = parse_date(fecha_hasta) if fecha_hasta else None
+    params = {
+        'fecha_desde': fecha_desde,
+        'fecha_hasta': fecha_hasta,
+        'ciudad': ciudad,
+        'curso': curso_id,
+        'jornada': jornada_id,
+        'modalidad': modalidad,
+    }
+    if fecha:
+        params['fecha'] = fecha
+
+    querystring = urlencode({
+        key: value for key, value in params.items() if value
+    })
+    return {
+        'fecha': fecha,
+        'fecha_desde': fecha_desde,
+        'fecha_hasta': fecha_hasta,
+        'ciudad': ciudad,
+        'curso': curso_id,
+        'jornada': jornada_id,
+        'modalidad': modalidad,
+        'es_rango': bool(
+            fecha_desde_date and fecha_hasta_date
+            and fecha_desde_date != fecha_hasta_date
+        ),
+        'periodo_label': _recaudacion_periodo_label(
+            fecha_desde_date, fecha_hasta_date,
+        ),
+        'periodo_slug': _recaudacion_periodo_slug(
+            fecha_desde_date, fecha_hasta_date,
+        ),
+        'querystring': querystring,
+    }
+
+
 def _modulo_recaudacion_label(matricula, numero_modulo):
     """Etiqueta real del modulo vigente para pantalla, impresion y exportaciones."""
     try:
@@ -3279,8 +3470,14 @@ def _jornadas_recaudacion_queryset(curso_id, ciudad='', modalidad=''):
     return qs
 
 
-def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada=None):
-    """Construye una hoja ya separada por jornada."""
+def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
+                                jornada=None, fecha_hasta_obj=None):
+    """Construye una hoja ya separada por jornada y fecha o periodo."""
+    fecha_hasta_obj = fecha_hasta_obj or fecha_obj
+    if fecha_hasta_obj < fecha_obj:
+        fecha_obj, fecha_hasta_obj = fecha_hasta_obj, fecha_obj
+    es_rango = fecha_obj != fecha_hasta_obj
+
     items = []
     total_efectivo = Decimal('0.00')
     total_transferencia = Decimal('0.00')
@@ -3288,8 +3485,13 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
     total_cuotas = Decimal('0.00')
 
     for m in matriculas:
-        # Abonos del estudiante registrados ese día (todos los métodos)
-        abonos_dia = list(m.abonos.filter(fecha=fecha_obj))
+        # Abonos del estudiante registrados en la fecha o periodo seleccionado.
+        if es_rango:
+            abonos_dia = list(
+                m.abonos.filter(fecha__gte=fecha_obj, fecha__lte=fecha_hasta_obj)
+            )
+        else:
+            abonos_dia = list(m.abonos.filter(fecha=fecha_obj))
         pagado_dia = sum((a.monto for a in abonos_dia), Decimal('0.00'))
 
         partes_dia = [
@@ -3304,7 +3506,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
         forma = ', '.join(metodos) if metodos else '—'
         banco_str = ', '.join(bancos) if bancos else '—'
 
-        plan_recaudacion = _plan_recaudacion_matricula(m, fecha_obj)
+        plan_recaudacion = _plan_recaudacion_matricula(m, fecha_hasta_obj)
         modulo_actual = plan_recaudacion['modulo']
 
         recup_str = _recuperacion_recaudacion_label(m, abonos_dia)
@@ -3357,10 +3559,11 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
             responsables[nombre] = responsables.get(nombre, 0) + 1
     responsable = max(responsables.items(), key=lambda x: x[1])[0] if responsables else '—'
 
-    dia_semana = DIAS_SEMANA_ES[fecha_obj.weekday()]
+    dia_semana = 'PERÍODO' if es_rango else DIAS_SEMANA_ES[fecha_obj.weekday()]
     ciudad_hoja = (
         jornada.ciudad if jornada and jornada.ciudad else ciudad or '—'
     )
+    periodo_label = _recaudacion_periodo_label(fecha_obj, fecha_hasta_obj)
 
     return {
         'curso': curso,
@@ -3370,6 +3573,10 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
         'jornada_inicio': jornada.fecha_inicio if jornada else None,
         'jornada_modalidad': jornada.get_modalidad_display() if jornada else '—',
         'fecha': fecha_obj,
+        'fecha_desde': fecha_obj,
+        'fecha_hasta': fecha_hasta_obj,
+        'es_rango': es_rango,
+        'periodo_label': periodo_label,
         'dia_semana': dia_semana,
         'ciudad': ciudad_hoja,
         'responsable': responsable,
@@ -3382,13 +3589,17 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='', jornada
 
 
 def _construir_hojas_recaudacion(fecha_obj, curso_id, ciudad='',
-                                 modalidad='', jornada_id=''):
+                                 modalidad='', jornada_id='',
+                                 fecha_hasta_obj=None):
     """
     Construye hojas de recaudación desde los filtros.
     Requiere curso; si no hay jornada específica, separa una hoja por jornada.
     """
     if not fecha_obj or not (curso_id and str(curso_id).isdigit()):
         return []
+    fecha_hasta_obj = fecha_hasta_obj or fecha_obj
+    if fecha_hasta_obj < fecha_obj:
+        fecha_obj, fecha_hasta_obj = fecha_hasta_obj, fecha_obj
 
     curso = Curso.objects.filter(activo=True, pk=int(curso_id)).first()
     if not curso:
@@ -3429,6 +3640,7 @@ def _construir_hojas_recaudacion(fecha_obj, curso_id, ciudad='',
             fecha_obj=fecha_obj,
             ciudad=ciudad,
             jornada=grupo['jornada'],
+            fecha_hasta_obj=fecha_hasta_obj,
         ))
     return hojas
 
@@ -3853,29 +4065,23 @@ def matricula_comprobante_pdf(request, pk):
 @matricula_requerida
 def hoja_recaudacion(request):
     """
-    Vista imprimible: una hoja por jornada para una fecha y curso dados.
+    Vista imprimible: una hoja por jornada para una fecha o rango y curso dados.
     Replica el formato de las hojas físicas (Recaudaciones GYE/QUITO).
 
-    Filtros: fecha y curso obligatorios; ciudad, modalidad y jornada opcionales.
+    Filtros: fecha/rango y curso obligatorios; ciudad, modalidad y jornada opcionales.
     Si no se filtra una jornada específica, genera hojas separadas por jornada
     del curso para evitar mezclar inicios distintos en la misma tabla.
     """
-    from datetime import datetime as _dt
-
-    fecha_str = request.GET.get('fecha', '').strip()
+    (
+        fecha_str, fecha_desde, fecha_hasta,
+        fecha_desde_obj, fecha_hasta_obj,
+    ) = _rango_recaudacion_desde_request(request)
     ciudad = request.GET.get('ciudad', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     jornada_id = request.GET.get('jornada', '').strip()
     modalidad = request.GET.get('modalidad', '').strip().lower()
     if modalidad not in ('presencial', 'online'):
         modalidad = ''  # vacío = todas las modalidades
-
-    fecha_obj = None
-    if fecha_str:
-        try:
-            fecha_obj = _dt.strptime(fecha_str, '%Y-%m-%d').date()
-        except ValueError:
-            fecha_obj = None
 
     cursos_disponibles = Curso.objects.filter(activo=True).order_by('nombre')
     jornadas_disponibles = _jornadas_recaudacion_queryset(
@@ -3887,8 +4093,9 @@ def hoja_recaudacion(request):
         'curso__nombre', 'fecha_inicio', 'modalidad', 'hora_inicio', 'id',
     )
     hojas = _construir_hojas_recaudacion(
-        fecha_obj, curso_id, ciudad=ciudad,
+        fecha_desde_obj, curso_id, ciudad=ciudad,
         modalidad=modalidad, jornada_id=jornada_id,
+        fecha_hasta_obj=fecha_hasta_obj,
     )
 
     return render(request, 'pagos/hoja_recaudacion.html', {
@@ -3896,13 +4103,10 @@ def hoja_recaudacion(request):
         'jornadas_disponibles': jornadas_disponibles,
         'jornadas_todas': jornadas_todas,
         'hojas': hojas,
-        'filtros': {
-            'fecha': fecha_str,
-            'ciudad': ciudad,
-            'curso': curso_id,
-            'jornada': jornada_id,
-            'modalidad': modalidad,
-        },
+        'filtros': _recaudacion_filtros(
+            fecha_str, fecha_desde, fecha_hasta, ciudad,
+            curso_id, jornada_id, modalidad,
+        ),
     })
 
 
@@ -3928,6 +4132,10 @@ def _export_pagos_modulo_filtros(request):
     filtro_modulo_estado = request.GET.get('filtro_modulo_estado', '').strip()
     fecha_jornada = request.GET.get('fecha_jornada', '').strip()
     matricula_id = request.GET.get('matricula', '').strip()
+    (
+        fecha_modulo_desde, fecha_modulo_hasta,
+        fecha_modulo_desde_date, fecha_modulo_hasta_date,
+    ) = _rango_fecha_modulo_desde_request(request)
 
     curso_sel = None
     if curso_id and curso_id.isdigit():
@@ -3946,6 +4154,10 @@ def _export_pagos_modulo_filtros(request):
         'filtro_modulo_estado': filtro_modulo_estado,
         'fecha_jornada': fecha_jornada,
         'matricula': matricula_id,
+        'fecha_modulo_desde': fecha_modulo_desde,
+        'fecha_modulo_hasta': fecha_modulo_hasta,
+        'fecha_modulo_desde_date': fecha_modulo_desde_date,
+        'fecha_modulo_hasta_date': fecha_modulo_hasta_date,
     }
 
 
@@ -3965,6 +4177,8 @@ def pagos_por_modulo_export_excel(request):
         filtro_modulo_estado=filtros['filtro_modulo_estado'],
         fecha_jornada=filtros['fecha_jornada'],
         matricula_id=filtros['matricula'],
+        fecha_modulo_desde=filtros['fecha_modulo_desde_date'],
+        fecha_modulo_hasta=filtros['fecha_modulo_hasta_date'],
     )
 
     # Encabezados base + 1 columna por módulo + Asistencia
@@ -4070,6 +4284,8 @@ def pagos_por_modulo_export_pdf(request):
         filtro_modulo_estado=filtros['filtro_modulo_estado'],
         fecha_jornada=filtros['fecha_jornada'],
         matricula_id=filtros['matricula'],
+        fecha_modulo_desde=filtros['fecha_modulo_desde_date'],
+        fecha_modulo_hasta=filtros['fecha_modulo_hasta_date'],
     )
 
     # ── Elegir tamaño de página según número de módulos ──
@@ -4232,9 +4448,10 @@ def _hojas_recaudacion_data(request):
     Re-construye la data que hoja_recaudacion() entrega al template,
     usando los mismos filtros GET. Devuelve (hojas, filtros).
     """
-    from datetime import datetime as _dt
-
-    fecha_str = request.GET.get('fecha', '').strip()
+    (
+        fecha_str, fecha_desde, fecha_hasta,
+        fecha_desde_obj, fecha_hasta_obj,
+    ) = _rango_recaudacion_desde_request(request)
     ciudad = request.GET.get('ciudad', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     jornada_id = request.GET.get('jornada', '').strip()
@@ -4242,24 +4459,15 @@ def _hojas_recaudacion_data(request):
     if modalidad not in ('presencial', 'online'):
         modalidad = ''
 
-    fecha_obj = None
-    if fecha_str:
-        try:
-            fecha_obj = _dt.strptime(fecha_str, '%Y-%m-%d').date()
-        except ValueError:
-            fecha_obj = None
-
     hojas = _construir_hojas_recaudacion(
-        fecha_obj, curso_id, ciudad=ciudad,
+        fecha_desde_obj, curso_id, ciudad=ciudad,
         modalidad=modalidad, jornada_id=jornada_id,
+        fecha_hasta_obj=fecha_hasta_obj,
     )
-    return hojas, {
-        'fecha': fecha_str,
-        'ciudad': ciudad,
-        'curso': curso_id,
-        'jornada': jornada_id,
-        'modalidad': modalidad,
-    }
+    return hojas, _recaudacion_filtros(
+        fecha_str, fecha_desde, fecha_hasta, ciudad,
+        curso_id, jornada_id, modalidad,
+    )
 
 
 @matricula_requerida
@@ -4331,7 +4539,7 @@ def hoja_recaudacion_guardar_cuotas(request):
 
 @matricula_requerida
 def hoja_recaudacion_export_excel(request):
-    """Exporta las hojas de recaudación del día a Excel (todos los cursos en una sola hoja)."""
+    """Exporta las hojas de recaudación a Excel (todos los cursos en una sola hoja)."""
     hojas, filtros = _hojas_recaudacion_data(request)
     if not hojas:
         messages.error(
@@ -4351,7 +4559,7 @@ def hoja_recaudacion_export_excel(request):
             rows.append([
                 h['curso'].nombre,
                 h.get('jornada_label') or '—',
-                h['fecha'],
+                h['periodo_label'] if h.get('es_rango') else h['fecha'],
                 h['dia_semana'],
                 h['ciudad'],
                 h['responsable'],
@@ -4367,8 +4575,8 @@ def hoja_recaudacion_export_excel(request):
                 item['talla'],
             ])
 
-    filename = f'hoja_recaudacion_{filtros["fecha"]}.xlsx'
-    sheet_name = f'Recaudación {filtros["fecha"]}'[:31]
+    filename = f'hoja_recaudacion_{filtros["periodo_slug"]}.xlsx'
+    sheet_name = f'Recaudación {filtros["periodo_slug"]}'[:31]
     return _build_excel_response(
         filename,
         sheet_name,
@@ -4384,7 +4592,7 @@ def hoja_recaudacion_export_excel(request):
 
 @matricula_requerida
 def hoja_recaudacion_export_pdf(request):
-    """Exporta las hojas de recaudación del día a un PDF (una página por curso)."""
+    """Exporta las hojas de recaudación a un PDF (una página por curso)."""
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import landscape, A4
@@ -4411,7 +4619,7 @@ def hoja_recaudacion_export_pdf(request):
     doc = SimpleDocTemplate(
         buf, pagesize=landscape(A4),
         leftMargin=1*cm, rightMargin=1*cm, topMargin=1.2*cm, bottomMargin=1*cm,
-        title=f'Hoja de Recaudación — {filtros["fecha"]}',
+        title=f'Hoja de Recaudación — {filtros["periodo_label"]}',
     )
     styles = getSampleStyleSheet()
     titulo_st = ParagraphStyle('titulo', parent=styles['Title'],
@@ -4431,7 +4639,8 @@ def hoja_recaudacion_export_pdf(request):
             titulo_st,
         ))
         elementos.append(Paragraph(
-            f'<b>Fecha:</b> {h["dia_semana"]} {h["fecha"].strftime("%d/%m/%Y")} · '
+            f'<b>{"Período" if h.get("es_rango") else "Fecha"}:</b> '
+            f'{h["dia_semana"]} {h["periodo_label"]} · '
             f'<b>Ciudad:</b> {h["ciudad"]} · '
             f'<b>Jornada:</b> {h.get("jornada_label") or "—"} · '
             f'<b>Responsable:</b> {h["responsable"]} · '
@@ -4491,7 +4700,7 @@ def hoja_recaudacion_export_pdf(request):
     pdf_bytes = buf.getvalue()
     buf.close()
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
-    filename = f'hoja_recaudacion_{filtros["fecha"]}.pdf'
+    filename = f'hoja_recaudacion_{filtros["periodo_slug"]}.pdf'
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
