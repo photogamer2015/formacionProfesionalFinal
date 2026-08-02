@@ -13,11 +13,28 @@ Permisos:
 """
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.views.decorators.http import require_POST
 
 from .forms import RecordatorioForm
-from .models import Recordatorio
+from .models import Recordatorio, avatar_archivo_usuario
 from .permisos import matricula_requerida, es_admin
+
+
+def _nombre_usuario(user):
+    return (f'{user.first_name} {user.last_name}'.strip() or user.username)
+
+
+def _destinatarios_avatar_data(form):
+    """Datos livianos para mostrar la foto del usuario elegido en el formulario."""
+    usuarios = form.fields['destinatario'].queryset.select_related('perfil_visual')
+    return {
+        str(usuario.pk): {
+            'nombre': _nombre_usuario(usuario),
+            'avatar': static(avatar_archivo_usuario(usuario)),
+        }
+        for usuario in usuarios
+    }
 
 
 def _puede_gestionar(user, recordatorio):
@@ -43,13 +60,23 @@ def recordatorio_lista(request):
     recibidos = (
         Recordatorio.objects
         .filter(destinatario=request.user)
-        .select_related('creado_por', 'destinatario')
+        .select_related(
+            'creado_por',
+            'creado_por__perfil_visual',
+            'destinatario',
+            'destinatario__perfil_visual',
+        )
     )
     enviados = (
         Recordatorio.objects
         .filter(creado_por=request.user)
         .exclude(destinatario=request.user)
-        .select_related('creado_por', 'destinatario')
+        .select_related(
+            'creado_por',
+            'creado_por__perfil_visual',
+            'destinatario',
+            'destinatario__perfil_visual',
+        )
     )
 
     todos = None
@@ -58,7 +85,12 @@ def recordatorio_lista(request):
             Recordatorio.objects
             .exclude(creado_por=request.user)
             .exclude(destinatario=request.user)
-            .select_related('creado_por', 'destinatario')
+            .select_related(
+                'creado_por',
+                'creado_por__perfil_visual',
+                'destinatario',
+                'destinatario__perfil_visual',
+            )
         )
 
     no_leidos = sum(1 for r in recibidos if not r.leido and not r.vencido)
@@ -101,6 +133,7 @@ def recordatorio_crear(request):
         'form': form,
         'modo': 'crear',
         'titulo': 'Nuevo recordatorio',
+        'destinatarios_avatar_data': _destinatarios_avatar_data(form),
     })
 
 
@@ -130,6 +163,7 @@ def recordatorio_editar(request, pk):
         'recordatorio': rec,
         'modo': 'editar',
         'titulo': f'Editar recordatorio: {rec.titulo}',
+        'destinatarios_avatar_data': _destinatarios_avatar_data(form),
     })
 
 

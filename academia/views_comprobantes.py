@@ -435,27 +435,30 @@ def comprobante_asesor_detalle(request, vendedora_id):
         .order_by('-fecha_inscripcion', '-id')
     )
 
-    comprobantes_retirados = comprobantes.filter(
+    comprobantes_globales = (
+        Comprobante.objects
+        .select_related('curso', 'matricula', 'matricula__estudiante')
+        .order_by('-fecha_inscripcion', '-id')
+    )
+
+    comprobantes_retirados_personales = comprobantes.filter(
         matricula__estado='retiro_voluntario',
     )
-    comprobantes_pendientes = comprobantes.filter(
+    comprobantes_retirados = comprobantes_globales.filter(
+        matricula__estado='retiro_voluntario',
+    )
+    comprobantes_pendientes = comprobantes_globales.filter(
         diferencia__gt=Decimal('0.00'),
     ).exclude(
         matricula__estado='retiro_voluntario',
     )
-    recuperaciones = RecuperacionPendiente.objects.filter(
-        Q(matricula__vendedora_id=vendedora_id) |
-        Q(
-            matricula__vendedora__isnull=True,
-            matricula__comprobante__vendedora_id=vendedora_id,
-        )
-    ).select_related(
+    recuperaciones = RecuperacionPendiente.objects.select_related(
         'matricula', 'matricula__estudiante', 'matricula__curso',
     ).distinct()
 
     total_ventas = comprobantes.count()
     total_retiros = comprobantes_retirados.count()
-    total_activas = total_ventas - total_retiros
+    total_activas = total_ventas - comprobantes_retirados_personales.count()
     total_saldos_pendientes = comprobantes_pendientes.count()
     total_recuperaciones = recuperaciones.count()
 

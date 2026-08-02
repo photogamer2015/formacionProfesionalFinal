@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="caballo-bg" x1="14" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE4B7"/>
+      <stop offset="1" stop-color="#C7773A"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#caballo-bg)"/>
+  <path d="M39 36c-8-15-3-25 9-17l11 23M89 36c8-15 3-25-9-17L69 42" fill="#8B4E2A" stroke="#5B321F" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M44 41c4-18 16-27 31-19 17 9 24 34 17 58-5 18-17 30-28 30S43 98 38 80c-4-15-2-29 6-39z" fill="#A7643A"/>
+  <path d="M55 20c-7 19-8 43-1 72l-15-3c-8-28-5-51 16-69z" fill="#4A2A1F"/>
+  <path d="M56 26c6 16 7 37 2 64" fill="none" stroke="#2F1C17" stroke-width="5" stroke-linecap="round"/>
+  <ellipse cx="64" cy="68" rx="24" ry="33" fill="#B97845"/>
+  <ellipse cx="64" cy="85" rx="20" ry="18" fill="#D69A62"/>
+  <ellipse cx="55" cy="62" rx="2.8" ry="3.8" fill="#2C1C17"/>
+  <ellipse cx="73" cy="62" rx="2.8" ry="3.8" fill="#2C1C17"/>
+  <path d="M57 88c2-2 5-2 7 0 2-2 5-2 7 0" fill="none" stroke="#6A3E28" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M51 103c7 7 19 7 26 0" fill="none" stroke="#70402A" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

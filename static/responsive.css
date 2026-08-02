@@ -6,11 +6,24 @@
 html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    overflow-x: clip;
 }
 
 body {
     min-width: 0;
     overflow-x: hidden;
+}
+
+fieldset,
+legend,
+main,
+section,
+article,
+form,
+form > *,
+.container,
+.container > * {
+    min-width: 0;
 }
 
 img,
@@ -31,6 +44,13 @@ select,
 textarea {
     max-width: 100%;
     min-width: 0;
+}
+
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"] {
+    min-height: 44px;
 }
 
 button,
@@ -61,6 +81,7 @@ a.btn,
 
 .responsive-table-shell {
     position: relative;
+    width: 100%;
 }
 
 .responsive-table-shell:focus-visible {
@@ -78,6 +99,8 @@ a.btn,
 }
 
 .responsive-table-shell table {
+    width: max-content;
+    min-width: 100%;
     max-width: none;
 }
 
@@ -108,6 +131,35 @@ a.btn,
         min-width: 0;
     }
 
+    header.top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+    }
+
+    header.top .brand {
+        grid-column: 1;
+        grid-row: 1;
+        width: fit-content;
+        max-width: 100%;
+    }
+
+    header.top .top-profile {
+        position: static;
+        grid-column: 2;
+        grid-row: 1;
+        width: auto;
+        max-width: min(300px, 38vw);
+        transform: none;
+    }
+
+    header.top nav {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-content: flex-end;
+        width: 100%;
+    }
+
     .top-profile-link,
     .nav-link,
     .icon-btn,
@@ -124,12 +176,25 @@ a.btn,
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
+    .payments-filter-form,
+    .recup-filter-form,
+    .activity-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .factura-filter > .form-input,
+    .factura-filter > .matricula-date-range {
+        flex: 1 1 min(100%, 260px) !important;
+        width: auto;
+        max-width: none !important;
+    }
+
     .folder-grid {
         grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)) !important;
     }
 
     .dashboard-modal-box,
-    [role="dialog"] {
+    dialog {
         max-width: calc(100vw - 32px);
         max-height: calc(100dvh - 32px);
     }
@@ -168,12 +233,17 @@ a.btn,
     .form-grid,
     form[style*="display:grid"],
     form[style*="display: grid"],
-    .container [style*="display:grid"][style*="grid-template-columns"],
-    .container [style*="display: grid"][style*="grid-template-columns"],
+    form > [style*="display:grid"][style*="grid-template-columns"],
+    form > [style*="display: grid"][style*="grid-template-columns"],
     .container > [style*="display:grid"],
     .container > [style*="display: grid"],
     .card-box > [style*="display:grid"],
-    .card-box > [style*="display: grid"] {
+    .card-box > [style*="display: grid"],
+    .card > [style*="display:grid"],
+    .card > [style*="display: grid"],
+    .payments-filter-form,
+    .recup-filter-form,
+    .activity-filters {
         grid-template-columns: minmax(0, 1fr) !important;
     }
 
@@ -190,6 +260,18 @@ a.btn,
     .toolbar form {
         width: 100%;
         min-width: 0;
+    }
+
+    .toolbar,
+    .activity-toolbar,
+    .payments-filter-actions,
+    .recup-filter-actions,
+    .date-range-actions,
+    .date-range-floating-actions,
+    .whatsapp-modal-actions,
+    .aviso-actions,
+    .msg-actions {
+        flex-wrap: wrap;
     }
 
     .toolbar form,
@@ -226,6 +308,13 @@ a.btn,
         text-align: center;
     }
 
+    a.btn,
+    button.btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
     .btn-sm {
         min-height: 40px;
         padding: 8px 11px;
@@ -259,8 +348,8 @@ a.btn,
     #notif-panel {
         position: absolute !important;
         top: calc(100% + 8px) !important;
-        right: 12px !important;
-        left: 12px !important;
+        right: max(10px, env(safe-area-inset-right)) !important;
+        left: max(10px, env(safe-area-inset-left)) !important;
         width: auto !important;
         max-width: none !important;
         max-height: min(70dvh, 520px);
@@ -272,17 +361,35 @@ a.btn,
 
     .dashboard-modal-overlay,
     #confirm-modal-overlay,
-    #whatsapp-modal-overlay {
-        padding: 12px !important;
+    #whatsapp-modal-overlay,
+    .modal-backdrop,
+    .cat-modal-backdrop,
+    .confirm-modal,
+    #modal-abono,
+    #modal-editar-overlay,
+    #modal-editar-jornada,
+    #modal-revisar-overlay {
+        padding:
+            max(12px, env(safe-area-inset-top))
+            max(12px, env(safe-area-inset-right))
+            max(12px, env(safe-area-inset-bottom))
+            max(12px, env(safe-area-inset-left)) !important;
+        overflow-y: auto;
     }
 
     .dashboard-modal-box,
     #confirm-modal-box,
     .whatsapp-modal-box,
-    [role="dialog"] {
+    .cat-modal-card,
+    .confirm-modal > div,
+    #modal-abono > div,
+    #modal-editar-overlay > div,
+    #modal-editar-jornada > div,
+    #modal-revisar-box {
         width: 100% !important;
         max-width: 100% !important;
-        max-height: calc(100dvh - 24px);
+        max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        overflow-y: auto;
     }
 
     #confirm-modal-box,
@@ -302,9 +409,15 @@ a.btn,
     #assistant-widget {
         right: max(12px, env(safe-area-inset-right)) !important;
         bottom: max(12px, env(safe-area-inset-bottom)) !important;
+        left: max(12px, env(safe-area-inset-left));
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
     }
 
     #assistant-panel {
+        width: 100% !important;
+        max-width: 420px !important;
         max-height: calc(100dvh - 96px);
     }
 
@@ -324,6 +437,27 @@ a.btn,
 @media screen and (max-width: 640px) {
     header.top {
         padding-top: max(10px, env(safe-area-inset-top));
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    header.top .brand,
+    header.top .top-profile,
+    header.top nav {
+        grid-column: 1;
+        width: 100%;
+        max-width: none;
+    }
+
+    header.top .brand {
+        grid-row: 1;
+    }
+
+    header.top .top-profile {
+        grid-row: 2;
+    }
+
+    header.top nav {
+        grid-row: 3;
     }
 
     .container :not(th):not(td)[style*="min-width:"] {
@@ -349,6 +483,30 @@ a.btn,
     form[method="get"][style*="display: flex"] > * {
         width: 100% !important;
         max-width: none !important;
+    }
+
+    .factura-filter > *,
+    .payments-filter-actions > *,
+    .recup-filter-actions > *,
+    .activity-toolbar > * {
+        width: 100% !important;
+        max-width: none !important;
+        flex: 1 1 100% !important;
+    }
+
+    .tabs-container,
+    .modalidad-tabs {
+        display: flex;
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    .tabs-container > *,
+    .modalidad-tabs > * {
+        flex: 0 0 auto;
     }
 
     .folder-head {
@@ -405,6 +563,15 @@ a.btn,
         border-radius: 10px;
     }
 
+    .global-back-button {
+        margin-bottom: 18px !important;
+    }
+
+    .global-back-button button {
+        min-height: 44px;
+        padding: 9px 15px !important;
+    }
+
     .flash,
     .readonly-banner,
     .alert-box {
@@ -425,9 +592,37 @@ a.btn,
     .row-actions .btn,
     .row-actions form,
     .row-actions form .btn,
-    .whatsapp-modal-actions .whatsapp-btn {
+    .whatsapp-modal-actions .whatsapp-btn,
+    .aviso-actions > *,
+    .msg-actions > * {
         flex: 1 1 100%;
         width: 100%;
+    }
+
+    .container > form[style*="justify-content:flex-end"],
+    .container > form[style*="justify-content: flex-end"],
+    .card-box > form[style*="justify-content:flex-end"],
+    .card-box > form[style*="justify-content: flex-end"] {
+        align-items: stretch !important;
+        flex-direction: column-reverse;
+    }
+
+    .container > form[style*="justify-content:flex-end"] > *,
+    .container > form[style*="justify-content: flex-end"] > *,
+    .card-box > form[style*="justify-content:flex-end"] > *,
+    .card-box > form[style*="justify-content: flex-end"] > * {
+        width: 100%;
+        max-width: none !important;
+    }
+
+    .date-range-actions > *,
+    .date-range-floating-actions > * {
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
+    }
+
+    .empty-state {
+        padding: 30px 14px;
     }
 
     #confirm-modal-box > div:last-child {
@@ -487,6 +682,14 @@ a.btn,
         border-radius: 18px;
     }
 
+    body:has(> .login-card) {
+        padding:
+            max(64px, env(safe-area-inset-top) + 48px)
+            max(14px, env(safe-area-inset-right))
+            max(20px, env(safe-area-inset-bottom))
+            max(14px, env(safe-area-inset-left));
+    }
+
     body > .theme-selector {
         top: max(12px, env(safe-area-inset-top));
         right: max(12px, env(safe-area-inset-right));
@@ -528,6 +731,8 @@ a.btn,
     }
 
     .responsive-table-shell table {
+        width: 100%;
+        min-width: 0;
         max-width: 100%;
     }
 }

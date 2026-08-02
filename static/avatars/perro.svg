@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="perro-bg" x1="17" y1="7" x2="111" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE6C7"/>
+      <stop offset="1" stop-color="#C8844A"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#perro-bg)"/>
+  <path d="M35 44c-14 1-19 14-12 29 4 9 12 20 22 28l9-49zM93 44c14 1 19 14 12 29-4 9-12 20-22 28l-9-49z" fill="#6B422B"/>
+  <ellipse cx="64" cy="66" rx="34" ry="38" fill="#B8794C"/>
+  <path d="M42 47c9-20 35-20 44 0-13-5-31-5-44 0z" fill="#D8A06C"/>
+  <ellipse cx="64" cy="80" rx="24" ry="22" fill="#F2C49A"/>
+  <ellipse cx="53" cy="65" rx="3.2" ry="4.2" fill="#2E211A"/>
+  <ellipse cx="75" cy="65" rx="3.2" ry="4.2" fill="#2E211A"/>
+  <path d="M58 78c2-4 10-4 12 0-2 5-10 5-12 0z" fill="#3A2920"/>
+  <path d="M64 83v7M64 89c-5 0-9-2-12-6M64 89c5 0 9-2 12-6" fill="none" stroke="#794A32" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M46 53c4-4 9-5 14-2M68 51c5-3 10-2 14 2" fill="none" stroke="#6C3F2A" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

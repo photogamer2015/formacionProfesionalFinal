@@ -2158,7 +2158,10 @@ class RecordatorioForm(forms.ModelForm):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         self.fields['destinatario'].queryset = (
-            User.objects.filter(is_active=True).order_by('first_name', 'username')
+            User.objects
+            .filter(is_active=True)
+            .select_related('perfil_visual')
+            .order_by('first_name', 'username')
         )
         # Mostrar nombre legible en el select de destinatario.
         self.fields['destinatario'].label_from_instance = (

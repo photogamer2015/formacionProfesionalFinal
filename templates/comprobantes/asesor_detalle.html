@@ -187,7 +187,7 @@
 </template>
 
 <template id="summary-recuperaciones">
-    <p class="summary-dialog-intro">Detalle de las clases marcadas para recuperación.</p>
+    <p class="summary-dialog-intro">Detalle general de las clases marcadas para recuperación.</p>
     <div class="summary-student-list">
         {% for recuperacion in recuperaciones %}
         <article class="summary-student-item">
@@ -210,7 +210,7 @@
 </template>
 
 <template id="summary-pendientes">
-    <p class="summary-dialog-intro">Estudiantes activos que todavía tienen valores por recaudar.</p>
+    <p class="summary-dialog-intro">Estudiantes activos de la academia que todavía tienen valores por recaudar.</p>
     <div class="summary-student-list">
         {% for c in comprobantes_pendientes %}
         <article class="summary-student-item">
@@ -228,13 +228,13 @@
             {% endif %}
         </article>
         {% empty %}
-        <div class="summary-dialog-empty">Este usuario no tiene estudiantes con saldo pendiente.</div>
+        <div class="summary-dialog-empty">No hay estudiantes con saldo pendiente.</div>
         {% endfor %}
     </div>
 </template>
 
 <template id="summary-retiros">
-    <p class="summary-dialog-intro">Matrículas retiradas asociadas a este perfil.</p>
+    <p class="summary-dialog-intro">Matrículas retiradas registradas en la academia.</p>
     <div class="summary-student-list">
         {% for c in comprobantes_retirados %}
         <article class="summary-student-item">
@@ -252,7 +252,7 @@
             {% endif %}
         </article>
         {% empty %}
-        <div class="summary-dialog-empty">No existen matrículas retiradas para este usuario.</div>
+        <div class="summary-dialog-empty">No existen matrículas retiradas.</div>
         {% endfor %}
     </div>
 </template>

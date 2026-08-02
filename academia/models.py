@@ -17,10 +17,18 @@ AVATARES_PERFIL = [
     ('mujer_afro_castana', 'Mujer afro castaña'),
     ('latina', 'Latina'),
     ('morena', 'Morena'),
+    ('pelirroja_corona', 'Cabello rojo con corona'),
+    ('morena_corona', 'Morena con corona'),
     ('pelirroja_morena', 'Mujer morena pelirroja'),
     ('mulata', 'Mulata'),
     ('pacman', 'Pac-Man'),
     ('gorra_mario', 'Gorra de Mario'),
+    ('gorra_luigi', 'Gorra de Luigi'),
+    ('caballo', 'Caballo'),
+    ('dinosaurio', 'Dinosaurio'),
+    ('tigre', 'Tigre'),
+    ('perro', 'Perro'),
+    ('gato', 'Gato'),
     ('princesa_peach', 'Princesa Peach'),
     ('logo_formacion', 'Logo Formación Profesional'),
 ]
@@ -30,18 +38,36 @@ ARCHIVOS_AVATAR_PERFIL = {
     for clave, _etiqueta in AVATARES_PERFIL
 }
 
+
+def avatar_archivo_usuario(user):
+    """Devuelve el archivo de avatar del usuario con fallback seguro."""
+    archivo_predeterminado = ARCHIVOS_AVATAR_PERFIL[AVATAR_PERFIL_PREDETERMINADO]
+    if not user:
+        return archivo_predeterminado
+
+    try:
+        avatar = user.perfil_visual.avatar
+    except Exception:
+        avatar = AVATAR_PERFIL_PREDETERMINADO
+
+    return ARCHIVOS_AVATAR_PERFIL.get(avatar, archivo_predeterminado)
+
 PORTADA_PERFIL_PREDETERMINADA = 'institucional'
 PORTADAS_PERFIL = [
     ('institucional', 'Institucional'),
     ('mariposas', 'Mariposas'),
     ('castillo', 'Castillo'),
     ('paisaje', 'Paisaje natural'),
+    ('mundo_magico_nieve', 'Mundo mágico en la nieve'),
+    ('mundo_champinon', 'Mundo champiñón'),
 ]
 ARCHIVOS_PORTADA_PERFIL = {
     'institucional': '',
     'mariposas': 'portadas/mariposas.jpg',
     'castillo': 'portadas/castillo.jpg',
     'paisaje': 'portadas/paisaje.jpg',
+    'mundo_magico_nieve': 'portadas/mundo_magico_nieve.jpg',
+    'mundo_champinon': 'portadas/mundo_champinon.jpg',
 }
 
 MODALIDADES = [
@@ -2660,6 +2686,14 @@ class Recordatorio(models.Model):
             return 'Por vencer'
         return 'Vigente'
 
+    @property
+    def creado_por_avatar_archivo(self):
+        return avatar_archivo_usuario(self.creado_por)
+
+    @property
+    def destinatario_avatar_archivo(self):
+        return avatar_archivo_usuario(self.destinatario)
+
     @classmethod
     def no_leidos_de(cls, user):
         """
@@ -2671,7 +2705,12 @@ class Recordatorio(models.Model):
             destinatario=user,
             leido=False,
             fecha_vencimiento__gte=_tz.localdate(),
-        ).select_related('creado_por').order_by('-fecha', '-creado')
+        ).select_related(
+            'creado_por',
+            'creado_por__perfil_visual',
+            'destinatario',
+            'destinatario__perfil_visual',
+        ).order_by('-fecha', '-creado')
 
 
 class CuotaManualRecaudacion(models.Model):

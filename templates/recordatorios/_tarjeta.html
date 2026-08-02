@@ -1,11 +1,10 @@
+{% load static %}
 <article class="msg-card msg-{{ contexto }} {% if r.vencido %}is-expired{% endif %} {% if contexto == 'recibido' and not r.leido and not r.vencido %}is-unread{% endif %}">
     <div class="msg-avatar" aria-hidden="true">
-        {% if r.creado_por == r.destinatario %}
-            Yo
-        {% elif contexto == 'enviado' %}
-            {{ r.destinatario.first_name|default:r.destinatario.username|slice:":1"|upper }}
+        {% if contexto == 'enviado' and r.creado_por != r.destinatario %}
+            <img src="{% static r.destinatario_avatar_archivo %}" alt="">
         {% else %}
-            {{ r.creado_por.first_name|default:r.creado_por.username|slice:":1"|upper }}
+            <img src="{% static r.creado_por_avatar_archivo %}" alt="">
         {% endif %}
     </div>
 

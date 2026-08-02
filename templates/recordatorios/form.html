@@ -2,6 +2,64 @@
 
 {% block title %}{{ titulo }}{% endblock %}
 
+{% block extra_head %}
+<style>
+    .recipient-profile-preview {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 8px;
+        padding: 7px 10px;
+        border: 1px solid rgba(27,42,78,.08);
+        border-radius: 12px;
+        background: #f7f9fd;
+    }
+    .recipient-profile-preview[hidden] {
+        display: none;
+    }
+    .recipient-profile-preview img {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
+        display: block;
+        border-radius: 50%;
+        object-fit: cover;
+        background: #fff;
+        border: 2px solid #fff;
+        box-shadow: 0 4px 10px rgba(27,42,78,.14);
+    }
+    .recipient-profile-copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        color: #667085;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .recipient-profile-copy strong {
+        overflow: hidden;
+        color: var(--fp-navy);
+        font-size: 13px;
+        font-weight: 900;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    body.dark-mode .recipient-profile-preview {
+        background: #121722;
+        border-color: #2a3040;
+    }
+    body.dark-mode .recipient-profile-copy {
+        color: #98a2b7;
+    }
+    body.dark-mode .recipient-profile-copy strong {
+        color: #e8ecff;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
@@ -43,6 +101,13 @@
                 <div>
                     <label class="form-label" for="{{ form.destinatario.id_for_label }}">Notificar a</label>
                     {{ form.destinatario }}
+                    <div class="recipient-profile-preview" data-recipient-preview hidden>
+                        <img src="" alt="" data-recipient-avatar>
+                        <span class="recipient-profile-copy">
+                            <span>Destinatario</span>
+                            <strong data-recipient-name></strong>
+                        </span>
+                    </div>
                     {% if form.destinatario.errors %}<div style="color:#c62828; font-size:12px; margin-top:4px;">{{ form.destinatario.errors|striptags }}</div>{% endif %}
                 </div>
                 <div>
@@ -73,4 +138,31 @@
         </div>
     </form>
 </div>
+{{ destinatarios_avatar_data|json_script:"recordatorio-destinatarios-avatar-data" }}
+<script>
+    (function () {
+        const dataNode = document.getElementById('recordatorio-destinatarios-avatar-data');
+        const select = document.getElementById('{{ form.destinatario.id_for_label }}');
+        const preview = document.querySelector('[data-recipient-preview]');
+        if (!dataNode || !select || !preview) return;
+
+        const avatar = preview.querySelector('[data-recipient-avatar]');
+        const name = preview.querySelector('[data-recipient-name]');
+        const usuarios = JSON.parse(dataNode.textContent || '{}');
+
+        function updatePreview() {
+            const selected = usuarios[select.value];
+            if (!selected) {
+                preview.hidden = true;
+                return;
+            }
+            avatar.src = selected.avatar;
+            name.textContent = selected.nombre;
+            preview.hidden = false;
+        }
+
+        select.addEventListener('change', updatePreview);
+        updatePreview();
+    })();
+</script>
 {% endblock %}

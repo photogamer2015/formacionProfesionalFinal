@@ -1075,7 +1075,6 @@
                     <div class="gm-estado">
                         <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                         <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
-                        <span class="gm-chip recaudar">💰 A recaudar {{ a.hito_label }}: ${{ a.saldo_m1|floatformat:2 }}</span>
                         {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
                         <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                         <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
@@ -1128,7 +1127,6 @@
                         <div class="gm-estado">
                             <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                             <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
-                            <span class="gm-chip recaudar">💰 A recaudar {{ a.hito_label }}: ${{ a.saldo_m1|floatformat:2 }}</span>
                             {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
                             <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                             <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>

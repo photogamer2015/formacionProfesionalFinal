@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="dino-bg" x1="17" y1="8" x2="111" y2="121" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C8F7C5"/>
+      <stop offset="1" stop-color="#38A66A"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#dino-bg)"/>
+  <path d="M46 29l7-14 8 15 9-15 7 16 10-10 1 21H39l1-21z" fill="#2F8E58"/>
+  <path d="M30 82c2-29 21-51 49-51 15 0 26 10 26 24 0 12-9 21-23 22l-15 1c-11 1-17 8-20 19l-3 13c-11-4-16-14-14-28z" fill="#59C978" stroke="#2B9252" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M38 94c9 8 21 13 36 13 18 0 30-7 35-19-8 3-20 4-35 2-13-2-25-1-36 4z" fill="#3BA966"/>
+  <ellipse cx="72" cy="56" rx="4" ry="5" fill="#173326"/>
+  <ellipse cx="94" cy="56" rx="4" ry="5" fill="#173326"/>
+  <circle cx="73" cy="54" r="1.4" fill="#FFF"/>
+  <circle cx="95" cy="54" r="1.4" fill="#FFF"/>
+  <path d="M76 72c8 5 17 5 25 0" fill="none" stroke="#236E45" stroke-width="3" stroke-linecap="round"/>
+  <path d="M42 81c8-9 17-12 28-10" fill="none" stroke="#8BEA9B" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

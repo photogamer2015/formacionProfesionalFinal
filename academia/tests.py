@@ -21,7 +21,7 @@ from .forms import (
 from .models import (
     Abono, ActividadUsuario, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
     CuotaManualRecaudacion, Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
-    MatriculaArchivada, PerfilUsuario, PersonaExterna,
+    MatriculaArchivada, PerfilUsuario, PersonaExterna, Recordatorio,
     RecuperacionPendiente, Sede,
 )
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
@@ -357,11 +357,31 @@ class PerfilUsuarioTests(TestCase):
         self.assertContains(response, 'avatars/pelirroja_clara.svg')
         self.assertContains(response, 'Mujer morena pelirroja')
         self.assertContains(response, 'avatars/pelirroja_morena.svg')
+        self.assertContains(response, 'Cabello rojo con corona')
+        self.assertContains(response, 'avatars/pelirroja_corona.svg')
+        self.assertContains(response, 'Morena con corona')
+        self.assertContains(response, 'avatars/morena_corona.svg')
+        self.assertContains(response, 'Gorra de Luigi')
+        self.assertContains(response, 'avatars/gorra_luigi.svg')
+        self.assertContains(response, 'Caballo')
+        self.assertContains(response, 'avatars/caballo.svg')
+        self.assertContains(response, 'Dinosaurio')
+        self.assertContains(response, 'avatars/dinosaurio.svg')
+        self.assertContains(response, 'Tigre')
+        self.assertContains(response, 'avatars/tigre.svg')
+        self.assertContains(response, 'Perro')
+        self.assertContains(response, 'avatars/perro.svg')
+        self.assertContains(response, 'Gato')
+        self.assertContains(response, 'avatars/gato.svg')
         self.assertContains(response, 'Logo Formación Profesional')
         self.assertContains(response, 'Elige tu portada')
         self.assertContains(response, 'portadas/mariposas.jpg')
         self.assertContains(response, 'portadas/castillo.jpg')
         self.assertContains(response, 'portadas/paisaje.jpg')
+        self.assertContains(response, 'Mundo mágico en la nieve')
+        self.assertContains(response, 'portadas/mundo_magico_nieve.jpg')
+        self.assertContains(response, 'Mundo champiñón')
+        self.assertContains(response, 'portadas/mundo_champinon.jpg')
 
     def test_usuario_puede_guardar_avatar_y_el_header_lo_refleja(self):
         response = self.client.post(
@@ -433,7 +453,14 @@ class PerfilUsuarioTests(TestCase):
             valor_presencial=Decimal('100.00'),
         )
 
-        def crear_matricula(cedula, pagado, estado='activa'):
+        otro_usuario = User.objects.create_user(
+            username='otro_asesor',
+            password='clave12345',
+            first_name='Otro',
+        )
+
+        def crear_matricula(cedula, pagado, estado='activa', vendedora=None):
+            vendedora = vendedora or self.user
             estudiante = Estudiante.objects.create(
                 cedula=cedula,
                 nombres=f'Estudiante {cedula}',
@@ -447,8 +474,8 @@ class PerfilUsuarioTests(TestCase):
                 fecha_matricula=date(2026, 8, 1),
                 valor_curso=Decimal('100.00'),
                 valor_pagado=pagado,
-                registrado_por=self.user,
-                vendedora=self.user,
+                registrado_por=vendedora,
+                vendedora=vendedora,
             )
 
         pendiente = crear_matricula('0900000001', Decimal('10.00'))
@@ -461,25 +488,93 @@ class PerfilUsuarioTests(TestCase):
                 fecha_marcada=date(2026, 8, 1),
                 saldo_pendiente_al_marcar=Decimal('90.00'),
             )
+        pendiente_otro_usuario = crear_matricula(
+            '0900000004',
+            Decimal('20.00'),
+            vendedora=otro_usuario,
+        )
+        crear_matricula(
+            '0900000005',
+            Decimal('20.00'),
+            estado='retiro_voluntario',
+            vendedora=otro_usuario,
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=pendiente_otro_usuario,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 8, 1),
+            saldo_pendiente_al_marcar=Decimal('80.00'),
+        )
 
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['total_ventas'], 3)
-        self.assertEqual(response.context['total_saldos_pendientes'], 1)
-        self.assertEqual(response.context['total_retiros'], 1)
-        self.assertEqual(response.context['total_recuperaciones'], 2)
+        self.assertEqual(response.context['total_activas'], 2)
+        self.assertEqual(response.context['total_saldos_pendientes'], 2)
+        self.assertEqual(response.context['total_retiros'], 2)
+        self.assertEqual(response.context['total_recuperaciones'], 3)
         self.assertContains(response, 'Recuperación')
-        self.assertContains(response, 'Estudiante por recaudar')
+        self.assertContains(response, 'Estudiantes por recaudar')
         self.assertNotContains(response, 'Total cobrado')
         self.assertContains(response, 'data-summary-target="summary-ventas"')
         self.assertContains(response, 'data-summary-target="summary-recuperaciones"')
         self.assertContains(response, 'data-summary-target="summary-pendientes"')
         self.assertContains(response, 'data-summary-target="summary-retiros"')
         self.assertContains(response, 'id="profile-summary-dialog"')
-        self.assertContains(response, 'Detalle de las clases marcadas para recuperación.')
+        self.assertContains(response, 'Detalle general de las clases marcadas para recuperación.')
         self.assertContains(response, 'Saldo pendiente: $90,00')
+        self.assertContains(response, 'Saldo pendiente: $80,00')
         self.assertContains(response, 'Retiro voluntario')
+
+
+class RecordatorioAvatarTests(TestCase):
+    def setUp(self):
+        self.creador = User.objects.create_superuser(
+            username='creador_recordatorio',
+            password='clave12345',
+            first_name='Yandri',
+        )
+        self.destinatario = User.objects.create_user(
+            username='destino_recordatorio',
+            password='clave12345',
+            first_name='Admin',
+        )
+        grupo_asesores = Group.objects.create(name='Asesores')
+        self.destinatario.groups.add(grupo_asesores)
+        PerfilUsuario.objects.create(user=self.creador, avatar='leon')
+        PerfilUsuario.objects.create(user=self.destinatario, avatar='latina')
+
+    def test_formulario_incluye_avatar_para_preview_del_destinatario(self):
+        self.client.force_login(self.creador)
+
+        response = self.client.get(reverse('academia:recordatorio_crear'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'recipient-profile-preview')
+        self.assertContains(response, 'recordatorio-destinatarios-avatar-data')
+        self.assertContains(response, 'avatars/latina.svg')
+
+    def test_lista_muestra_avatar_segun_contexto_del_mensaje(self):
+        Recordatorio.objects.create(
+            titulo='Seguimiento',
+            contenido='Revisar pago pendiente.',
+            prioridad='media',
+            creado_por=self.creador,
+            destinatario=self.destinatario,
+            fecha=timezone.localdate(),
+            fecha_vencimiento=timezone.localdate() + timedelta(days=3),
+        )
+
+        self.client.force_login(self.destinatario)
+        response = self.client.get(reverse('academia:recordatorio_lista'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'avatars/leon.svg')
+
+        self.client.force_login(self.creador)
+        response = self.client.get(reverse('academia:recordatorio_lista'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'avatars/latina.svg')
 
 
 class SessionKeepaliveTests(TestCase):

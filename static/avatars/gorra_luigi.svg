@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="luigi-bg" x1="16" y1="7" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A8E7D1"/>
+      <stop offset="1" stop-color="#2E9561"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#luigi-bg)"/>
+  <circle cx="99" cy="25" r="17" fill="#FFF" opacity=".16"/>
+  <path d="M27 80c2-30 15-49 39-49 22 0 35 13 38 36-17-1-30 2-43 13z" fill="#1FA34A" stroke="#117A35" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M24 80c19-10 40-13 63-10 8 1 14 5 17 11-27-5-50-1-72 8-7 3-14-5-8-9z" fill="#2DBD5A" stroke="#117A35" stroke-width="3" stroke-linejoin="round"/>
+  <ellipse cx="66" cy="51" rx="20" ry="17" fill="#FFF" stroke="#E7E7E7" stroke-width="2"/>
+  <path d="M60 43v20h17" fill="none" stroke="#1E9B43" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42 92c13-7 27-10 42-9" fill="none" stroke="#FFF" stroke-opacity=".28" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

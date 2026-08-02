@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="tigre-bg" x1="17" y1="8" x2="111" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE4A5"/>
+      <stop offset="1" stop-color="#E47A1F"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#tigre-bg)"/>
+  <path d="M33 44c-8-13-3-26 11-24l10 18M95 44c8-13 3-26-11-24L74 38" fill="#F29A32" stroke="#A65B1D" stroke-width="3" stroke-linejoin="round"/>
+  <ellipse cx="64" cy="66" rx="36" ry="39" fill="#F29A32"/>
+  <ellipse cx="64" cy="79" rx="24" ry="22" fill="#FFE0A3"/>
+  <path d="M45 37l12 20M64 30v23M83 37L71 57M35 60l18 6M93 60l-18 6M39 84l16-5M89 84l-16-5" fill="none" stroke="#2A211D" stroke-width="5" stroke-linecap="round"/>
+  <path d="M49 60c4-4 8-4 12 0M67 60c4-4 8-4 12 0" fill="none" stroke="#3A2920" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="55" cy="65" rx="3" ry="4" fill="#2A211D"/>
+  <ellipse cx="73" cy="65" rx="3" ry="4" fill="#2A211D"/>
+  <path d="M58 77c2-4 10-4 12 0-2 5-10 5-12 0z" fill="#3A2920"/>
+  <path d="M64 82v8M64 89c-5 0-8-2-11-5M64 89c5 0 8-2 11-5" fill="none" stroke="#7E451F" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

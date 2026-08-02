@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="pelirroja-corona-bg" x1="14" y1="7" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD1C4"/>
+      <stop offset="1" stop-color="#C94A62"/>
+    </linearGradient>
+    <linearGradient id="pelirroja-corona-hair" x1="38" y1="18" x2="91" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D6512F"/>
+      <stop offset="1" stop-color="#76201C"/>
+    </linearGradient>
+    <linearGradient id="pelirroja-corona-crown" x1="42" y1="16" x2="87" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE978"/>
+      <stop offset="1" stop-color="#F2A51F"/>
+    </linearGradient>
+    <clipPath id="pelirroja-corona-clip"><circle cx="64" cy="64" r="62"/></clipPath>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#pelirroja-corona-bg)"/>
+  <g clip-path="url(#pelirroja-corona-clip)">
+    <path d="M21 131c3-27 20-42 43-42s40 15 43 42" fill="#7F4CC8"/>
+    <path d="M34 68c-6-31 5-50 30-50s37 19 31 51l-8 38H41z" fill="url(#pelirroja-corona-hair)"/>
+    <path d="M55 82h18v20H55z" fill="#E9AE86"/>
+    <ellipse cx="64" cy="61" rx="23" ry="28" fill="#F3C29B"/>
+    <path d="M39 53c1-22 10-35 26-35 17 0 27 14 28 36-12-3-21-11-27-22-5 10-13 17-27 21z" fill="#B63B2A"/>
+    <path d="M42 50c-6 18-4 38 5 54l8-14-5-43zM89 48L76 91l8 13c10-15 12-38 5-56z" fill="#84251F"/>
+    <path d="M44 31l9 15 11-21 11 21 9-15 4 25H40z" fill="url(#pelirroja-corona-crown)" stroke="#C27A13" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="44" cy="31" r="4" fill="#FFEFA2"/>
+    <circle cx="64" cy="25" r="4.4" fill="#FFEFA2"/>
+    <circle cx="84" cy="31" r="4" fill="#FFEFA2"/>
+    <path d="M48 49h32" stroke="#FFF4B8" stroke-width="4" stroke-linecap="round"/>
+    <ellipse cx="55" cy="62" rx="2.4" ry="3.2" fill="#3E2A2B"/>
+    <ellipse cx="73" cy="62" rx="2.4" ry="3.2" fill="#3E2A2B"/>
+    <path d="M58 74c4 3 8 3 12 0" fill="none" stroke="#BF5E67" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M44 108l13-12 7 8 7-8 13 12 9 23H35z" fill="#8B57D7"/>
+    <path d="M57 96l7 8 7-8" fill="none" stroke="#F6EDFF" stroke-width="3"/>
+    <circle cx="45" cy="72" r="3" fill="#F6C952"/>
+    <circle cx="83" cy="72" r="3" fill="#F6C952"/>
+  </g>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".42" stroke-width="3"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="gato-bg" x1="17" y1="8" x2="111" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E3D7FF"/>
+      <stop offset="1" stop-color="#7D7DBE"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#gato-bg)"/>
+  <path d="M34 50l3-30 22 20M94 50l-3-30-22 20" fill="#6C6F85" stroke="#46495F" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M42 39l-1-11 9 9M86 37l9-9-1 11" fill="#F2B7C8"/>
+  <ellipse cx="64" cy="68" rx="36" ry="38" fill="#7E8299"/>
+  <ellipse cx="64" cy="83" rx="23" ry="19" fill="#D9D8E5"/>
+  <ellipse cx="52" cy="64" rx="4" ry="5" fill="#FFF7D6"/>
+  <ellipse cx="76" cy="64" rx="4" ry="5" fill="#FFF7D6"/>
+  <ellipse cx="52" cy="64" rx="1.8" ry="4.2" fill="#252735"/>
+  <ellipse cx="76" cy="64" rx="1.8" ry="4.2" fill="#252735"/>
+  <path d="M58 77c2-4 10-4 12 0-2 4-10 4-12 0z" fill="#EB8CA8"/>
+  <path d="M64 81v8M64 88c-5 0-9-2-13-6M64 88c5 0 9-2 13-6" fill="none" stroke="#565A70" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M31 75h22M31 83h22M75 75h22M75 83h22" stroke="#565A70" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFF" stroke-opacity=".4" stroke-width="3"/>
+</svg>

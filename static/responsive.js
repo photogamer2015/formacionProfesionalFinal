@@ -1,10 +1,35 @@
 (function () {
     "use strict";
 
-    function prepareResponsiveTables() {
-        var tables = document.querySelectorAll("table");
+    var resizeObserver = null;
+    var updateFrame = 0;
+
+    function tableLabel(table, index) {
+        var explicitLabel = table.getAttribute("aria-label");
+        if (explicitLabel) return explicitLabel;
+
+        var caption = table.querySelector("caption");
+        if (caption && caption.textContent.trim()) return caption.textContent.trim();
+
+        var section = table.closest("section, article, .card-box, .card");
+        var heading = section && section.querySelector("h2, h3, h4");
+        if (heading && heading.textContent.trim()) return heading.textContent.trim();
+
+        return "Tabla " + (index + 1);
+    }
+
+    function prepareResponsiveTables(root) {
+        var scope = root && root.querySelectorAll ? root : document;
+        var tables = [];
+
+        if (scope.matches && scope.matches("table")) tables.push(scope);
+        scope.querySelectorAll("table").forEach(function (table) {
+            tables.push(table);
+        });
 
         tables.forEach(function (table, index) {
+            if (table.dataset.responsivePrepared === "true") return;
+
             var shell = table.closest(
                 ".table-wrap, .responsive-table-shell, .dashboard-modal-body, [style*='overflow-x:auto'], [style*='overflow-x: auto']"
             );
@@ -19,11 +44,14 @@
             }
 
             if (!shell.dataset.responsiveLabel) {
-                shell.dataset.responsiveLabel = "Tabla " + (index + 1);
+                shell.dataset.responsiveLabel = tableLabel(table, index);
             }
+
+            table.dataset.responsivePrepared = "true";
+            if (resizeObserver) resizeObserver.observe(shell);
         });
 
-        updateResponsiveTables();
+        scheduleResponsiveTableUpdate();
     }
 
     function updateResponsiveTables() {
@@ -46,12 +74,42 @@
         });
     }
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", prepareResponsiveTables);
-    } else {
-        prepareResponsiveTables();
+    function scheduleResponsiveTableUpdate() {
+        if (updateFrame) return;
+        updateFrame = window.requestAnimationFrame(function () {
+            updateFrame = 0;
+            updateResponsiveTables();
+        });
     }
 
-    window.addEventListener("resize", updateResponsiveTables, { passive: true });
-    window.addEventListener("orientationchange", updateResponsiveTables, { passive: true });
+    function watchDynamicTables() {
+        if (!("MutationObserver" in window) || !document.body) return;
+
+        var observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    if (node.nodeType === 1) prepareResponsiveTables(node);
+                });
+            });
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    function initResponsiveTables() {
+        if ("ResizeObserver" in window) {
+            resizeObserver = new ResizeObserver(scheduleResponsiveTableUpdate);
+        }
+        prepareResponsiveTables(document);
+        watchDynamicTables();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initResponsiveTables);
+    } else {
+        initResponsiveTables();
+    }
+
+    window.addEventListener("resize", scheduleResponsiveTableUpdate, { passive: true });
+    window.addEventListener("orientationchange", scheduleResponsiveTableUpdate, { passive: true });
 })();
