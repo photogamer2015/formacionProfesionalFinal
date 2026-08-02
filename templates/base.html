@@ -936,7 +936,7 @@
 
     </style>
     {% block extra_head %}{% endblock %}
-    <link rel="stylesheet" href="{% static 'responsive.css' %}">
+    <link rel="stylesheet" href="{% static 'responsive.css' %}?v=20260802-5">
     <script src="{% static 'responsive.js' %}" defer></script>
 </head>
 <body>
@@ -1649,10 +1649,11 @@
     <!-- MercyBot Widget (AI + Voice based) -->
     <div id="assistant-widget" style="position:fixed; right:24px; bottom:24px; z-index:1200; font-family:'Inter', sans-serif;">
         <!-- Botón flotante -->
-        <button id="assistant-toggle" class="btn btn-primary" style="border-radius:50px; padding:12px 20px; font-size:15px; font-weight:600; background:#1a237e; border:none; box-shadow:0 8px 24px rgba(26,35,126,0.3); display:flex; align-items:center; gap:10px; transition:all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); cursor:pointer;" onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 28px rgba(26,35,126,0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 24px rgba(26,35,126,0.3)';">
+        <button id="assistant-toggle" class="btn btn-primary" aria-label="Abrir MercyBot" title="Abrir MercyBot" style="border-radius:50px; padding:12px 20px; font-size:15px; font-weight:600; background:#1a237e; border:none; box-shadow:0 8px 24px rgba(26,35,126,0.3); display:flex; align-items:center; gap:10px; transition:all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); cursor:pointer;" onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 28px rgba(26,35,126,0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 24px rgba(26,35,126,0.3)';">
             <span style="width:22px; height:22px; display:inline-block;">
                 <svg viewBox="0 0 100 100" width="100%" height="100%"><defs><linearGradient id="mGradBtn" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#3949ab"/><stop offset="100%" stop-color="#5c6bc0"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#mGradBtn)"/><path d="M28 65 L28 40 L50 60 L72 40 L72 65" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-            </span> MercyBot
+            </span>
+            <span class="assistant-toggle-label">MercyBot</span>
         </button>
         
         <!-- Panel de chat -->

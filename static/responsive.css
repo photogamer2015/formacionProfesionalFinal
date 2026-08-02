@@ -199,6 +199,19 @@ a.btn,
         max-height: calc(100dvh - 32px);
     }
 
+    .dashboard-modal-overlay,
+    #confirm-modal-overlay,
+    #whatsapp-modal-overlay,
+    .modal-backdrop,
+    .cat-modal-backdrop,
+    .confirm-modal,
+    #modal-abono,
+    #modal-editar-overlay,
+    #modal-editar-jornada,
+    #modal-revisar-overlay {
+        z-index: 1300 !important;
+    }
+
     .dashboard-modal-body {
         min-width: 0;
         overflow: auto;
@@ -481,6 +494,7 @@ a.btn,
     .toolbar form > *,
     form[method="get"][style*="display:flex"] > *,
     form[method="get"][style*="display: flex"] > * {
+        flex: 0 0 auto !important;
         width: 100% !important;
         max-width: none !important;
     }
@@ -637,7 +651,16 @@ a.btn,
     }
 
     #assistant-toggle {
+        width: 46px !important;
+        height: 46px !important;
         min-height: 46px;
+        padding: 0 !important;
+        gap: 0 !important;
+        border-radius: 50% !important;
+    }
+
+    #assistant-toggle .assistant-toggle-label {
+        display: none;
     }
 
     #assistant-panel {
