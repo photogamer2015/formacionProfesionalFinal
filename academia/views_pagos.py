@@ -4835,6 +4835,9 @@ def _calendario_vencimientos(matricula):
         inicio_jornada + (k-1)*7 días. Primer pago el mismo día de inicio,
         el siguiente a los 7 días, y así sucesivamente hasta completar
         exactamente la cantidad de módulos configurada para el curso.
+      • CURSO CON PAGOS CADA DOS SEMANAS: conserva la fecha normal del
+        primer pago y programa cada pago posterior cada 14 días desde el
+        inicio de la jornada. La configuración es exclusiva de cada curso.
       • ONLINE normal: el módulo 1 vence UN DÍA ANTES del inicio
         de la jornada (ej. inicia 10/07 → vence 09/07). El resto del valor
         pendiente (saldo restante) vence a los 13 días del inicio (un día
@@ -4862,6 +4865,13 @@ def _calendario_vencimientos(matricula):
     if matricula.modalidad == 'online':
         if n_mod == 1 or pago_unico:
             calendario[1] = (inicio - timedelta(days=1), 'pago_unico')
+        elif matricula.curso.pagos_cada_dos_semanas:
+            calendario[1] = (inicio - timedelta(days=1), 'modulo')
+            for k in range(2, n_mod + 1):
+                calendario[k] = (
+                    inicio + timedelta(days=(k - 1) * 14),
+                    'modulo',
+                )
         elif es_corto:
             # Ciclo corto: conserva exactamente una cuota por módulo/semana.
             for k in range(1, n_mod + 1):
@@ -4877,8 +4887,14 @@ def _calendario_vencimientos(matricula):
     else:
         # Presencial: un módulo equivale a una semana. La cantidad de fechas
         # sale del número de módulos configurado en el curso, sin valores fijos.
+        intervalo_dias = (
+            14 if matricula.curso.pagos_cada_dos_semanas else 7
+        )
         for k in range(1, n_mod + 1):
-            calendario[k] = (inicio + timedelta(days=(k - 1) * 7), 'modulo')
+            calendario[k] = (
+                inicio + timedelta(days=(k - 1) * intervalo_dias),
+                'modulo',
+            )
 
     return calendario
 
@@ -4888,7 +4904,8 @@ def _calendario_alertas_pago(matricula):
     Calendario exclusivo del panel "Gestión de Matrículas".
 
     Cada obligación financiera empieza en la fecha real de la jornada y las
-    siguientes vencen cada siete días. El panel siempre conserva el primer
+    siguientes vencen cada siete días, o cada catorce cuando el curso tiene
+    activada esa configuración independiente. El panel conserva el primer
     módulo impago: nunca salta al módulo de la semana actual. Los cursos con
     pago único mantienen una sola obligación, aunque académicamente tengan
     más de un módulo.
@@ -4904,9 +4921,13 @@ def _calendario_alertas_pago(matricula):
     if pago_unico:
         return {1: (inicio, 'pago_unico')}
 
+    intervalo_dias = (
+        14 if matricula.curso.pagos_cada_dos_semanas else 7
+    )
+
     return {
         numero: (
-            inicio + timedelta(days=(numero - 1) * 7),
+            inicio + timedelta(days=(numero - 1) * intervalo_dias),
             'modulo',
         )
         for numero in range(1, total_cuotas + 1)
@@ -5080,6 +5101,7 @@ def _calcular_alertas_pago(usuario_actual=None):
             'saldo_total': saldo_total,
             'es_ciclo_corto': es_ciclo_corto,
             'ciclo_corto_label': ciclo_corto_label,
+            'pagos_cada_dos_semanas': m.curso.pagos_cada_dos_semanas,
             'celular': celular,
             'celular_wa': celular_wa,
             'recuperacion_pagada': bool(pagos_recuperacion),

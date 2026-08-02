@@ -4726,6 +4726,26 @@ class PlanRecaudacionTests(TestCase):
 
         self.assertTrue(form.is_valid(), form.errors)
 
+    def test_pagos_cada_dos_semanas_es_independiente_del_ciclo_corto(self):
+        datos = {
+            'nombre': 'Curso Pagos Cada Dos Semanas',
+            'ofrece_online': 'on',
+            'valor_presencial': '0.00',
+            'valor_online': '90.00',
+            'duracion': '4 semanas',
+            'numero_modulos': '4',
+            'numero_modulos_online': '2',
+            'pagos_cada_dos_semanas': 'on',
+            'activo': 'on',
+        }
+
+        form = CursoForm(data=datos)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        curso = form.save()
+        self.assertTrue(curso.pagos_cada_dos_semanas)
+        self.assertFalse(curso.es_ciclo_corto)
+
     def test_reserva_no_cubre_modulos_en_curso_economico(self):
         matricula = self._matricula_con_adelanto(
             Decimal('35.00'), Decimal('10.00'), 4
@@ -5260,6 +5280,83 @@ class AlertasPagoPorJornadaTests(TestCase):
         self.assertEqual(alerta['numero_modulo'], 2)
         self.assertEqual(alerta['hito'], 'modulo')
         self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 17))
+
+    def test_pago_cada_dos_semanas_alerta_el_18_para_jornada_del_04(self):
+        curso = Curso.objects.create(
+            nombre='Asistente Contable Pagos Cada Dos Semanas',
+            ofrece_presencial=False,
+            ofrece_online=True,
+            valor_online=Decimal('90.00'),
+            numero_modulos_online=2,
+            pagos_cada_dos_semanas=True,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 8, 4),
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 8, 3),
+            valor_curso=Decimal('90.00'),
+            valor_pagado=Decimal('50.00'),
+        )
+
+        calendario = _calendario_vencimientos(matricula)
+        self.assertEqual(calendario[1][0], date(2026, 8, 3))
+        self.assertEqual(calendario[2][0], date(2026, 8, 18))
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 8, 17)
+            ids_con_alerta = {
+                alerta['matricula'].pk
+                for alerta in _calcular_alertas_pago()
+            }
+        self.assertNotIn(matricula.pk, ids_con_alerta)
+
+        alerta = self._alerta_de(matricula, date(2026, 8, 18))
+        self.assertEqual(alerta['numero_modulo'], 2)
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 8, 18))
+        self.assertEqual(alerta['dias_atraso'], 0)
+        self.assertTrue(alerta['pagos_cada_dos_semanas'])
+
+    def test_jornada_del_18_programa_el_segundo_pago_para_el_01_de_septiembre(self):
+        curso = Curso.objects.create(
+            nombre='Curso Quincenal Segunda Jornada',
+            ofrece_online=True,
+            valor_online=Decimal('90.00'),
+            numero_modulos_online=2,
+            pagos_cada_dos_semanas=True,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 8, 18),
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 8, 17),
+            valor_curso=Decimal('90.00'),
+            valor_pagado=Decimal('50.00'),
+        )
+
+        alerta = self._alerta_de(matricula, date(2026, 9, 1))
+
+        self.assertEqual(alerta['numero_modulo'], 2)
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 9, 1))
+        self.assertEqual(alerta['dias_atraso'], 0)
 
     def test_saldo_cero_elimina_alerta_definitivamente(self):
         self.matricula_presencial.valor_pagado = Decimal('80.00')

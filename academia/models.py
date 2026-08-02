@@ -390,6 +390,14 @@ class Curso(models.Model):
         ),
     )
 
+    pagos_cada_dos_semanas = models.BooleanField(
+        default=False,
+        help_text=(
+            'Programa cada pago posterior al primero 14 días después del '
+            'anterior, tomando como base la fecha de inicio de la jornada.'
+        ),
+    )
+
     nombrar_modulos = models.BooleanField(
         default=False,
         help_text='Indica si los módulos tendrán nombres personalizados.'

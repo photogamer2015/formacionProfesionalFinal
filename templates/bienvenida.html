@@ -1057,7 +1057,8 @@
         <div class="gm-body-inner">
             <p class="gm-resumen">
                 Estudiantes con saldo pendiente: el Módulo 1 se gestiona desde la fecha de
-                inicio de la jornada y cada módulo siguiente se habilita 7 días después.
+                inicio de la jornada y cada módulo siguiente se habilita 7 días después,
+                o cada 14 días en los cursos configurados para pagos cada 2 semanas.
                 Al pagar un módulo, la alerta se oculta hasta el próximo vencimiento; con
                 saldo cero deja de aparecer. Los cursos de pago único generan una sola alerta.
             </p>
@@ -1076,6 +1077,7 @@
                         <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                         <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
                         {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
+                        {% if a.pagos_cada_dos_semanas %}<span class="gm-chip jornada">📅 Cada 2 semanas · Vence {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>{% endif %}
                         <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                         <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
                         <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
@@ -1128,6 +1130,7 @@
                             <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                             <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
                             {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
+                            {% if a.pagos_cada_dos_semanas %}<span class="gm-chip jornada">📅 Cada 2 semanas · Vence {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>{% endif %}
                             <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                             <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
                             <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>

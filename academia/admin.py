@@ -130,6 +130,9 @@ class CursoAdmin(admin.ModelAdmin):
         ('Modalidad online', {
             'fields': ('ofrece_online', 'valor_online', 'pago_unico_online'),
         }),
+        ('Calendario de pagos', {
+            'fields': ('pagos_cada_dos_semanas',),
+        }),
         ('Legado (no usar)', {
             'classes': ('collapse',),
             'fields': ('valor',),

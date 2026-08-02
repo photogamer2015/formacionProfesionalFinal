@@ -30,6 +30,7 @@ class CursoForm(forms.ModelForm):
             'ofrece_online', 'valor_online',
             'duracion', 'numero_modulos', 'numero_modulos_online',
             'es_ciclo_corto', 'pago_unico_online',
+            'pagos_cada_dos_semanas',
             'nombrar_modulos', 'activo',
         ]
         widgets = {
@@ -50,6 +51,10 @@ class CursoForm(forms.ModelForm):
             'es_ciclo_corto': forms.CheckboxInput(attrs={'class': 'form-checkbox', 'id': 'id_es_ciclo_corto'}),
             'pago_unico_online': forms.CheckboxInput(attrs={
                 'class': 'form-checkbox', 'id': 'id_pago_unico_online',
+            }),
+            'pagos_cada_dos_semanas': forms.CheckboxInput(attrs={
+                'class': 'form-checkbox',
+                'id': 'id_pagos_cada_dos_semanas',
             }),
             'nombrar_modulos': forms.CheckboxInput(attrs={'class': 'form-checkbox', 'id': 'id_nombrar_modulos'}),
         }
