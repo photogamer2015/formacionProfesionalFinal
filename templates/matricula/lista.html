@@ -426,6 +426,11 @@
             <option value="si" {% if descuento_seleccionado == 'si' %}selected{% endif %}>Con descuento</option>
             <option value="no" {% if descuento_seleccionado == 'no' %}selected{% endif %}>Sin descuento</option>
         </select>
+        <select name="estado_pago" class="form-input" style="max-width:190px;">
+            <option value="">Estado pago: Todos</option>
+            <option value="pendiente" {% if estado_pago_seleccionado == 'pendiente' %}selected{% endif %}>Saldo pendiente</option>
+            <option value="pagado" {% if estado_pago_seleccionado == 'pagado' %}selected{% endif %}>Pagado</option>
+        </select>
         <div class="matricula-date-range" data-date-range-picker>
             <input type="hidden" name="fecha_desde" value="{{ fecha_desde }}">
             <input type="hidden" name="fecha_hasta" value="{{ fecha_hasta }}">

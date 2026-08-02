@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, F, Prefetch, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
@@ -70,6 +70,18 @@ def _rango_fecha_matricula_desde_request(request):
         fecha_desde, fecha_hasta = fecha_desde_date.isoformat(), fecha_hasta_date.isoformat()
 
     return fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date
+
+
+def _aplicar_filtro_estado_pago_matricula(qs, estado_pago):
+    if estado_pago == 'pendiente':
+        return qs.exclude(estado='retiro_voluntario').filter(
+            valor_pagado__lt=F('valor_curso') - F('descuento'),
+        )
+    if estado_pago == 'pagado':
+        return qs.exclude(estado='retiro_voluntario').filter(
+            valor_pagado__gte=F('valor_curso') - F('descuento'),
+        )
+    return qs
 
 
 def _nombre_usuario(usuario):
@@ -1146,6 +1158,7 @@ def matricula_lista(request, modalidad, solo_retirados=False):
     q = request.GET.get('q', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
+    estado_pago = request.GET.get('estado_pago', '').strip()
     jornada_id = request.GET.get('jornada', '').strip()
     modalidad_filtro = request.GET.get('modalidad_filtro', '').strip()
     campus = request.GET.get('campus', '').strip()
@@ -1198,6 +1211,9 @@ def matricula_lista(request, modalidad, solo_retirados=False):
         qs = qs.filter(descuento__gt=0)
     elif descuento_str == 'no':
         qs = qs.filter(descuento=0)
+    if estado_pago not in ('pendiente', 'pagado'):
+        estado_pago = ''
+    qs = _aplicar_filtro_estado_pago_matricula(qs, estado_pago)
         
     if registrado_por_id.isdigit():
         qs = qs.filter(registrado_por_id=int(registrado_por_id))
@@ -1244,6 +1260,7 @@ def matricula_lista(request, modalidad, solo_retirados=False):
             'q': q,
             'curso': curso_id,
             'descuento': descuento_str,
+            'estado_pago': estado_pago,
             'registrador': registrado_por_id,
             'jornada': jornada_id if jornada_filtrada else '',
             'modalidad_filtro': modalidad_filtro,
@@ -1264,6 +1281,7 @@ def matricula_lista(request, modalidad, solo_retirados=False):
         'q': q,
         'curso_seleccionado': curso_id,
         'descuento_seleccionado': descuento_str,
+        'estado_pago_seleccionado': estado_pago,
         'jornada_seleccionada': jornada_id if jornada_filtrada else '',
         'jornada_filtrada': jornada_filtrada,
         'registrador_seleccionado': registrado_por_id,
@@ -2153,6 +2171,7 @@ def _matriculas_filtradas_para_export(request, modalidad):
     q = request.GET.get('q', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
+    estado_pago = request.GET.get('estado_pago', '').strip()
     jornada_id = request.GET.get('jornada', '').strip()
     registrador_id = request.GET.get('registrador', '').strip()
     modalidad_filtro = request.GET.get('modalidad_filtro', '').strip()
@@ -2187,6 +2206,8 @@ def _matriculas_filtradas_para_export(request, modalidad):
         qs = qs.filter(descuento__gt=0)
     elif descuento_str == 'no':
         qs = qs.filter(descuento=0)
+    if estado_pago in ('pendiente', 'pagado'):
+        qs = _aplicar_filtro_estado_pago_matricula(qs, estado_pago)
 
     if registrador_id.isdigit():
         qs = qs.filter(registrado_por_id=int(registrador_id))

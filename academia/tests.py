@@ -1000,6 +1000,31 @@ class JornadaMatriculasAccessTests(TestCase):
         self.assertEqual(len(matriculas), 1)
         self.assertEqual(matriculas[0].estudiante, self.estudiante_1)
 
+    def test_lista_matriculas_filtra_por_estado_de_pago(self):
+        pendiente = Matricula.objects.get(estudiante=self.estudiante_1)
+        pagada = Matricula.objects.get(estudiante=self.estudiante_2)
+        pendiente.valor_pagado = Decimal('30.00')
+        pendiente.save(update_fields=['valor_pagado'])
+        self.client.force_login(self.asesor)
+
+        response_pendiente = self.client.get(
+            reverse('academia:matricula_lista', kwargs={'modalidad': 'presencial'}),
+            {'estado_pago': 'pendiente'},
+        )
+        response_pagado = self.client.get(
+            reverse('academia:matricula_lista', kwargs={'modalidad': 'presencial'}),
+            {'estado_pago': 'pagado'},
+        )
+
+        self.assertEqual(response_pendiente.status_code, 200)
+        self.assertEqual(response_pendiente.context['estado_pago_seleccionado'], 'pendiente')
+        self.assertEqual(list(response_pendiente.context['matriculas']), [pendiente])
+        self.assertContains(response_pendiente, 'Saldo pendiente')
+
+        self.assertEqual(response_pagado.status_code, 200)
+        self.assertEqual(response_pagado.context['estado_pago_seleccionado'], 'pagado')
+        self.assertEqual(list(response_pagado.context['matriculas']), [pagada])
+
     def test_apartado_retirados_muestra_solo_retiros_voluntarios(self):
         retirada = Matricula.objects.get(estudiante=self.estudiante_1)
         retirada.estado = 'retiro_voluntario'
@@ -2239,6 +2264,95 @@ class PagoInicialMatriculaTests(TestCase):
             'fecha_programada_desde=2026-07-29',
             response.context['filtros']['query'],
         )
+
+    def test_recuperaciones_lista_filtra_estudiantes_del_curso(self):
+        admin = User.objects.create_superuser(
+            username='admin_filtro_estudiante_recuperacion',
+            password='clave12345',
+        )
+        curso_extra = Curso.objects.create(
+            nombre='Excel Administrativo',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('90.00'),
+            numero_modulos=3,
+        )
+        jornada_extra = JornadaCurso.objects.create(
+            curso=curso_extra,
+            modalidad='presencial',
+            descripcion='sabados',
+            fecha_inicio=date(2026, 7, 12),
+            sede=self.sede,
+        )
+        otro_estudiante = Estudiante.objects.create(
+            cedula='0102030407',
+            nombres='Daniela Mora',
+        )
+        recuperacion_curso = self._crear_recuperacion_para_filtro(
+            admin,
+            self.estudiante,
+            date(2026, 7, 10),
+            date(2026, 7, 15),
+        )
+        matricula_extra = Matricula.objects.create(
+            estudiante=otro_estudiante,
+            curso=curso_extra,
+            jornada=jornada_extra,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 12),
+            valor_curso=Decimal('90.00'),
+            valor_pagado=Decimal('20.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        recuperacion_otro_curso = RecuperacionPendiente.objects.create(
+            matricula=matricula_extra,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 12),
+            fecha_programada=date(2026, 7, 20),
+            saldo_pendiente_al_marcar=Decimal('70.00'),
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:recuperaciones_lista'),
+            {
+                'estado': 'todas',
+                'curso': str(self.curso.pk),
+                'estudiante': str(self.estudiante.pk),
+            },
+        )
+
+        recuperaciones = set(response.context['recuperaciones'].values_list('id', flat=True))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(recuperacion_curso.id, recuperaciones)
+        self.assertNotIn(recuperacion_otro_curso.id, recuperaciones)
+        self.assertEqual(response.context['filtros']['estudiante'], str(self.estudiante.pk))
+        self.assertIn(f'estudiante={self.estudiante.pk}', response.context['filtros']['query'])
+        self.assertContains(response, 'id="recup-estudiante-filter"')
+        self.assertContains(response, self.estudiante.nombres)
+
+        opciones = response.context['estudiantes_filtro']
+        opcion_actual = next(
+            opcion for opcion in opciones
+            if opcion['id'] == self.estudiante.pk
+        )
+        self.assertIn(str(self.curso.pk), opcion_actual['curso_ids'])
+
+        response_sin_curso = self.client.get(
+            reverse('academia:recuperaciones_lista'),
+            {
+                'estado': 'todas',
+                'estudiante': str(self.estudiante.pk),
+            },
+        )
+        recuperaciones_sin_curso = set(
+            response_sin_curso.context['recuperaciones'].values_list('id', flat=True),
+        )
+        self.assertEqual(response_sin_curso.context['filtros']['estudiante'], '')
+        self.assertIn(recuperacion_curso.id, recuperaciones_sin_curso)
+        self.assertIn(recuperacion_otro_curso.id, recuperaciones_sin_curso)
 
     def test_reserva_modulo_respeta_valor_pagado_digitado(self):
         matricula = Matricula.objects.create(

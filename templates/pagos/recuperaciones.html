@@ -19,25 +19,35 @@
     }
     .recup-filter-form {
         display: grid;
-        grid-template-columns: minmax(240px, 1.3fr) minmax(150px, .75fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(220px, 1fr);
-        gap: 12px 14px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
         align-items: end;
+    }
+    .recup-filter-form > div {
+        min-width: 0;
     }
     .recup-filter-actions {
         display: flex;
-        grid-column: 1 / -1;
+        grid-column: span 2;
         flex-wrap: wrap;
         gap: 8px;
         align-items: center;
-        justify-content: flex-end;
-        padding-top: 2px;
+        justify-content: flex-start;
+        padding-top: 0;
     }
     .recup-filter-actions .btn {
-        min-width: 112px;
+        min-width: 128px;
         min-height: 44px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+    }
+    .recup-filter-help {
+        display: block;
+        margin-top: 5px;
+        color: var(--fp-muted);
+        font-size: 11px;
+        line-height: 1.25;
     }
     .recup-date-range {
         position: relative;
@@ -339,12 +349,11 @@
     }
     @media (min-width: 1500px) {
         .recup-filter-form {
-            grid-template-columns: minmax(240px, 1.25fr) minmax(150px, .72fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(220px, 1fr) auto;
+            grid-template-columns: minmax(280px, 1.25fr) minmax(150px, .7fr) minmax(240px, 1fr) minmax(260px, 1.1fr);
         }
         .recup-filter-actions {
-            grid-column: auto;
-            justify-content: flex-end;
-            padding-top: 0;
+            grid-column: span 2;
+            justify-content: flex-start;
         }
     }
     @media (max-width: 1320px) {
@@ -352,7 +361,8 @@
             grid-template-columns: repeat(2, minmax(220px, 1fr));
         }
         .recup-filter-actions {
-            justify-content: flex-end;
+            grid-column: 1 / -1;
+            justify-content: flex-start;
         }
     }
     @media (max-width: 760px) {
@@ -362,6 +372,9 @@
         .recup-filter-actions,
         .recup-filter-actions .btn {
             width: 100%;
+        }
+        .recup-filter-actions {
+            grid-column: 1 / -1;
         }
         .recup-filter-actions .btn {
             flex: 1 1 100%;
@@ -495,12 +508,26 @@
         </div>
         <div>
             <label class="form-label" style="font-size:11px;">Curso</label>
-            <select name="curso" class="form-input">
+            <select name="curso" id="recup-curso-filter" class="form-input">
                 <option value="">— Todos —</option>
                 {% for c in cursos %}
                 <option value="{{ c.pk }}" {% if filtros.curso == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>
                 {% endfor %}
             </select>
+        </div>
+        <div>
+            <label class="form-label" style="font-size:11px;">Estudiante del curso</label>
+            <select name="estudiante" id="recup-estudiante-filter" class="form-input" data-selected="{{ filtros.estudiante }}">
+                <option value="">— Primero selecciona un curso —</option>
+                {% for estudiante in estudiantes_filtro %}
+                <option value="{{ estudiante.id }}"
+                        data-course-ids="{{ estudiante.curso_ids|join:',' }}"
+                        {% if filtros.estudiante == estudiante.id|stringformat:"s" %}selected{% endif %}>
+                    {{ estudiante.nombre }} · {{ estudiante.cedula }}
+                </option>
+                {% endfor %}
+            </select>
+            <small class="recup-filter-help" data-student-help>Selecciona un curso para ver sus estudiantes.</small>
         </div>
         <div class="recup-date-range" data-date-range-picker data-date-range-label="Fecha falta">
             <label class="form-label" style="font-size:11px;">Fecha falta</label>
@@ -738,6 +765,62 @@
     {% endif %}
 </div>
 <script>
+    (function () {
+        const courseSelect = document.getElementById('recup-curso-filter');
+        const studentSelect = document.getElementById('recup-estudiante-filter');
+        const helpText = document.querySelector('[data-student-help]');
+        if (!courseSelect || !studentSelect) return;
+
+        const placeholder = studentSelect.querySelector('option[value=""]');
+
+        function optionBelongsToCourse(option, courseId) {
+            return (option.dataset.courseIds || '')
+                .split(',')
+                .filter(Boolean)
+                .includes(courseId);
+        }
+
+        function syncStudents() {
+            const courseId = courseSelect.value;
+            let visibleCount = 0;
+
+            Array.from(studentSelect.options).forEach(function (option) {
+                if (!option.value) return;
+                const visible = Boolean(courseId) && optionBelongsToCourse(option, courseId);
+                option.hidden = !visible;
+                option.disabled = !visible;
+                if (visible) visibleCount += 1;
+            });
+
+            if (!courseId) {
+                studentSelect.value = '';
+                studentSelect.disabled = true;
+                if (placeholder) placeholder.textContent = '— Primero selecciona un curso —';
+                if (helpText) helpText.textContent = 'Selecciona un curso para ver sus estudiantes.';
+                return;
+            }
+
+            studentSelect.disabled = visibleCount === 0;
+            const selected = studentSelect.selectedOptions[0];
+            if (selected && selected.value && selected.disabled) {
+                studentSelect.value = '';
+            }
+            if (placeholder) {
+                placeholder.textContent = visibleCount
+                    ? '— Todos los estudiantes del curso —'
+                    : '— Sin estudiantes en este curso —';
+            }
+            if (helpText) {
+                helpText.textContent = visibleCount
+                    ? visibleCount + ' estudiante(s) con recuperación en este curso.'
+                    : 'Este curso no tiene estudiantes en recuperación.';
+            }
+        }
+
+        courseSelect.addEventListener('change', syncStudents);
+        syncStudents();
+    })();
+
     (function () {
         const pickers = document.querySelectorAll('[data-date-range-picker]');
         if (!pickers.length) return;

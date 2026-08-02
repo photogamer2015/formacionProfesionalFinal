@@ -2849,6 +2849,7 @@ def _filtrar_recuperaciones(request):
     """Aplica los filtros de la tabla de recuperaciones y devuelve queryset + filtros."""
     estado = request.GET.get('estado', 'pendientes').strip() or 'pendientes'
     curso_id = request.GET.get('curso', '').strip()
+    estudiante_id = request.GET.get('estudiante', '').strip()
     q = request.GET.get('q', '').strip()
     (
         fecha_falta_desde,
@@ -2869,6 +2870,12 @@ def _filtrar_recuperaciones(request):
 
     if estado not in ('pendientes', 'pagadas', 'todas'):
         estado = 'pendientes'
+    if curso_id and not curso_id.isdigit():
+        curso_id = ''
+    if estudiante_id and not estudiante_id.isdigit():
+        estudiante_id = ''
+    if estudiante_id and not curso_id:
+        estudiante_id = ''
 
     qs = RecuperacionPendiente.objects.select_related(
         'matricula', 'matricula__estudiante', 'matricula__curso',
@@ -2880,8 +2887,10 @@ def _filtrar_recuperaciones(request):
     elif estado == 'pagadas':
         qs = qs.filter(pagada=True)
 
-    if curso_id and curso_id.isdigit():
+    if curso_id:
         qs = qs.filter(matricula__curso_id=int(curso_id))
+    if estudiante_id:
+        qs = qs.filter(matricula__estudiante_id=int(estudiante_id))
 
     if q:
         qs = filtrar_queryset_busqueda(qs, q, [
@@ -2901,6 +2910,7 @@ def _filtrar_recuperaciones(request):
 
     filtros = {
         'curso': curso_id,
+        'estudiante': estudiante_id,
         'q': q,
         'estado': estado,
         'fecha_falta_desde': fecha_falta_desde,
@@ -2917,6 +2927,41 @@ def _filtrar_recuperaciones(request):
         **filtros,
     }
 
+
+def _estudiantes_para_filtro_recuperaciones():
+    """Opciones del filtro dependiente Curso -> Estudiante."""
+    estudiantes = {}
+    rows = (
+        RecuperacionPendiente.objects
+        .select_related('matricula__estudiante', 'matricula__curso')
+        .values_list(
+            'matricula__estudiante_id',
+            'matricula__estudiante__nombres',
+            'matricula__estudiante__cedula',
+            'matricula__curso_id',
+        )
+        .distinct()
+    )
+    for estudiante_id, nombres, cedula, curso_id in rows:
+        if not estudiante_id or not curso_id:
+            continue
+        data = estudiantes.setdefault(estudiante_id, {
+            'id': estudiante_id,
+            'nombre': nombres or 'Sin nombre',
+            'cedula': cedula or '',
+            'curso_ids': set(),
+        })
+        data['curso_ids'].add(str(curso_id))
+
+    opciones = []
+    for data in estudiantes.values():
+        opciones.append({
+            **data,
+            'curso_ids': sorted(data['curso_ids']),
+        })
+    return sorted(opciones, key=lambda item: (item['nombre'].lower(), item['cedula']))
+
+
 @matricula_requerida
 def recuperaciones_lista(request):
     """
@@ -2926,6 +2971,7 @@ def recuperaciones_lista(request):
     """
     qs, filtros = _filtrar_recuperaciones(request)
     cursos = Curso.objects.filter(activo=True).order_by('nombre')
+    estudiantes_filtro = _estudiantes_para_filtro_recuperaciones()
 
     # Conteos para tarjetas
     total_pendientes = RecuperacionPendiente.objects.filter(pagada=False).count()
@@ -2934,6 +2980,7 @@ def recuperaciones_lista(request):
     return render(request, 'pagos/recuperaciones.html', {
         'recuperaciones': qs,
         'cursos': cursos,
+        'estudiantes_filtro': estudiantes_filtro,
         'estado': filtros['estado'],
         'filtros': filtros,
         'total_pendientes': total_pendientes,
