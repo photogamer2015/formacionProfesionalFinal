@@ -46,12 +46,12 @@
 {# ── Búsqueda ── #}
 <div class="card-box" style="margin-bottom:20px; padding:14px;">
     <form method="get" style="display:flex; gap:10px; flex-wrap:wrap;">
-        <input type="text" name="q" value="{{ q }}" class="form-input"
-               placeholder="Buscar por cédula, nombre, correo o celular..." style="flex:1; min-width:240px;">
-        <button type="submit" class="btn btn-primary">Buscar</button>
-        {% if q %}<a href="{% url 'academia:personas_externas_lista' %}" class="btn btn-secondary">Limpiar</a>{% endif %}
-    </form>
-</div>
+	        <input type="text" name="q" value="{{ q }}" class="form-input"
+	               placeholder="Buscar por cédula, nombre, correo o celular..." style="flex:1; min-width:240px;">
+	        <button type="submit" class="btn btn-primary">Buscar</button>
+	        <a href="{% url 'academia:personas_externas_lista' %}" class="btn btn-secondary">Limpiar</a>
+	    </form>
+	</div>
 
 <div class="table-wrap">
     <table>

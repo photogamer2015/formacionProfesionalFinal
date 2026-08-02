@@ -124,13 +124,14 @@ body.dark-mode .dashboard-modal-table tr:hover td { background: #252525; }
             <input type="date" name="desde" class="form-input" style="padding:6px 8px;"
                    value="{{ desde_iso }}" title="Desde">
             <span style="color:#888;">→</span>
-            <input type="date" name="hasta" class="form-input" style="padding:6px 8px;"
-                   value="{{ hasta_iso }}" title="Hasta">
-            <button type="submit" class="btn btn-primary btn-sm">Ver rango</button>
-            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="7">Últ. 7 días</button>
-            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="15">Últ. 15 días</button>
-            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="30">Últ. 30 días</button>
-        </form>
+	            <input type="date" name="hasta" class="form-input" style="padding:6px 8px;"
+	                   value="{{ hasta_iso }}" title="Hasta">
+	            <button type="submit" class="btn btn-primary btn-sm">Ver rango</button>
+	            <a href="{% url 'academia:admin_dashboard' %}" class="btn btn-secondary btn-sm">Limpiar</a>
+	            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="7">Últ. 7 días</button>
+	            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="15">Últ. 15 días</button>
+	            <button type="button" class="btn btn-secondary btn-sm" data-rango-preset="30">Últ. 30 días</button>
+	        </form>
         <a href="{% url 'academia:actividad_usuarios' %}" class="btn btn-secondary no-print" title="Ver qué hizo cada usuario durante el día">🕘 Actividad de usuarios</a>
         <a href="{% url 'academia:admin_egresos_lista' %}" class="btn btn-secondary">📒 Ver todos los egresos</a>
         <a href="{% url 'academia:sedes_lista' %}" class="btn btn-secondary no-print" title="Administrar sedes / campus">🏢 Sedes</a>

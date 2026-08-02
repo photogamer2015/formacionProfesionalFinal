@@ -280,9 +280,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 <option value="{{ a }}" {% if a == periodo_anio %}selected{% endif %}>{{ a }}</option>
                 {% endfor %}
             </select>
-        </div>
-        <button type="submit" class="btn btn-sm btn-secondary">Ver matrículas de este mes</button>
-    </form>
+	        </div>
+	        <button type="submit" class="btn btn-sm btn-secondary">Ver matrículas de este mes</button>
+	        <a href="{% url 'academia:cierre_preview' curso.pk %}{% if jornada %}?jornada={{ jornada.id }}{% endif %}"
+	           class="btn btn-sm btn-secondary">Limpiar</a>
+	    </form>
     <div style="margin-top:10px; font-size:13px; color:#1a237e; font-weight:600;">
         Cerrando matrículas de: <strong>{{ periodo_nombre }} {{ periodo_anio }}</strong>
         · {{ totales.total_matriculas }} matrícula{{ totales.total_matriculas|pluralize }}
@@ -303,13 +305,11 @@ document.addEventListener('DOMContentLoaded', function () {
             <label class="form-label" style="font-size:11px;">Buscar estudiante</label>
             <input type="text" name="manual_q" value="{{ manual_q }}" class="form-input"
                    placeholder="Nombre, cédula o celular...">
-        </div>
-        <button type="submit" class="btn btn-primary">Buscar</button>
-        {% if manual_q %}
-        <a href="{% url 'academia:cierre_preview' curso.pk %}{% if jornada %}?jornada={{ jornada.id }}&archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}{% else %}?archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}{% endif %}"
-           class="btn btn-secondary">Limpiar</a>
-        {% endif %}
-    </form>
+	        </div>
+	        <button type="submit" class="btn btn-primary">Buscar</button>
+	        <a href="{% url 'academia:cierre_preview' curso.pk %}{% if jornada %}?jornada={{ jornada.id }}&archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}{% else %}?archivo_mes={{ periodo_mes }}&archivo_anio={{ periodo_anio }}{% endif %}"
+	           class="btn btn-secondary">Limpiar</a>
+	    </form>
 
     {% if manual_q %}
         <div style="margin-top:14px;">

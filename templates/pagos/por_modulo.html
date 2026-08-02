@@ -353,7 +353,10 @@
             <div style="font-size:10px; color:#999; margin-top:2px;">No hay estudiantes con esos filtros</div>
             {% endif %}
         </div>
-        <button type="submit" class="btn btn-primary">Aplicar</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary">Aplicar</button>
+            <a href="{% url 'academia:pagos_por_modulo' %}" class="btn btn-secondary">Limpiar</a>
+        </div>
     </form>
 </div>
 

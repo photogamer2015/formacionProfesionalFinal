@@ -51,12 +51,13 @@
                 <option value="">— Todos —</option>
                 {% for a in anios %}
                 <option value="{{ a }}" {% if filtro_anio == a|stringformat:"s" %}selected{% endif %}>{{ a }}</option>
-                {% endfor %}
-            </select>
-        </div>
-    </form>
-</div>
-{% endif %}
+	                {% endfor %}
+	            </select>
+	        </div>
+	        <a href="{% url 'academia:cierre_admin_historial' %}" class="btn btn-secondary">Limpiar</a>
+	    </form>
+	</div>
+	{% endif %}
 
 {# Tabla #}
 <div class="table-wrap">

@@ -48,14 +48,12 @@
         <div>
             <label for="filtro-q" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Estudiante</label>
             <input id="filtro-q" type="search" name="q" value="{{ filtros.q }}" placeholder="Nombre o cédula" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="submit" class="btn btn-primary btn-sm" style="min-height:40px;">Filtrar</button>
-            {% if filtros_aplicados %}
-                <a href="{% url 'academia:control_registro' %}" class="btn btn-secondary btn-sm" style="min-height:40px; display:inline-flex; align-items:center;">Limpiar</a>
-            {% endif %}
-        </div>
-    </div>
+	        </div>
+	        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+	            <button type="submit" class="btn btn-primary btn-sm" style="min-height:40px;">Filtrar</button>
+	            <a href="{% url 'academia:control_registro' %}" class="btn btn-secondary btn-sm" style="min-height:40px; display:inline-flex; align-items:center;">Limpiar</a>
+	        </div>
+	    </div>
     <div style="margin-top:12px; color:#666; font-size:12px;">
         Mostrando {{ matriculas|length }} de {{ matriculas_total }} matrícula{{ matriculas_total|pluralize }}.
         {% if matriculas_total > 300 %}
@@ -92,14 +90,12 @@
         <div>
             <label for="filtro-pago-monto" style="display:block; font-size:12px; font-weight:700; color:#1a237e; margin-bottom:6px;">Monto</label>
             <input id="filtro-pago-monto" type="text" inputmode="decimal" name="pago_monto" value="{{ filtros_pagos.monto }}" placeholder="Ej. 10,00" style="width:100%; padding:10px 12px; border:1px solid #d8dde8; border-radius:8px;">
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="submit" class="btn btn-primary btn-sm" style="min-height:40px;">Filtrar</button>
-            {% if filtros_pagos_aplicados %}
-                <a href="{% url 'academia:control_registro' %}?tab=pagos" class="btn btn-secondary btn-sm" style="min-height:40px; display:inline-flex; align-items:center;">Limpiar</a>
-            {% endif %}
-        </div>
-    </div>
+	        </div>
+	        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+	            <button type="submit" class="btn btn-primary btn-sm" style="min-height:40px;">Filtrar</button>
+	            <a href="{% url 'academia:control_registro' %}?tab=pagos" class="btn btn-secondary btn-sm" style="min-height:40px; display:inline-flex; align-items:center;">Limpiar</a>
+	        </div>
+	    </div>
     <div style="margin-top:12px; color:#666; font-size:12px;">
         Mostrando {{ pagos|length }} de {{ pagos_total }} pago{{ pagos_total|pluralize }}.
         {% if pagos_total > 300 %}

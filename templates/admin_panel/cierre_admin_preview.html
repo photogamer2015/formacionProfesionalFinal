@@ -23,13 +23,14 @@
             <label class="form-label" style="font-size:11px;">Periodo a cerrar</label>
             <select name="__sel" class="form-input" onchange="if(this.value){window.location=this.value;}">
                 {% for m in meses_selector %}
-                <option value="{% url 'academia:cierre_admin_preview' %}?anio={{ m.anio }}&mes={{ m.mes }}"
-                        {% if m.seleccionado %}selected{% endif %}>{{ m.label }}</option>
-                {% endfor %}
-            </select>
-        </div>
-    </form>
-</div>
+	                <option value="{% url 'academia:cierre_admin_preview' %}?anio={{ m.anio }}&mes={{ m.mes }}"
+	                        {% if m.seleccionado %}selected{% endif %}>{{ m.label }}</option>
+	            {% endfor %}
+	            </select>
+	        </div>
+	        <a href="{% url 'academia:cierre_admin_preview' %}" class="btn btn-secondary">Limpiar</a>
+	    </form>
+	</div>
 
 {% if existente %}
 <div style="background:#e8f5e9; border-left:4px solid #2e7d32; padding:14px 18px; border-radius:8px; margin-bottom:20px;">

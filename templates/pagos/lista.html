@@ -314,6 +314,18 @@
         min-height: 44px;
         white-space: nowrap;
     }
+    .payments-filter-card {
+        position: relative;
+        z-index: 20;
+        overflow: visible;
+    }
+    .payments-filter-card:hover,
+    .payments-filter-card.is-date-picker-open {
+        transform: none;
+    }
+    .payments-filter-card.is-date-picker-open {
+        z-index: 4000;
+    }
     .payments-filter-form .matricula-date-range {
         position: relative;
         min-width: 0;
@@ -360,9 +372,9 @@
     .date-range-popover {
         position: absolute;
         top: calc(100% + 8px);
-        left: 0;
+        right: 0;
         z-index: 2500;
-        width: min(860px, calc(100vw - 32px));
+        width: min(760px, calc(100vw - 32px));
         overflow: hidden;
         border: 1px solid rgba(27,42,78,.12);
         border-radius: 12px;
@@ -372,7 +384,7 @@
     }
     .date-range-layout {
         display: grid;
-        grid-template-columns: 184px minmax(0, 1fr);
+        grid-template-columns: 168px minmax(0, 1fr);
     }
     .date-range-presets {
         padding: 14px 10px;
@@ -428,8 +440,8 @@
     }
     .date-range-calendars {
         display: grid;
-        grid-template-columns: repeat(2, minmax(220px, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+        gap: 12px;
     }
     .date-range-calendar-head {
         min-height: 32px;
@@ -545,7 +557,7 @@
         top: 12px;
         right: 12px;
         bottom: 76px;
-        left: 198px;
+        left: 182px;
         z-index: 2600;
         display: flex;
         flex-direction: column;
@@ -558,8 +570,8 @@
     }
     .date-range-floating-calendars {
         display: grid;
-        grid-template-columns: repeat(2, minmax(220px, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+        gap: 12px;
         align-content: start;
         min-height: 0;
         overflow-y: auto;
@@ -797,7 +809,7 @@
 </div>
 
 {# ─── Filtros ──────────────────────────────────────────── #}
-<div class="card-box" style="margin-bottom:18px; padding:16px;">
+<div class="card-box payments-filter-card" style="margin-bottom:18px; padding:16px;">
     <form method="get" class="payments-filter-form">
 
         <div class="payments-filter-search">
@@ -1209,6 +1221,7 @@
             let viewMonth = today().getMonth();
             let rangeViewYear = today().getFullYear();
             let rangeViewMonth = today().getMonth();
+            const filterCard = picker.closest('.payments-filter-card');
 
             function orderDates(start, end) {
                 if (start && end && compareDates(start, end) > 0) {
@@ -1346,16 +1359,15 @@
             }
 
             function positionPopover() {
-                popover.style.left = '0px';
+                popover.style.left = '';
+                popover.style.right = '';
+                if (window.matchMedia('(max-width: 760px)').matches) return;
+
+                popover.style.right = '0px';
                 const rect = popover.getBoundingClientRect();
-                const maxRight = window.innerWidth - 16;
-                if (rect.right > maxRight) {
-                    popover.style.left = '-' + (rect.right - maxRight) + 'px';
-                }
-                const adjusted = popover.getBoundingClientRect();
-                if (adjusted.left < 12) {
-                    const currentLeft = Number.parseFloat(popover.style.left || '0') || 0;
-                    popover.style.left = (currentLeft + 12 - adjusted.left) + 'px';
+                const minLeft = 16;
+                if (rect.left < minLeft) {
+                    popover.style.right = '-' + (minLeft - rect.left) + 'px';
                 }
             }
 
@@ -1378,6 +1390,7 @@
                 draftEnd = parseISO(endHidden.value);
                 setViewFromDraft();
                 closeRangeWindow();
+                if (filterCard) filterCard.classList.add('is-date-picker-open');
                 popover.hidden = false;
                 trigger.setAttribute('aria-expanded', 'true');
                 render();
@@ -1387,6 +1400,7 @@
             function closePicker() {
                 popover.hidden = true;
                 trigger.setAttribute('aria-expanded', 'false');
+                if (filterCard) filterCard.classList.remove('is-date-picker-open');
                 closeRangeWindow();
             }
 

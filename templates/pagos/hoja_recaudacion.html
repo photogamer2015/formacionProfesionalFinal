@@ -511,7 +511,10 @@
                 {% endfor %}
             </select>
         </div>
-        <button type="submit" class="btn btn-primary">Generar</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary">Generar</button>
+            <a href="{% url 'academia:hoja_recaudacion' %}" class="btn btn-secondary">Limpiar</a>
+        </div>
     </form>
 </div>
 

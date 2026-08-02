@@ -44,15 +44,13 @@
                 <option value="presencial" {% if modalidad == 'presencial' %}selected{% endif %}>Presencial</option>
                 <option value="online" {% if modalidad == 'online' %}selected{% endif %}>Online</option>
             </select>
-        </div>
-        <div style="display:flex; gap:6px;">
-            <button type="submit" class="btn btn-primary">Filtrar</button>
-            {% if curso_seleccionado or modalidad %}
-                <a href="{% url 'academia:estudiantes_por_curso' %}" class="btn btn-secondary">Limpiar</a>
-            {% endif %}
-        </div>
-    </form>
-</div>
+	        </div>
+	        <div style="display:flex; gap:6px;">
+	            <button type="submit" class="btn btn-primary">Filtrar</button>
+	            <a href="{% url 'academia:estudiantes_por_curso' %}" class="btn btn-secondary">Limpiar</a>
+	        </div>
+	    </form>
+	</div>
 
 {# ─── Grupos ─── #}
 {% for grupo in grupos %}

@@ -35,13 +35,11 @@
             {% for item in sedes %}
                 <option value="{{ item }}" {% if sede == item %}selected{% endif %}>{{ item }}</option>
             {% endfor %}
-        </select>
-        <button type="submit" class="btn btn-primary">Buscar</button>
-        {% if q or sede %}
-            <a href="{% url 'academia:estudiantes_lista' %}" class="btn btn-secondary">Limpiar</a>
-        {% endif %}
-    </form>
-</div>
+	        </select>
+	        <button type="submit" class="btn btn-primary">Buscar</button>
+	        <a href="{% url 'academia:estudiantes_lista' %}" class="btn btn-secondary">Limpiar</a>
+	    </form>
+	</div>
 
 <div class="table-wrap">
     {% if estudiantes %}

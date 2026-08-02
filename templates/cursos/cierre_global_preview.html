@@ -217,9 +217,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 <option value="{{ a }}" {% if a == periodo_anio %}selected{% endif %}>{{ a }}</option>
                 {% endfor %}
             </select>
-        </div>
-        <button type="submit" class="btn btn-sm btn-secondary">Ver matrículas de este mes</button>
-    </form>
+	        </div>
+	        <button type="submit" class="btn btn-sm btn-secondary">Ver matrículas de este mes</button>
+	        <a href="{% url 'academia:cierre_global_preview' %}" class="btn btn-sm btn-secondary">Limpiar</a>
+	    </form>
     <div style="margin-top:10px; font-size:13px; color:#1a237e; font-weight:600;">
         Cerrando matrículas de: <strong>{{ periodo_nombre }} {{ periodo_anio }}</strong>
         · {{ totales.total_matriculas }} matrícula{{ totales.total_matriculas|pluralize }}
