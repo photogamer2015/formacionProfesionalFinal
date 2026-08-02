@@ -572,6 +572,10 @@
                 <td style="padding:8px; text-align:center; background:#f5f5f5;">
                     <div style="color:#bbb; font-size:11px;">—</div>
                 </td>
+                {% elif filtros.fecha_modulo_label and not mod.coincide_fecha_modulo %}
+                <td style="padding:8px; text-align:center; background:#f5f5f5;">
+                    <div style="color:#bbb; font-size:11px;">—</div>
+                </td>
                 {% elif row.tipo_matricula_codigo == 'programa_completo' and row.matricula.saldo <= 0 %}
                 <td style="padding:8px; text-align:center; background:#e8f5e9;">
                     <div style="color:#2e7d32; font-weight:700; font-size:11px; line-height:1.2;">

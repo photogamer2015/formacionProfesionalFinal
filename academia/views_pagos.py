@@ -1860,7 +1860,9 @@ def matricula_abonos(request, pk):
     })
 
 
-def _sincronizar_recuperacion_desde_pago(abono):
+def _sincronizar_recuperacion_desde_pago(
+    abono, *, fecha_marcada=None, fecha_programada=None
+):
     """Vincula automáticamente un pago tipo Recuperación con su registro.
 
     Si el módulo ya tenía una recuperación pendiente, la marca como pagada.
@@ -1897,7 +1899,7 @@ def _sincronizar_recuperacion_desde_pago(abono):
         recuperacion = RecuperacionPendiente(
             matricula=matricula,
             numero_modulo=abono.numero_modulo,
-            fecha_marcada=abono.fecha,
+            fecha_marcada=fecha_marcada or abono.fecha,
             saldo_pendiente_al_marcar=saldo_antes_del_pago,
             observaciones=(
                 'Registro generado automáticamente desde el pago de recuperación.'
@@ -1905,7 +1907,12 @@ def _sincronizar_recuperacion_desde_pago(abono):
         )
 
     recuperacion.numero_modulo = abono.numero_modulo
+    if fecha_marcada:
+        recuperacion.fecha_marcada = fecha_marcada
+    if fecha_programada is not None or recuperacion.pk is None:
+        recuperacion.fecha_programada = fecha_programada
     recuperacion.pagada = True
+    # La fecha propia del abono es la fecha en que se realizó el pago.
     recuperacion.fecha_recuperacion = abono.fecha
     recuperacion.abono = abono
     recuperacion.save()
@@ -1935,7 +1942,11 @@ def abono_crear(request, matricula_pk):
             abono.metodo_2 = form.cleaned_data.get('metodo_pago_2') or 'efectivo'
             abono.banco_2 = form.cleaned_data.get('banco_2') or ''
             abono.save()
-            _sincronizar_recuperacion_desde_pago(abono)
+            _sincronizar_recuperacion_desde_pago(
+                abono,
+                fecha_marcada=form.cleaned_data.get('fecha_marcada'),
+                fecha_programada=form.cleaned_data.get('fecha_programada'),
+            )
             messages.success(
                 request,
                 f'Pago mixto registrado: {abono.numero_recibo} (${abono.monto}). '
@@ -1946,7 +1957,11 @@ def abono_crear(request, matricula_pk):
             abono.matricula = matricula
             abono.registrado_por = request.user
             abono.save()
-            _sincronizar_recuperacion_desde_pago(abono)
+            _sincronizar_recuperacion_desde_pago(
+                abono,
+                fecha_marcada=form.cleaned_data.get('fecha_marcada'),
+                fecha_programada=form.cleaned_data.get('fecha_programada'),
+            )
             messages.success(
                 request,
                 f'Abono registrado: {abono.numero_recibo} por ${abono.monto}. '
@@ -1988,14 +2003,22 @@ def abono_editar(request, matricula_pk, abono_pk):
                 abono.metodo_2 = form.cleaned_data.get('metodo_pago_2') or 'efectivo'
                 abono.banco_2 = form.cleaned_data.get('banco_2') or ''
                 abono.save()
-                _sincronizar_recuperacion_desde_pago(abono)
+                _sincronizar_recuperacion_desde_pago(
+                    abono,
+                    fecha_marcada=form.cleaned_data.get('fecha_marcada'),
+                    fecha_programada=form.cleaned_data.get('fecha_programada'),
+                )
             else:
                 abono = form.save(commit=False)
                 abono.monto_2 = None
                 abono.metodo_2 = ''
                 abono.banco_2 = ''
                 abono.save()
-                _sincronizar_recuperacion_desde_pago(abono)
+                _sincronizar_recuperacion_desde_pago(
+                    abono,
+                    fecha_marcada=form.cleaned_data.get('fecha_marcada'),
+                    fecha_programada=form.cleaned_data.get('fecha_programada'),
+                )
             messages.success(request, f'Abono {abono.numero_recibo} actualizado.')
             return redirect('academia:matricula_abonos', pk=matricula_pk)
     else:
@@ -2564,6 +2587,20 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                 mod['numero'] in modulos_visibles and _modulo_en_rango_fecha(mod)
                 for mod in x['modulos_data']
             )
+        ]
+        modulos_con_fecha = []
+        for x in matriculas:
+            for mod in x['modulos_data']:
+                coincide_fecha = (
+                    mod['numero'] in modulos_visibles
+                    and _modulo_en_rango_fecha(mod)
+                )
+                mod['coincide_fecha_modulo'] = coincide_fecha
+                if coincide_fecha and mod['numero'] not in modulos_con_fecha:
+                    modulos_con_fecha.append(mod['numero'])
+        modulos_visibles = [
+            n for n in modulos_visibles
+            if n in modulos_con_fecha
         ]
 
     for x in matriculas:
@@ -3212,6 +3249,11 @@ def recuperacion_cobrar(request, recup_pk):
         post = request.POST.copy()
         post['tipo_pago'] = 'recuperacion'
         post['numero_modulo'] = recup.numero_modulo
+        post['fecha_marcada'] = recup.fecha_marcada.isoformat()
+        post['fecha_programada'] = (
+            recup.fecha_programada.isoformat()
+            if recup.fecha_programada else ''
+        )
         form = AbonoForm(post, matricula=matricula)
         if form.is_valid():
             abono = form.save(commit=False)
@@ -3259,6 +3301,8 @@ def recuperacion_cobrar(request, recup_pk):
                 'tipo_pago': 'recuperacion',
                 'numero_modulo': recup.numero_modulo,
                 'cuenta_para_saldo': True,
+                'fecha_marcada': recup.fecha_marcada,
+                'fecha_programada': recup.fecha_programada,
             },
             matricula=matricula,
         )
@@ -4215,6 +4259,12 @@ def pagos_por_modulo_export_excel(request):
             float(m.saldo or 0),
         ]
         for mod in x['modulos_visibles_data']:
+            if (
+                (filtros['fecha_modulo_desde_date'] or filtros['fecha_modulo_hasta_date'])
+                and not mod.get('coincide_fecha_modulo')
+            ):
+                fila.append('—')
+                continue
             if mod.get('aplica', True):
                 detalle = (
                     f"{mod['estado']} – ${float(mod['pagado']):.2f} / "
@@ -4354,6 +4404,12 @@ def pagos_por_modulo_export_pdf(request):
             Paragraph(f'<font color="{"#c62828" if (m.saldo or 0) > 0 else "#2e7d32"}"><b>${float(m.saldo or 0):.2f}</b></font>', cell_st),
         ]
         for mod in x['modulos_visibles_data']:
+            if (
+                (filtros['fecha_modulo_desde_date'] or filtros['fecha_modulo_hasta_date'])
+                and not mod.get('coincide_fecha_modulo')
+            ):
+                fila.append(Paragraph('<font color="#bbbbbb">—</font>', cell_st))
+                continue
             if not mod.get('aplica', True):
                 fila.append(Paragraph('<font color="#bbbbbb">—</font>', cell_st))
                 continue

@@ -739,6 +739,24 @@ class MatriculaForm(forms.ModelForm):
 
 class AbonoForm(forms.ModelForm):
     """Formulario para registrar/editar un pago (Abono / Pago Completo / Por Módulo / Recuperación)."""
+    fecha_marcada = forms.DateField(
+        required=False,
+        label='Fecha de la falta',
+        widget=forms.DateInput(attrs={
+            'class': 'form-input',
+            'type': 'date',
+            'id': 'id_fecha_marcada',
+        }),
+    )
+    fecha_programada = forms.DateField(
+        required=False,
+        label='Fecha para recuperar',
+        widget=forms.DateInput(attrs={
+            'class': 'form-input',
+            'type': 'date',
+            'id': 'id_fecha_programada',
+        }),
+    )
     tipo_cobro = forms.ChoiceField(
         choices=[('un_solo_metodo', 'Un solo método'), ('mixto', 'Pago Mixto')],
         required=False, initial='un_solo_metodo',
@@ -848,6 +866,18 @@ class AbonoForm(forms.ModelForm):
             self.initial['metodo_pago_2'] = self.instance.metodo_2
             self.initial['banco_2'] = self.instance.banco_2
 
+        if self.instance and self.instance.pk:
+            recuperacion = self.instance.recuperaciones.order_by(
+                '-actualizado', '-pk'
+            ).first()
+            if recuperacion:
+                self.initial.setdefault(
+                    'fecha_marcada', recuperacion.fecha_marcada
+                )
+                self.initial.setdefault(
+                    'fecha_programada', recuperacion.fecha_programada
+                )
+
         self.matricula = matricula
         self.es_pago_unico_online = bool(
             matricula and matricula.tiene_pago_unico_online
@@ -856,6 +886,18 @@ class AbonoForm(forms.ModelForm):
         self.fields['banco'].required = False
         self.fields['banco'].empty_label = '— Selecciona un banco —'
         self.fields['numero_modulo'].required = False
+        self.modulos_con_pago_registrado = []
+
+        if matricula:
+            pagos_modulo_qs = matricula.abonos.filter(
+                tipo_pago__in=('por_modulo', 'solo_modulo', 'recuperacion'),
+                numero_modulo__isnull=False,
+            )
+            if self.instance and self.instance.pk:
+                pagos_modulo_qs = pagos_modulo_qs.exclude(pk=self.instance.pk)
+            self.modulos_con_pago_registrado = sorted(
+                set(pagos_modulo_qs.values_list('numero_modulo', flat=True))
+            )
 
         # "Abono + Módulo" se retiró del registro de pagos nuevos. Se conserva
         # solo al editar recibos antiguos de ese tipo para no romper historial.
@@ -909,6 +951,8 @@ class AbonoForm(forms.ModelForm):
         tipo_pago = cleaned.get('tipo_pago') or 'abono'
         numero_modulo = cleaned.get('numero_modulo')
         cuenta = cleaned.get('cuenta_para_saldo')
+        fecha_marcada = cleaned.get('fecha_marcada')
+        fecha_programada = cleaned.get('fecha_programada')
         # cuenta_para_saldo viene como string 'True'/'False' por el Select widget;
         # Django convierte 'True'/'False' al BooleanField, pero por seguridad:
         if isinstance(cuenta, str):
@@ -918,11 +962,42 @@ class AbonoForm(forms.ModelForm):
         # Si NO es recuperación, siempre cuenta para saldo
         if tipo_pago != 'recuperacion':
             cleaned['cuenta_para_saldo'] = True
+            cleaned['fecha_marcada'] = None
+            cleaned['fecha_programada'] = None
+        else:
+            if not fecha_marcada:
+                self.add_error(
+                    'fecha_marcada',
+                    'Debes indicar la fecha de la falta.',
+                )
+            if (
+                fecha_marcada
+                and fecha_programada
+                and fecha_programada < fecha_marcada
+            ):
+                self.add_error(
+                    'fecha_programada',
+                    'La fecha para recuperar no puede ser anterior a la fecha de la falta.',
+                )
 
         # Si tipo es por_modulo, solo_modulo o recuperacion, el módulo es obligatorio
         if tipo_pago in ('por_modulo', 'solo_modulo', 'recuperacion') and not numero_modulo:
             self.add_error('numero_modulo',
                            'Debes seleccionar un módulo para este tipo de pago.')
+
+        if (
+            tipo_pago in ('por_modulo', 'solo_modulo', 'recuperacion')
+            and numero_modulo
+            and numero_modulo in self.modulos_con_pago_registrado
+        ):
+            self.add_error(
+                'numero_modulo',
+                (
+                    f'No se puede registrar este pago porque el Módulo '
+                    f'{numero_modulo} ya se encuentra registrado en el '
+                    f'historial de pagos.'
+                ),
+            )
 
         # Validar que el número de módulo esté en rango [1..n_mod] del curso.
         # Solo aplica cuando el tipo de pago realmente usa el módulo. Para

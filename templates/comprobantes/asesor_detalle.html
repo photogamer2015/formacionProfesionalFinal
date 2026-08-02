@@ -4,14 +4,16 @@
 {% block title %}Perfil de {{ asesor.first_name|default:asesor.username }} — Formación Profesional EC{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'perfil.css' %}?v=20260801-1">
+<link rel="stylesheet" href="{% static 'perfil.css' %}?v=20260802-4">
 {% endblock %}
 
 {% block content %}
 <nav class="profile-breadcrumb" aria-label="Ruta de navegación">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a>
+    {% if puede_gestionar_matriculas %}
     <span aria-hidden="true">›</span>
     <a href="{% url 'academia:comprobante_menu' %}">Comprobantes</a>
+    {% endif %}
     {% if es_admin %}
         <span aria-hidden="true">›</span>
         <a href="{% url 'academia:comprobante_totales' %}">Ranking</a>
@@ -77,16 +79,195 @@
                 </span>
             </div>
 
-            <p class="profile-intro">
-                {% if es_perfil_propio %}
-                    Este es tu espacio personal dentro de Formación Profesional EC.
-                    Aquí puedes consultar tu actividad y personalizar cómo te ve el equipo.
+            <div class="profile-social-bar" aria-label="Información social del perfil">
+                <button type="button" class="profile-social-metric" id="friends-dialog-open" aria-haspopup="dialog">
+                    <strong>{{ total_amigos }}</strong>
+                    <span>Amigo{{ total_amigos|pluralize }}</span>
+                </button>
+                <span class="profile-social-divider" aria-hidden="true"></span>
+                <div class="profile-social-metric profile-social-metric-static">
+                    <strong>{{ total_me_gusta }}</strong>
+                    <span>Me gusta</span>
+                </div>
+
+                <div class="profile-social-actions">
+                    {% if es_perfil_propio %}
+                    <button type="button" class="profile-social-action profile-social-action-primary" id="friend-search-open" aria-haspopup="dialog">
+                        <span aria-hidden="true">＋</span>
+                        Añadir amigo
+                    </button>
+                    {% else %}
+                        {% if estado_amistad == 'sin_relacion' %}
+                        <form method="post" action="{% url 'academia:amistad_solicitar' asesor.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="profile-social-action profile-social-action-primary">
+                                <span aria-hidden="true">＋</span> Añadir amigo
+                            </button>
+                        </form>
+                        {% elif estado_amistad == 'solicitud_enviada' %}
+                        <span class="profile-social-status">Solicitud enviada</span>
+                        <form method="post" action="{% url 'academia:amistad_accion' relacion_amistad.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="accion" value="cancelar">
+                            <button type="submit" class="profile-social-action profile-social-action-muted">Cancelar</button>
+                        </form>
+                        {% elif estado_amistad == 'solicitud_recibida' %}
+                        <form method="post" action="{% url 'academia:amistad_accion' relacion_amistad.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="accion" value="aceptar">
+                            <button type="submit" class="profile-social-action profile-social-action-primary">✓ Aceptar amistad</button>
+                        </form>
+                        <form method="post" action="{% url 'academia:amistad_accion' relacion_amistad.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="accion" value="rechazar">
+                            <button type="submit" class="profile-social-action profile-social-action-muted">Rechazar</button>
+                        </form>
+                        {% elif estado_amistad == 'amigos' %}
+                        <span class="profile-social-status profile-social-status-friend">✓ Amigos</span>
+                        <form method="post" action="{% url 'academia:amistad_accion' relacion_amistad.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="accion" value="eliminar">
+                            <button type="submit" class="profile-social-action profile-social-action-muted">Eliminar</button>
+                        </form>
+                        {% endif %}
+
+                    <form method="post" action="{% url 'academia:perfil_me_gusta' asesor.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="profile-like-button{% if dio_me_gusta %} is-liked{% endif %}" aria-pressed="{% if dio_me_gusta %}true{% else %}false{% endif %}">
+                            <span aria-hidden="true">♥</span>
+                            {% if dio_me_gusta %}Te gusta{% else %}Me gusta{% endif %}
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <section class="profile-mural" aria-labelledby="profile-mural-title">
+                {% if es_perfil_propio and editar_mural %}
+                <form method="post" class="profile-mural-form" id="profile-mural-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="preferencia" value="mural">
+                    <header class="profile-mural-header">
+                        <div>
+                            <p class="profile-eyebrow">Tu espacio personal</p>
+                            <h2 id="profile-mural-title">Mi mural de Formación EC</h2>
+                            <p>Escribe cómo te defines como persona en tu mural de Formación EC.</p>
+                        </div>
+                        <span class="profile-mural-counter" id="profile-mural-counter">0/500</span>
+                    </header>
+
+                    <label class="sr-only" for="profile-mural-description">Presentación personal</label>
+                    <textarea
+                        class="profile-mural-description"
+                        id="profile-mural-description"
+                        name="descripcion_personal"
+                        rows="3"
+                        maxlength="500"
+                        placeholder="Cuéntale al equipo quién eres, qué valoras y qué te inspira."
+                    >{{ descripcion_personal }}</textarea>
+
+                    <div class="profile-mural-preferences">
+                        <fieldset class="profile-mural-group" data-choice-limit="{{ mural_max_selecciones }}">
+                            <legend><span aria-hidden="true">♫</span> Música</legend>
+                            <div class="profile-mural-options">
+                                {% for opcion in musica_mural %}
+                                <label class="profile-mural-choice">
+                                    <input type="checkbox" name="musica" value="{{ opcion.clave }}" {% if opcion.seleccionada %}checked{% endif %}>
+                                    <span>{{ opcion.etiqueta }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="profile-mural-group" data-choice-limit="{{ mural_max_selecciones }}">
+                            <legend><span aria-hidden="true">✦</span> Hobbies favoritos</legend>
+                            <div class="profile-mural-options">
+                                {% for opcion in hobbies_mural %}
+                                <label class="profile-mural-choice">
+                                    <input type="checkbox" name="hobbies" value="{{ opcion.clave }}" {% if opcion.seleccionada %}checked{% endif %}>
+                                    <span>{{ opcion.etiqueta }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="profile-mural-group" data-choice-limit="{{ mural_max_selecciones }}">
+                            <legend><span aria-hidden="true">▶</span> Películas y series</legend>
+                            <div class="profile-mural-options">
+                                {% for opcion in peliculas_mural %}
+                                <label class="profile-mural-choice">
+                                    <input type="checkbox" name="peliculas" value="{{ opcion.clave }}" {% if opcion.seleccionada %}checked{% endif %}>
+                                    <span>{{ opcion.etiqueta }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="profile-mural-group" data-choice-limit="{{ mural_max_selecciones }}">
+                            <legend><span aria-hidden="true">◎</span> Otros intereses</legend>
+                            <div class="profile-mural-options">
+                                {% for opcion in intereses_mural %}
+                                <label class="profile-mural-choice">
+                                    <input type="checkbox" name="intereses" value="{{ opcion.clave }}" {% if opcion.seleccionada %}checked{% endif %}>
+                                    <span>{{ opcion.etiqueta }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </fieldset>
+                    </div>
+
+                    <div class="profile-mural-actions">
+                        <span>Selecciona hasta {{ mural_max_selecciones }} gustos por categoría.</span>
+                        <div class="profile-mural-action-buttons">
+                            <a href="{% url 'academia:comprobante_asesor_detalle' asesor.pk %}" class="profile-mural-cancel">Cancelar</a>
+                            <button type="submit" class="profile-mural-save" id="profile-mural-save">
+                                <span aria-hidden="true">✓</span>
+                                Guardar mural
+                            </button>
+                        </div>
+                    </div>
+                </form>
                 {% else %}
-                    Resumen profesional, ventas y estudiantes gestionados por este miembro del equipo.
+                <header class="profile-mural-header">
+                    <div>
+                        <p class="profile-eyebrow">{% if es_perfil_propio %}Tu espacio personal{% else %}Espacio personal{% endif %}</p>
+                        <h2 id="profile-mural-title">{% if es_perfil_propio %}Mi mural de Formación EC{% else %}Mural de Formación EC{% endif %}</h2>
+                    </div>
+                    {% if es_perfil_propio %}
+                    <a href="?editar_mural=1" class="profile-mural-edit">
+                        <span aria-hidden="true">✎</span>
+                        Editar mural
+                    </a>
+                    {% endif %}
+                </header>
+                <p class="profile-mural-about{% if not descripcion_personal %} is-empty{% endif %}">
+                    {% if descripcion_personal %}
+                        {{ descripcion_personal|linebreaksbr }}
+                    {% elif es_perfil_propio %}
+                        Escribe cómo te defines como persona y elige tus gustos para completar tu mural.
+                    {% else %}
+                        Este miembro del equipo aún no ha escrito su presentación personal.
+                    {% endif %}
+                </p>
+                {% if mural_tiene_gustos %}
+                <div class="profile-mural-readonly">
+                    {% for titulo, opciones in mural_grupos_visibles %}
+                    <div class="profile-mural-readonly-group">
+                        <strong>{{ titulo }}</strong>
+                        <div class="profile-mural-options">
+                            {% for opcion in opciones %}
+                                <span class="profile-mural-tag">{{ opcion.etiqueta }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
                 {% endif %}
-            </p>
+                {% endif %}
+            </section>
 
             <div class="profile-contact-list">
+                {% if puede_ver_actividad_perfil %}
                 <div class="profile-contact-item">
                     <span class="profile-contact-icon" aria-hidden="true">✉</span>
                     <span>
@@ -98,6 +279,7 @@
                         {% endif %}
                     </span>
                 </div>
+                {% endif %}
                 <div class="profile-contact-item">
                     <span class="profile-contact-icon" aria-hidden="true">◷</span>
                     <span>
@@ -116,13 +298,16 @@
         </div>
     </div>
 
+    {% if puede_ver_actividad_perfil %}
     <nav class="profile-tabs" aria-label="Secciones del perfil">
         <a href="#resumen" class="is-active">Resumen</a>
         <a href="#estudiantes">Estudiantes</a>
         <a href="#actividad">Actividad</a>
     </nav>
+    {% endif %}
 </section>
 
+{% if puede_ver_actividad_perfil %}
 <section class="profile-stats" id="resumen" aria-label="Resumen del perfil">
     <button type="button" class="profile-stat profile-stat-primary" data-summary-target="summary-ventas" data-summary-title="Ventas registradas" aria-haspopup="dialog">
         <span class="profile-stat-icon" aria-hidden="true">↗</span>
@@ -425,6 +610,81 @@
     </div>
     {% endif %}
 </section>
+{% endif %}
+
+<dialog class="profile-social-dialog" id="friends-dialog" aria-labelledby="friends-dialog-title">
+    <header class="avatar-dialog-header">
+        <div>
+            <p class="profile-eyebrow">Comunidad</p>
+            <h2 id="friends-dialog-title">Amigos de {{ asesor.first_name|default:asesor.username }}</h2>
+            <p>{{ total_amigos }} amistad{{ total_amigos|pluralize:"es" }} confirmada{{ total_amigos|pluralize }}.</p>
+        </div>
+        <button type="button" class="avatar-dialog-close" data-friends-close aria-label="Cerrar lista de amigos">×</button>
+    </header>
+    <div class="profile-social-dialog-body">
+        {% if amigos_perfil %}
+        <div class="profile-friend-list">
+            {% for amigo in amigos_perfil %}
+            <a href="{% url 'academia:comprobante_asesor_detalle' amigo.user.pk %}" class="profile-friend-item">
+                <img src="{% static amigo.avatar_archivo %}" alt="" aria-hidden="true">
+                <span>
+                    <strong>{{ amigo.nombre }}</strong>
+                    <small>@{{ amigo.user.username }} · {{ amigo.rol }}</small>
+                </span>
+                <span class="profile-friend-open" aria-hidden="true">›</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="profile-social-empty">
+            <span aria-hidden="true">＋</span>
+            <strong>Aún no hay amigos agregados</strong>
+            <p>Las amistades confirmadas aparecerán en esta lista.</p>
+        </div>
+        {% endif %}
+    </div>
+    <footer class="avatar-dialog-actions">
+        <button type="button" class="avatar-button avatar-button-secondary" data-friends-close>Cerrar</button>
+    </footer>
+</dialog>
+
+{% if es_perfil_propio %}
+<dialog
+    class="profile-social-dialog"
+    id="friend-search-dialog"
+    aria-labelledby="friend-search-title"
+    data-search-url="{% url 'academia:buscar_amigos' %}"
+>
+    <header class="avatar-dialog-header">
+        <div>
+            <p class="profile-eyebrow">Comunidad Formación EC</p>
+            <h2 id="friend-search-title">Añadir amigo</h2>
+            <p>Encuentra a cualquier usuario registrado, sin importar su rol.</p>
+        </div>
+        <button type="button" class="avatar-dialog-close" data-friend-search-close aria-label="Cerrar búsqueda">×</button>
+    </header>
+    <div class="profile-social-dialog-body">
+        <form class="profile-friend-search" id="friend-search-form" role="search">
+            {% csrf_token %}
+            <label class="sr-only" for="friend-search-input">Buscar por nombre o usuario</label>
+            <span aria-hidden="true">⌕</span>
+            <input
+                type="search"
+                id="friend-search-input"
+                placeholder="Buscar por nombre o usuario"
+                autocomplete="off"
+                maxlength="80"
+            >
+            <button type="submit">Buscar</button>
+        </form>
+        <p class="profile-search-status" id="friend-search-status" aria-live="polite"></p>
+        <div class="profile-friend-search-results" id="friend-search-results"></div>
+    </div>
+    <footer class="avatar-dialog-actions">
+        <button type="button" class="avatar-button avatar-button-secondary" data-friend-search-close>Cerrar</button>
+    </footer>
+</dialog>
+{% endif %}
 
 {% if es_perfil_propio %}
 <dialog class="avatar-dialog cover-dialog" id="cover-dialog" aria-labelledby="cover-dialog-title">
@@ -501,5 +761,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'perfil.js' %}?v=20260801-1" defer></script>
+<script src="{% static 'perfil.js' %}?v=20260802-3" defer></script>
 {% endblock %}

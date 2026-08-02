@@ -19,9 +19,10 @@ from .forms import (
     AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, MatriculaForm,
 )
 from .models import (
-    Abono, ActividadUsuario, Adicional, AdicionalArchivado, CierreCurso, Comprobante, Curso,
-    CuotaManualRecaudacion, Estudiante, EstudianteArchivado, JornadaCurso, Matricula,
-    MatriculaArchivada, PerfilUsuario, PersonaExterna, Recordatorio,
+    Abono, ActividadUsuario, Adicional, AdicionalArchivado, AmistadUsuario,
+    CierreCurso, Comprobante, Curso, CuotaManualRecaudacion, Estudiante,
+    EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
+    MeGustaPerfil, PerfilUsuario, PersonaExterna, Recordatorio,
     RecuperacionPendiente, Sede,
 )
 from .permisos import puede_gestionar_jornadas, puede_ver_jornadas
@@ -447,6 +448,102 @@ class PerfilUsuarioTests(TestCase):
         self.assertRedirects(response, self.url)
         self.assertFalse(PerfilUsuario.objects.filter(user=self.user).exists())
 
+    def test_usuario_puede_guardar_su_mural_sin_perder_avatar_ni_portada(self):
+        PerfilUsuario.objects.create(
+            user=self.user,
+            avatar='leon',
+            portada='castillo',
+        )
+
+        response = self.client.post(
+            self.url,
+            {
+                'preferencia': 'mural',
+                'descripcion_personal': 'Me define la creatividad y ayudar al equipo.',
+                'musica': ['latina', 'rock', 'reggaeton'],
+                'hobbies': ['lectura', 'viajes'],
+                'peliculas': ['comedia', 'ciencia_ficcion'],
+                'intereses': ['tecnologia', 'educacion'],
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, self.url)
+        perfil = PerfilUsuario.objects.get(user=self.user)
+        self.assertEqual(perfil.avatar, 'leon')
+        self.assertEqual(perfil.portada, 'castillo')
+        self.assertEqual(
+            perfil.descripcion_personal,
+            'Me define la creatividad y ayudar al equipo.',
+        )
+        self.assertEqual(perfil.musica_favorita, ['latina', 'rock', 'reggaeton'])
+        self.assertEqual(perfil.hobbies_favoritos, ['lectura', 'viajes'])
+        self.assertEqual(
+            perfil.peliculas_favoritas,
+            ['comedia', 'ciencia_ficcion'],
+        )
+        self.assertEqual(
+            perfil.intereses_personales,
+            ['tecnologia', 'educacion'],
+        )
+        self.assertContains(
+            response,
+            'Tu mural de Formación EC se actualizó correctamente.',
+        )
+        self.assertContains(response, 'Reggaetón')
+        self.assertContains(response, 'Editar mural')
+        self.assertNotContains(response, 'id="profile-mural-form"')
+
+        response_edicion = self.client.get(self.url, {'editar_mural': '1'})
+        self.assertContains(response_edicion, 'id="profile-mural-form"')
+        self.assertContains(response_edicion, 'value="reggaeton" checked')
+
+    def test_mural_rechaza_opciones_manipuladas(self):
+        response = self.client.post(
+            self.url,
+            {
+                'preferencia': 'mural',
+                'descripcion_personal': 'Presentación válida',
+                'musica': ['opcion_inexistente'],
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, self.url)
+        self.assertFalse(PerfilUsuario.objects.filter(user=self.user).exists())
+        self.assertContains(
+            response,
+            'Selecciona hasta 6 opciones válidas en cada categoría.',
+        )
+
+    def test_mural_se_muestra_al_consultar_otro_perfil(self):
+        otro_usuario = User.objects.create_user(
+            username='perfil_publico',
+            password='clave12345',
+            first_name='Ana',
+        )
+        PerfilUsuario.objects.create(
+            user=otro_usuario,
+            descripcion_personal='Soy curiosa, organizada y disfruto aprender.',
+            musica_favorita=['salsa'],
+            hobbies_favoritos=['fotografia'],
+            peliculas_favoritas=['documentales'],
+            intereses_personales=['educacion'],
+        )
+
+        response = self.client.get(reverse(
+            'academia:comprobante_asesor_detalle',
+            args=[otro_usuario.pk],
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Soy curiosa, organizada y disfruto aprender.')
+        self.assertContains(response, 'Salsa')
+        self.assertContains(response, 'Fotografía')
+        self.assertContains(response, 'Documentales')
+        self.assertContains(response, 'Educación')
+        self.assertNotContains(response, 'id="profile-mural-form"')
+
     def test_resumen_muestra_conteos_no_montos(self):
         curso = Curso.objects.create(
             nombre='Curso para indicadores del perfil',
@@ -526,6 +623,168 @@ class PerfilUsuarioTests(TestCase):
         self.assertContains(response, 'Saldo pendiente: $90,00')
         self.assertContains(response, 'Saldo pendiente: $80,00')
         self.assertContains(response, 'Retiro voluntario')
+
+
+class PerfilSocialTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username='carlos_social',
+            password='clave12345',
+            first_name='Carlos',
+            last_name='Mora',
+        )
+        self.otro = User.objects.create_user(
+            username='ana_social',
+            password='clave12345',
+            email='ana.social@example.com',
+            first_name='Ana',
+            last_name='Paredes',
+        )
+        self.tercero = User.objects.create_superuser(
+            username='super_social',
+            password='clave12345',
+            first_name='Lucía',
+            last_name='Admin',
+        )
+        PerfilUsuario.objects.create(user=self.usuario, avatar='leon')
+        PerfilUsuario.objects.create(user=self.otro, avatar='latina')
+        self.client.force_login(self.usuario)
+
+    def perfil_url(self, user):
+        return reverse(
+            'academia:comprobante_asesor_detalle',
+            args=[user.pk],
+        )
+
+    def test_busqueda_ignora_mayusculas_y_no_filtra_por_rol(self):
+        response = self.client.get(reverse('academia:buscar_amigos'), {
+            'q': 'aNa',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        resultados = response.json()['resultados']
+        self.assertEqual([item['id'] for item in resultados], [self.otro.pk])
+        self.assertEqual(resultados[0]['estado'], 'sin_relacion')
+
+        response_todos = self.client.get(reverse('academia:buscar_amigos'))
+        ids = {item['id'] for item in response_todos.json()['resultados']}
+        self.assertIn(self.otro.pk, ids)
+        self.assertIn(self.tercero.pk, ids)
+
+    def test_solicitud_aparece_en_campana_y_destinatario_puede_aceptar(self):
+        response = self.client.post(reverse(
+            'academia:amistad_solicitar',
+            args=[self.otro.pk],
+        ))
+
+        self.assertRedirects(response, self.perfil_url(self.otro))
+        relacion = AmistadUsuario.objects.get()
+        self.assertEqual(relacion.estado, 'pendiente')
+        self.assertEqual(relacion.solicitada_por, self.usuario)
+        self.assertLess(relacion.usuario_a_id, relacion.usuario_b_id)
+
+        self.client.force_login(self.otro)
+        response_notificacion = self.client.get(self.perfil_url(self.otro))
+        self.assertEqual(
+            response_notificacion.context['solicitudes_amistad_pendientes_n'],
+            1,
+        )
+        self.assertEqual(
+            response_notificacion.context['notificaciones_no_leidas_n'],
+            1,
+        )
+        self.assertContains(response_notificacion, 'Te envió una solicitud de amistad.')
+        self.assertContains(response_notificacion, 'value="aceptar"')
+
+        response_aceptar = self.client.post(
+            reverse('academia:amistad_accion', args=[relacion.pk]),
+            {'accion': 'aceptar'},
+        )
+
+        self.assertRedirects(response_aceptar, self.perfil_url(self.usuario))
+        relacion.refresh_from_db()
+        self.assertEqual(relacion.estado, 'aceptada')
+
+        response_perfil = self.client.get(self.perfil_url(self.otro))
+        self.assertEqual(response_perfil.context['total_amigos'], 1)
+        self.assertContains(response_perfil, 'Carlos Mora')
+        self.assertContains(response_perfil, 'id="friends-dialog"')
+
+    def test_solicitud_puede_rechazarse_y_cancelarse(self):
+        self.client.post(reverse(
+            'academia:amistad_solicitar',
+            args=[self.otro.pk],
+        ))
+        relacion = AmistadUsuario.objects.get()
+
+        response_cancelar = self.client.post(
+            reverse('academia:amistad_accion', args=[relacion.pk]),
+            {'accion': 'cancelar'},
+        )
+        self.assertEqual(response_cancelar.status_code, 302)
+        self.assertFalse(AmistadUsuario.objects.exists())
+
+        self.client.post(reverse(
+            'academia:amistad_solicitar',
+            args=[self.otro.pk],
+        ))
+        relacion = AmistadUsuario.objects.get()
+        self.client.force_login(self.otro)
+        response_rechazar = self.client.post(
+            reverse('academia:amistad_accion', args=[relacion.pk]),
+            {'accion': 'rechazar'},
+        )
+        self.assertEqual(response_rechazar.status_code, 302)
+        self.assertFalse(AmistadUsuario.objects.exists())
+
+    def test_me_gusta_se_puede_activar_y_quitar(self):
+        url = reverse('academia:perfil_me_gusta', args=[self.otro.pk])
+
+        response = self.client.post(url)
+
+        self.assertRedirects(response, self.perfil_url(self.otro))
+        self.assertTrue(MeGustaPerfil.objects.filter(
+            usuario=self.usuario,
+            perfil=self.otro,
+        ).exists())
+        response_perfil = self.client.get(self.perfil_url(self.otro))
+        self.assertEqual(response_perfil.context['total_me_gusta'], 1)
+        self.assertTrue(response_perfil.context['dio_me_gusta'])
+        self.assertContains(response_perfil, 'Te gusta')
+
+        self.client.post(url)
+        self.assertFalse(MeGustaPerfil.objects.exists())
+
+    def test_no_permite_amistad_ni_me_gusta_con_el_perfil_propio(self):
+        self.client.post(reverse(
+            'academia:amistad_solicitar',
+            args=[self.usuario.pk],
+        ))
+        self.client.post(reverse(
+            'academia:perfil_me_gusta',
+            args=[self.usuario.pk],
+        ))
+
+        self.assertFalse(AmistadUsuario.objects.exists())
+        self.assertFalse(MeGustaPerfil.objects.exists())
+
+    def test_otro_usuario_ve_perfil_social_pero_no_datos_operativos(self):
+        PerfilUsuario.objects.filter(user=self.otro).update(
+            descripcion_personal='Me gusta aprender y compartir ideas.',
+            musica_favorita=['rock'],
+        )
+
+        response = self.client.get(self.perfil_url(self.otro))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['puede_ver_actividad_perfil'])
+        self.assertContains(response, 'Me gusta aprender y compartir ideas.')
+        self.assertContains(response, 'Rock')
+        self.assertContains(response, 'Añadir amigo')
+        self.assertContains(response, 'Me gusta')
+        self.assertNotContains(response, 'Ventas registradas')
+        self.assertNotContains(response, 'Estudiantes matriculados')
+        self.assertNotContains(response, self.otro.email)
 
 
 class RecordatorioAvatarTests(TestCase):
@@ -3195,6 +3454,151 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertContains(response, 'data-pago-unico-online="1"')
         self.assertContains(response, '>Un solo pago</option>')
 
+    def test_registrar_pago_rechaza_modulo_ya_registrado_en_historial(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 3),
+            monto=Decimal('20.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+
+        form = AbonoForm(
+            self._abono_data(
+                fecha='2026-08-10',
+                monto='10.00',
+                tipo_pago='recuperacion',
+                numero_modulo='1',
+                cuenta_para_saldo='False',
+                fecha_marcada='2026-08-02',
+                fecha_programada='2026-08-10',
+                tipo_cobro='un_solo_metodo',
+                metodo='efectivo',
+                monto_pago_1='',
+                metodo_pago_1='',
+                monto_pago_2='',
+                metodo_pago_2='',
+            ),
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('numero_modulo', form.errors)
+        self.assertIn(
+            'ya se encuentra registrado',
+            form.errors['numero_modulo'][0],
+        )
+
+    def test_detalle_pago_expone_modulos_registrados_para_el_selector(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 3),
+            monto=Decimal('20.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+        admin = User.objects.create_superuser(
+            username='admin_modulo_registrado_selector',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:matricula_abonos', kwargs={'pk': matricula.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['form'].modulos_con_pago_registrado,
+            [1],
+        )
+        self.assertContains(response, 'modulos-registrados-pago')
+        self.assertContains(response, 'aviso-modulo-registrado')
+
+    def test_editar_pago_conserva_su_modulo_actual(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('25.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 6),
+            monto=Decimal('25.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+
+        form = AbonoForm(
+            self._abono_data(tipo_pago='solo_modulo', numero_modulo='1'),
+            instance=abono,
+            matricula=matricula,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_editar_pago_rechaza_modulo_de_otro_recibo(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('50.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 6),
+            monto=Decimal('25.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+        abono_modulo_2 = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 7, 13),
+            monto=Decimal('25.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=2,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+
+        form = AbonoForm(
+            self._abono_data(tipo_pago='solo_modulo', numero_modulo='1'),
+            instance=abono_modulo_2,
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('numero_modulo', form.errors)
+        self.assertIn(
+            'ya se encuentra registrado',
+            form.errors['numero_modulo'][0],
+        )
+
     def test_pago_recuperacion_vincula_automaticamente_la_marca_pendiente(self):
         matricula = self._crear_matricula_pago_unico_online()
         recuperacion = RecuperacionPendiente.objects.create(
@@ -3216,9 +3620,11 @@ class PagoInicialMatriculaTests(TestCase):
                 kwargs={'matricula_pk': matricula.pk},
             ),
             self._abono_data(
-                fecha='2026-08-02',
+                fecha='2026-08-12',
                 tipo_pago='recuperacion',
                 numero_modulo='1',
+                fecha_marcada='2026-08-03',
+                fecha_programada='2026-08-11',
                 tipo_cobro='un_solo_metodo',
                 metodo='efectivo',
                 monto_pago_1='',
@@ -3231,13 +3637,109 @@ class PagoInicialMatriculaTests(TestCase):
         recuperacion.refresh_from_db()
         self.assertEqual(response.status_code, 302)
         self.assertTrue(recuperacion.pagada)
-        self.assertEqual(recuperacion.fecha_recuperacion, date(2026, 8, 2))
+        self.assertEqual(recuperacion.fecha_marcada, date(2026, 8, 3))
+        self.assertEqual(recuperacion.fecha_programada, date(2026, 8, 11))
+        self.assertEqual(recuperacion.fecha_recuperacion, date(2026, 8, 12))
         self.assertIsNotNone(recuperacion.abono)
+        self.assertEqual(recuperacion.abono.fecha, date(2026, 8, 12))
         self.assertEqual(recuperacion.abono.tipo_pago, 'recuperacion')
         self.assertEqual(
             RecuperacionPendiente.objects.filter(matricula=matricula).count(),
             1,
         )
+
+    def test_pago_recuperacion_exige_fecha_de_la_falta(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        form = AbonoForm(
+            self._abono_data(
+                tipo_pago='recuperacion',
+                numero_modulo='1',
+                fecha_marcada='',
+                fecha_programada='2026-08-10',
+            ),
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('fecha_marcada', form.errors)
+
+    def test_pago_recuperacion_directo_guarda_las_tres_fechas(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        admin = User.objects.create_superuser(
+            username='admin_pago_recuperacion_directo',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:abono_crear',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._abono_data(
+                fecha='2026-08-12',
+                tipo_pago='recuperacion',
+                numero_modulo='1',
+                cuenta_para_saldo='False',
+                fecha_marcada='2026-08-03',
+                fecha_programada='2026-08-11',
+                tipo_cobro='un_solo_metodo',
+                metodo='efectivo',
+                monto_pago_1='',
+                metodo_pago_1='',
+                monto_pago_2='',
+                metodo_pago_2='',
+            ),
+        )
+
+        recuperacion = RecuperacionPendiente.objects.get(matricula=matricula)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(recuperacion.fecha_marcada, date(2026, 8, 3))
+        self.assertEqual(recuperacion.fecha_programada, date(2026, 8, 11))
+        self.assertEqual(recuperacion.fecha_recuperacion, date(2026, 8, 12))
+        self.assertEqual(recuperacion.abono.fecha, date(2026, 8, 12))
+        self.assertTrue(recuperacion.pagada)
+
+    def test_pago_recuperacion_rechaza_fecha_programada_anterior(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        form = AbonoForm(
+            self._abono_data(
+                tipo_pago='recuperacion',
+                numero_modulo='1',
+                fecha_marcada='2026-08-10',
+                fecha_programada='2026-08-09',
+            ),
+            matricula=matricula,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('fecha_programada', form.errors)
+
+    def test_editar_pago_recuperacion_precarga_fechas_academicas(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        abono = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 12),
+            monto=Decimal('10.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=1,
+            cuenta_para_saldo=False,
+            metodo='efectivo',
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 8, 3),
+            fecha_programada=date(2026, 8, 11),
+            fecha_recuperacion=date(2026, 8, 12),
+            pagada=True,
+            abono=abono,
+        )
+
+        form = AbonoForm(instance=abono, matricula=matricula)
+
+        self.assertEqual(form['fecha_marcada'].value(), date(2026, 8, 3))
+        self.assertEqual(form['fecha_programada'].value(), date(2026, 8, 11))
 
     def test_editar_pago_antiguo_conserva_abono_mas_modulo(self):
         matricula = Matricula.objects.create(
@@ -3601,7 +4103,7 @@ class PagosPorModuloFiltroTests(TestCase):
             fecha_modulo_hasta=date(2026, 7, 15),
         )
 
-        self.assertEqual(modulos_visibles, [1, 2, 3])
+        self.assertEqual(modulos_visibles, [1, 2])
         self.assertCountEqual(
             [x['matricula'].pk for x in matriculas],
             [matricula_dentro.pk, matricula_otro_modulo.pk],
@@ -3614,6 +4116,15 @@ class PagosPorModuloFiltroTests(TestCase):
             matricula_despues.pk,
             [x['matricula'].pk for x in matriculas],
         )
+        modulos_por_matricula = {
+            x['matricula'].pk: [
+                mod['numero'] for mod in x['modulos_visibles_data']
+                if mod.get('coincide_fecha_modulo')
+            ]
+            for x in matriculas
+        }
+        self.assertEqual(modulos_por_matricula[matricula_dentro.pk], [1])
+        self.assertEqual(modulos_por_matricula[matricula_otro_modulo.pk], [2])
 
         matriculas, _modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
             self.curso,

@@ -986,20 +986,46 @@
                     {% endif %}
                 </div>
                 <div class="notif-bell" style="position:relative;">
-                    <button type="button" id="notif-toggle" title="Recordatorios" aria-label="Recordatorios"
+                    <button type="button" id="notif-toggle" title="Notificaciones" aria-label="Notificaciones"
                             class="icon-btn" style="position:relative;">
                         🔔
-                        {% if recordatorios_no_leidos_n %}
-                        <span id="notif-badge" style="position:absolute; top:-4px; right:-4px; background:#dc3545; color:#fff; font-size:10px; font-weight:700; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #1B2A4E;">{{ recordatorios_no_leidos_n }}</span>
+                        {% if notificaciones_no_leidas_n %}
+                        <span id="notif-badge" style="position:absolute; top:-4px; right:-4px; background:#dc3545; color:#fff; font-size:10px; font-weight:700; min-width:17px; height:17px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #1B2A4E;">{{ notificaciones_no_leidas_n }}</span>
                         {% endif %}
                     </button>
                     <div id="notif-panel" style="display:none; position:absolute; right:0; top:46px; width:330px; max-width:90vw; background:#fff; color:#222; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.25); z-index:1200; overflow:hidden; text-align:left;">
                         <div style="padding:12px 16px; background:#1B2A4E; color:#fff; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:space-between;">
-                            <span>🔔 Recordatorios</span>
-                            {% if recordatorios_no_leidos_n %}<span style="font-size:11px; background:#dc3545; border-radius:10px; padding:2px 8px;">{{ recordatorios_no_leidos_n }} nuevo{{ recordatorios_no_leidos_n|pluralize }}</span>{% endif %}
+                            <span>🔔 Notificaciones</span>
+                            {% if notificaciones_no_leidas_n %}<span style="font-size:11px; background:#dc3545; border-radius:10px; padding:2px 8px;">{{ notificaciones_no_leidas_n }} nueva{{ notificaciones_no_leidas_n|pluralize }}</span>{% endif %}
                         </div>
                         <div style="max-height:340px; overflow-y:auto;">
-                            {% if recordatorios_no_leidos %}
+                            {% if solicitudes_amistad_pendientes or recordatorios_no_leidos %}
+                                {% for solicitud in solicitudes_amistad_pendientes %}
+                                <div style="padding:12px 16px; border-bottom:1px solid #f0f0f0;">
+                                    <div style="display:flex; align-items:flex-start; gap:10px;">
+                                        <img src="{% static solicitud.solicitante_avatar_archivo %}" alt="" aria-hidden="true" style="width:38px; height:38px; flex:0 0 38px; border-radius:50%; object-fit:cover; background:#fff; border:2px solid #fff; box-shadow:0 4px 10px rgba(27,42,78,.14);">
+                                        <div style="min-width:0; flex:1;">
+                                            <strong style="display:block; font-size:13.5px; color:#1B2A4E;">
+                                                {{ solicitud.solicitada_por.get_full_name|default:solicitud.solicitada_por.username }}
+                                            </strong>
+                                            <div style="font-size:12px; color:#555; line-height:1.4; margin-top:2px;">Te envió una solicitud de amistad.</div>
+                                            <div style="margin-top:8px; display:flex; gap:7px; flex-wrap:wrap;">
+                                                <form method="post" action="{% url 'academia:amistad_accion' solicitud.pk %}" style="margin:0;">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="accion" value="aceptar">
+                                                    <button type="submit" style="background:#2e7d32; color:#fff; border:none; border-radius:6px; padding:5px 10px; font-size:11px; cursor:pointer;">✓ Aceptar</button>
+                                                </form>
+                                                <form method="post" action="{% url 'academia:amistad_accion' solicitud.pk %}" style="margin:0;">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="accion" value="rechazar">
+                                                    <button type="submit" style="background:#eef0f5; color:#1B2A4E; border:none; border-radius:6px; padding:5px 10px; font-size:11px; cursor:pointer;">Rechazar</button>
+                                                </form>
+                                                <a href="{% url 'academia:comprobante_asesor_detalle' solicitud.solicitada_por_id %}" style="color:#1B2A4E; padding:5px 2px; font-size:11px; text-decoration:none;">Ver perfil</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
                                 {% for r in recordatorios_no_leidos %}
                                 <div style="padding:12px 16px; border-bottom:1px solid #f0f0f0;">
                                     <div style="display:flex; align-items:flex-start; gap:10px;">
@@ -1027,13 +1053,14 @@
                                 {% endfor %}
                             {% else %}
                                 <div style="padding:22px 16px; text-align:center; color:#888; font-size:13px;">
-                                    No tienes recordatorios pendientes.
+                                    No tienes notificaciones pendientes.
                                 </div>
                             {% endif %}
                         </div>
-                        <a href="{% url 'academia:recordatorio_lista' %}" style="display:block; padding:11px 16px; text-align:center; background:#f7f8fa; color:#1B2A4E; font-weight:600; font-size:13px; text-decoration:none; border-top:1px solid #eee;">
-                            Ver todos los recordatorios →
-                        </a>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; border-top:1px solid #eee;">
+                            <a href="{% url 'academia:recordatorio_lista' %}" style="display:block; padding:11px 10px; text-align:center; background:#f7f8fa; color:#1B2A4E; font-weight:600; font-size:12px; text-decoration:none;">Recordatorios</a>
+                            <a href="{% url 'academia:comprobante_asesor_detalle' user.id %}" style="display:block; padding:11px 10px; text-align:center; background:#f7f8fa; color:#1B2A4E; font-weight:600; font-size:12px; text-decoration:none; border-left:1px solid #eee;">Mi perfil</a>
+                        </div>
                     </div>
                 </div>
                 <button id="theme-toggle" class="icon-btn" title="Alternar modo oscuro" aria-label="Alternar modo oscuro">🌙</button>

@@ -4,7 +4,8 @@ from .models import (
     Estudiante, Matricula, PersonaExterna, RecuperacionPendiente,
     AssistantQueryLog, CierreCurso, MatriculaArchivada, AbonoArchivado,
     EstudianteArchivado, AdicionalArchivado, CierreAdministrativo, Sede,
-    ActividadUsuario, Aviso, PerfilUsuario, Recordatorio,
+    ActividadUsuario, AmistadUsuario, Aviso, MeGustaPerfil, PerfilUsuario,
+    Recordatorio,
 )
 
 
@@ -61,7 +62,33 @@ class RecordatorioAdmin(admin.ModelAdmin):
 class PerfilUsuarioAdmin(admin.ModelAdmin):
     list_display = ('user', 'avatar', 'portada', 'actualizado')
     list_filter = ('avatar', 'portada')
-    search_fields = ('user__username', 'user__first_name', 'user__last_name')
+    search_fields = (
+        'user__username', 'user__first_name', 'user__last_name',
+        'descripcion_personal',
+    )
+
+
+@admin.register(AmistadUsuario)
+class AmistadUsuarioAdmin(admin.ModelAdmin):
+    list_display = (
+        'usuario_a', 'usuario_b', 'solicitada_por', 'estado', 'actualizada',
+    )
+    list_filter = ('estado', 'actualizada')
+    search_fields = (
+        'usuario_a__username', 'usuario_a__first_name',
+        'usuario_b__username', 'usuario_b__first_name',
+    )
+    readonly_fields = ('creada', 'actualizada')
+
+
+@admin.register(MeGustaPerfil)
+class MeGustaPerfilAdmin(admin.ModelAdmin):
+    list_display = ('usuario', 'perfil', 'creado')
+    search_fields = (
+        'usuario__username', 'usuario__first_name',
+        'perfil__username', 'perfil__first_name',
+    )
+    readonly_fields = ('creado',)
 
 
 @admin.register(Categoria)

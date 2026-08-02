@@ -456,6 +456,9 @@
                     <label class="form-label" id="label-modulo-pago">Módulo *</label>
                     {{ form.numero_modulo }}
                     {{ form.numero_modulo.errors }}
+                    <small id="aviso-modulo-registrado" aria-live="polite"
+                        style="display:none; color:#c62828; font-size:11px; font-weight:700; margin-top:5px;">
+                    </small>
                 </div>
             </div>
 
@@ -481,11 +484,23 @@
                     <strong>Sí</strong>: la recuperación se suma al pago del curso (afecta el saldo). ·
                     <strong>No</strong>: se cobra aparte como ingreso adicional, no afecta el saldo del curso.
                 </small>
+                <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; margin-top:12px;">
+                    <div>
+                        <label class="form-label">Fecha de la falta *</label>
+                        {{ form.fecha_marcada }}
+                        {{ form.fecha_marcada.errors }}
+                    </div>
+                    <div>
+                        <label class="form-label">Fecha para recuperar</label>
+                        {{ form.fecha_programada }}
+                        {{ form.fecha_programada.errors }}
+                    </div>
+                </div>
             </div>
 
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div>
-                    <label class="form-label">Fecha *</label>
+                    <label class="form-label">Fecha del pago *</label>
                     {{ form.fecha }}
                     {{ form.fecha.errors }}
                 </div>
@@ -588,6 +603,7 @@
 
 
 {% block extra_js %}
+{{ form.modulos_con_pago_registrado|json_script:"modulos-registrados-pago" }}
 <script>
     function abrirModalAbono() {
         document.getElementById('modal-abono').style.display = 'flex';
@@ -675,6 +691,13 @@
     const moduloSelectPago = document.getElementById('id_numero_modulo');
     const labelModuloPago = document.getElementById('label-modulo-pago');
     const esPagoUnicoOnline = moduloSelectPago && moduloSelectPago.dataset.pagoUnicoOnline === '1';
+    const avisoModuloRegistrado = document.getElementById('aviso-modulo-registrado');
+    const modulosRegistradosNode = document.getElementById('modulos-registrados-pago');
+    const modulosRegistradosPago = new Set(
+        modulosRegistradosNode
+            ? JSON.parse(modulosRegistradosNode.textContent).map((valor) => Number(valor))
+            : []
+    );
     const opcionesModuloOriginales = moduloSelectPago
         ? Array.from(moduloSelectPago.options).map((opcion) => ({
             opcion,
@@ -683,15 +706,40 @@
         }))
         : [];
 
-    function configurarSelectorPagoUnico(tipoPago) {
-        if (!esPagoUnicoOnline || !moduloSelectPago) return;
-        const esCuotaUnica = tipoPago === 'solo_modulo' || tipoPago === 'por_modulo';
+    function tipoPagoUsaModulo(tipoPago) {
+        return tipoPago === 'por_modulo' || tipoPago === 'solo_modulo' || tipoPago === 'recuperacion';
+    }
 
+    function restaurarOpcionesModulo() {
         opcionesModuloOriginales.forEach(({ opcion, texto, disabled }) => {
             opcion.textContent = texto;
-            opcion.hidden = false;
             opcion.disabled = disabled;
+            opcion.hidden = false;
         });
+    }
+
+    function modulosRegistradosTexto() {
+        return Array.from(modulosRegistradosPago)
+            .sort((a, b) => a - b)
+            .map((numero) => `Mód. ${numero}`)
+            .join(', ');
+    }
+
+    function moduloSeleccionadoYaRegistrado() {
+        if (!moduloSelectPago || !moduloSelectPago.value) return false;
+        return modulosRegistradosPago.has(Number(moduloSelectPago.value));
+    }
+
+    function configurarSelectorPagoUnico(tipoPago) {
+        if (!moduloSelectPago) return;
+        const esCuotaUnica = tipoPago === 'solo_modulo' || tipoPago === 'por_modulo';
+
+        restaurarOpcionesModulo();
+
+        if (!esPagoUnicoOnline) {
+            if (labelModuloPago) labelModuloPago.textContent = 'Módulo *';
+            return;
+        }
 
         if (esCuotaUnica) {
             Array.from(moduloSelectPago.options).forEach((opcion) => {
@@ -711,6 +759,39 @@
         }
     }
 
+    function aplicarBloqueoModulosRegistrados({ limpiarSeleccion = true } = {}) {
+        if (!moduloSelectPago) return;
+        const usaModulo = tipoSel && tipoPagoUsaModulo(tipoSel.value);
+
+        Array.from(moduloSelectPago.options).forEach((opcion) => {
+            if (!opcion.value) return;
+            const numero = Number(opcion.value);
+            const registrado = modulosRegistradosPago.has(numero);
+            const textoBase = opcion.textContent.replace(/\s+\(ya registrado\)$/i, '');
+            opcion.textContent = registrado ? `${textoBase} (ya registrado)` : textoBase;
+            if (usaModulo && registrado) {
+                opcion.disabled = true;
+            }
+        });
+
+        if (limpiarSeleccion && usaModulo && moduloSeleccionadoYaRegistrado()) {
+            moduloSelectPago.value = '';
+        }
+
+        if (avisoModuloRegistrado) {
+            if (usaModulo && modulosRegistradosPago.size > 0) {
+                avisoModuloRegistrado.style.display = 'block';
+                avisoModuloRegistrado.textContent = (
+                    `No se puede registrar otro pago para módulos ya registrados: `
+                    + `${modulosRegistradosTexto()}.`
+                );
+            } else {
+                avisoModuloRegistrado.style.display = 'none';
+                avisoModuloRegistrado.textContent = '';
+            }
+        }
+    }
+
     function actualizar() {
         if (!tipoSel) return;
         const v = tipoSel.value;
@@ -722,9 +803,13 @@
             bloqueModulo.style.display = (v === 'por_modulo' || v === 'solo_modulo' || v === 'recuperacion') ? 'block' : 'none';
         }
         configurarSelectorPagoUnico(v);
+        aplicarBloqueoModulosRegistrados();
         // Recuperación: visible solo para recuperacion
         if (bloqueRecup) {
             bloqueRecup.style.display = (v === 'recuperacion') ? 'block' : 'none';
+        }
+        if (fechaFaltaInput) {
+            fechaFaltaInput.required = (v === 'recuperacion');
         }
     }
     if (tipoSel) {
@@ -766,6 +851,8 @@
     const formPago = btnGuardar ? btnGuardar.closest('form') : null;
     const avisoValidacionPago = document.getElementById('abono-validacion-aviso');
     const fechaInput = document.getElementById('id_fecha');
+    const fechaFaltaInput = document.getElementById('id_fecha_marcada');
+    const fechaRecuperarInput = document.getElementById('id_fecha_programada');
     const moduloSelect = document.getElementById('id_numero_modulo');
 
     function valorNumero(input) {
@@ -799,11 +886,26 @@
         const montoPrincipal = valorNumero(montoInput);
 
         if (tipoSel && !tipoSel.value) agregarFaltante(faltantes, 'Tipo de pago');
-        if (fechaInput && !fechaInput.value) agregarFaltante(faltantes, 'Fecha');
+        if (fechaInput && !fechaInput.value) agregarFaltante(faltantes, 'Fecha del pago');
         if (!montoInput || montoPrincipal <= 0) agregarFaltante(faltantes, 'Monto mayor a $0.00');
 
         if (bloqueModulo && estaVisible(bloqueModulo) && moduloSelect && !moduloSelect.value) {
             agregarFaltante(faltantes, 'Módulo');
+        }
+        if (bloqueModulo && estaVisible(bloqueModulo) && moduloSeleccionadoYaRegistrado()) {
+            agregarFaltante(faltantes, `Módulo ${moduloSelect.value} ya registrado`);
+        }
+        if (tipoSel && tipoSel.value === 'recuperacion') {
+            if (!fechaFaltaInput || !fechaFaltaInput.value) {
+                agregarFaltante(faltantes, 'Fecha de la falta');
+            }
+            if (
+                fechaFaltaInput && fechaFaltaInput.value
+                && fechaRecuperarInput && fechaRecuperarInput.value
+                && fechaRecuperarInput.value < fechaFaltaInput.value
+            ) {
+                agregarFaltante(faltantes, 'Fecha para recuperar válida');
+            }
         }
 
         if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
@@ -833,11 +935,20 @@
     }
 
     function enfocarPrimerCampoPendiente() {
+        if (
+            fechaFaltaInput && fechaFaltaInput.value
+            && fechaRecuperarInput && fechaRecuperarInput.value
+            && fechaRecuperarInput.value < fechaFaltaInput.value
+        ) {
+            fechaRecuperarInput.focus();
+            return;
+        }
         const campos = [
             tipoSel,
+            moduloSelect,
+            fechaFaltaInput,
             fechaInput,
             montoInput,
-            moduloSelect,
             tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? monto1Input : metodoSel,
             tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? metodoSel1 : bancoSel,
             tipoCobroSelect && tipoCobroSelect.value === 'mixto' ? bancoSel1 : null,
@@ -920,11 +1031,20 @@
     }
 
     if (fechaInput) fechaInput.addEventListener('change', validarMonto);
+    if (fechaFaltaInput) fechaFaltaInput.addEventListener('change', validarMonto);
+    if (fechaRecuperarInput) fechaRecuperarInput.addEventListener('change', validarMonto);
     if (montoInput) montoInput.addEventListener('input', validarMonto);
     if (monto1Input) monto1Input.addEventListener('input', validarMonto);
     if (monto2Input) monto2Input.addEventListener('input', validarMonto);
     [moduloSelect, bancoSel, bancoSel1, bancoSel2].forEach((select) => {
-        if (select) select.addEventListener('change', validarMonto);
+        if (select) {
+            select.addEventListener('change', () => {
+                if (select === moduloSelect) {
+                    aplicarBloqueoModulosRegistrados({ limpiarSeleccion: false });
+                }
+                validarMonto();
+            });
+        }
     });
     if (formPago) {
         formPago.addEventListener('submit', function (e) {

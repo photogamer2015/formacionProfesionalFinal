@@ -70,6 +70,58 @@ ARCHIVOS_PORTADA_PERFIL = {
     'mundo_champinon': 'portadas/mundo_champinon.jpg',
 }
 
+MUSICA_MURAL = [
+    ('latina', 'Latina'),
+    ('rock', 'Rock'),
+    ('reggaeton', 'Reggaetón'),
+    ('pop', 'Pop'),
+    ('salsa', 'Salsa'),
+    ('bachata', 'Bachata'),
+    ('electronica', 'Electrónica'),
+    ('urbana', 'Urbana'),
+    ('jazz', 'Jazz'),
+    ('clasica', 'Clásica'),
+]
+
+HOBBIES_MURAL = [
+    ('lectura', 'Leer'),
+    ('deporte', 'Deporte'),
+    ('viajes', 'Viajar'),
+    ('videojuegos', 'Videojuegos'),
+    ('cocina', 'Cocinar'),
+    ('fotografia', 'Fotografía'),
+    ('baile', 'Bailar'),
+    ('cine', 'Ir al cine'),
+    ('naturaleza', 'Naturaleza'),
+    ('arte', 'Arte'),
+]
+
+PELICULAS_MURAL = [
+    ('comedia', 'Comedia'),
+    ('accion', 'Acción'),
+    ('terror', 'Terror'),
+    ('romance', 'Romance'),
+    ('animacion', 'Animación'),
+    ('ciencia_ficcion', 'Ciencia ficción'),
+    ('drama', 'Drama'),
+    ('documentales', 'Documentales'),
+    ('aventura', 'Aventura'),
+    ('musicales', 'Musicales'),
+]
+
+INTERESES_MURAL = [
+    ('tecnologia', 'Tecnología'),
+    ('emprendimiento', 'Emprendimiento'),
+    ('educacion', 'Educación'),
+    ('bienestar', 'Bienestar'),
+    ('moda', 'Moda'),
+    ('gastronomia', 'Gastronomía'),
+    ('idiomas', 'Idiomas'),
+    ('familia', 'Familia'),
+    ('voluntariado', 'Voluntariado'),
+    ('cultura', 'Cultura'),
+]
+
 MODALIDADES = [
     ('presencial', 'Presencial'),
     ('online', 'Online'),
@@ -2748,7 +2800,7 @@ class CuotaManualRecaudacion(models.Model):
 
 
 class PerfilUsuario(models.Model):
-    """Preferencias visuales persistentes del perfil de cada usuario."""
+    """Preferencias visuales y personales del perfil de cada usuario."""
 
     user = models.OneToOneField(
         'auth.User',
@@ -2765,6 +2817,11 @@ class PerfilUsuario(models.Model):
         choices=PORTADAS_PERFIL,
         default=PORTADA_PERFIL_PREDETERMINADA,
     )
+    descripcion_personal = models.TextField(max_length=500, blank=True)
+    musica_favorita = models.JSONField(default=list, blank=True)
+    hobbies_favoritos = models.JSONField(default=list, blank=True)
+    peliculas_favoritas = models.JSONField(default=list, blank=True)
+    intereses_personales = models.JSONField(default=list, blank=True)
     actualizado = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -2787,6 +2844,120 @@ class PerfilUsuario(models.Model):
 
     def __str__(self):
         return f'{self.user.get_username()} · {self.get_avatar_display()}'
+
+
+class AmistadUsuario(models.Model):
+    """Solicitud o amistad confirmada entre dos usuarios registrados."""
+
+    ESTADOS = [
+        ('pendiente', 'Pendiente'),
+        ('aceptada', 'Aceptada'),
+    ]
+
+    usuario_a = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='amistades_como_usuario_a',
+    )
+    usuario_b = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='amistades_como_usuario_b',
+    )
+    solicitada_por = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='solicitudes_amistad_enviadas',
+    )
+    estado = models.CharField(
+        max_length=12,
+        choices=ESTADOS,
+        default='pendiente',
+        db_index=True,
+    )
+    creada = models.DateTimeField(auto_now_add=True)
+    actualizada = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Amistad de usuario'
+        verbose_name_plural = 'Amistades de usuarios'
+        ordering = ['-actualizada', '-pk']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['usuario_a', 'usuario_b'],
+                name='amistad_par_usuario_unico',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(usuario_a__lt=models.F('usuario_b')),
+                name='amistad_usuarios_ordenados',
+            ),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.usuario_a_id and self.usuario_b_id:
+            if self.usuario_a_id >= self.usuario_b_id:
+                raise ValidationError(
+                    'Los usuarios de la amistad deben ser distintos y estar ordenados.'
+                )
+            if self.solicitada_por_id not in {
+                self.usuario_a_id, self.usuario_b_id,
+            }:
+                raise ValidationError(
+                    'La solicitud debe pertenecer a uno de los usuarios relacionados.'
+                )
+
+    def otro_usuario(self, user):
+        if user.pk == self.usuario_a_id:
+            return self.usuario_b
+        if user.pk == self.usuario_b_id:
+            return self.usuario_a
+        return None
+
+    @property
+    def solicitante_avatar_archivo(self):
+        return avatar_archivo_usuario(self.solicitada_por)
+
+    def __str__(self):
+        return (
+            f'{self.usuario_a.get_username()} · '
+            f'{self.usuario_b.get_username()} · {self.get_estado_display()}'
+        )
+
+
+class MeGustaPerfil(models.Model):
+    """Marca de me gusta que un usuario entrega al perfil de otro usuario."""
+
+    usuario = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='me_gusta_otorgados',
+    )
+    perfil = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='me_gusta_recibidos',
+    )
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Me gusta de perfil'
+        verbose_name_plural = 'Me gusta de perfiles'
+        ordering = ['-creado', '-pk']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['usuario', 'perfil'],
+                name='me_gusta_perfil_unico',
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(usuario=models.F('perfil')),
+                name='me_gusta_perfil_no_propio',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.usuario.get_username()} → {self.perfil.get_username()}'
 
 
 class ActividadUsuario(models.Model):

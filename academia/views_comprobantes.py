@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
@@ -23,6 +24,7 @@ from .forms import ComprobanteForm
 from .models import (
     ARCHIVOS_AVATAR_PERFIL, ARCHIVOS_PORTADA_PERFIL,
     AVATARES_PERFIL, AVATAR_PERFIL_PREDETERMINADO,
+    HOBBIES_MURAL, INTERESES_MURAL, MUSICA_MURAL, PELICULAS_MURAL,
     PORTADAS_PERFIL, PORTADA_PERFIL_PREDETERMINADA,
     Comprobante, Curso, Matricula, PerfilUsuario, RecuperacionPendiente,
 )
@@ -30,9 +32,33 @@ from .permisos import (
     admin_requerido, es_admin, es_asesor, matricula_requerida,
 )
 from .busqueda import filtrar_queryset_busqueda
+from .views_social import contexto_social_perfil
 
 
 User = get_user_model()
+MURAL_MAX_SELECCIONES = 6
+
+
+def _opciones_mural(opciones, seleccionadas):
+    seleccionadas = set(seleccionadas if isinstance(seleccionadas, list) else [])
+    return [
+        {
+            'clave': clave,
+            'etiqueta': etiqueta,
+            'seleccionada': clave in seleccionadas,
+        }
+        for clave, etiqueta in opciones
+    ]
+
+
+def _seleccion_mural_valida(request, nombre, opciones):
+    valores = list(dict.fromkeys(request.POST.getlist(nombre)))
+    claves_validas = {clave for clave, _etiqueta in opciones}
+    if len(valores) > MURAL_MAX_SELECCIONES:
+        return None
+    if any(valor not in claves_validas for valor in valores):
+        return None
+    return valores
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -331,24 +357,22 @@ def comprobante_totales(request):
 # Detalle del Asesor (Perfil)
 # ═════════════════════════════════════════════════════════════════
 
-@matricula_requerida
+@login_required
 def comprobante_asesor_detalle(request, vendedora_id):
     """
-    Muestra la lista de estudiantes matriculados por una vendedora en particular.
+    Muestra el perfil social de un usuario registrado.
 
-    El administrador puede ver el perfil de cualquier asesor. Un asesor solo
-    puede ver su propio perfil; si intenta abrir el de otra persona, se le
-    redirige a su propio detalle.
+    La información social es visible para cualquier usuario autenticado. Los
+    indicadores, estudiantes y actividad siguen limitados al dueño del perfil
+    y a los administradores.
     """
-    if not es_admin(request.user) and int(vendedora_id) != request.user.id:
-        messages.error(
-            request,
-            'Solo puedes ver tu propio perfil de ventas.'
-        )
-        return redirect('academia:comprobante_asesor_detalle', vendedora_id=request.user.id)
-
     asesor = get_object_or_404(User, pk=vendedora_id)
     es_perfil_propio = asesor.pk == request.user.pk
+    puede_ver_actividad_perfil = es_perfil_propio or es_admin(request.user)
+    editar_mural = (
+        es_perfil_propio
+        and (request.GET.get('editar_mural') or '').strip() == '1'
+    )
 
     if request.method == 'POST':
         if not es_perfil_propio:
@@ -362,7 +386,47 @@ def comprobante_asesor_detalle(request, vendedora_id):
             )
 
         preferencia = (request.POST.get('preferencia') or '').strip()
-        if preferencia == 'portada' or 'portada' in request.POST:
+        if preferencia == 'mural':
+            descripcion_personal = (
+                request.POST.get('descripcion_personal') or ''
+            ).strip()
+            selecciones = {
+                'musica_favorita': _seleccion_mural_valida(
+                    request, 'musica', MUSICA_MURAL,
+                ),
+                'hobbies_favoritos': _seleccion_mural_valida(
+                    request, 'hobbies', HOBBIES_MURAL,
+                ),
+                'peliculas_favoritas': _seleccion_mural_valida(
+                    request, 'peliculas', PELICULAS_MURAL,
+                ),
+                'intereses_personales': _seleccion_mural_valida(
+                    request, 'intereses', INTERESES_MURAL,
+                ),
+            }
+            if len(descripcion_personal) > 500:
+                messages.error(
+                    request,
+                    'Tu presentación no puede superar los 500 caracteres.',
+                )
+            elif any(valor is None for valor in selecciones.values()):
+                messages.error(
+                    request,
+                    'Selecciona hasta 6 opciones válidas en cada categoría.',
+                )
+            else:
+                PerfilUsuario.objects.update_or_create(
+                    user=asesor,
+                    defaults={
+                        'descripcion_personal': descripcion_personal,
+                        **selecciones,
+                    },
+                )
+                messages.success(
+                    request,
+                    'Tu mural de Formación EC se actualizó correctamente.',
+                )
+        elif preferencia == 'portada' or 'portada' in request.POST:
             portada = (request.POST.get('portada') or '').strip()
             portadas_validas = {clave for clave, _etiqueta in PORTADAS_PERFIL}
             if portada not in portadas_validas:
@@ -418,6 +482,39 @@ def comprobante_asesor_detalle(request, vendedora_id):
         }
         for clave, etiqueta in PORTADAS_PERFIL
     ]
+    descripcion_personal = perfil.descripcion_personal if perfil else ''
+    musica_mural = _opciones_mural(
+        MUSICA_MURAL,
+        perfil.musica_favorita if perfil else [],
+    )
+    hobbies_mural = _opciones_mural(
+        HOBBIES_MURAL,
+        perfil.hobbies_favoritos if perfil else [],
+    )
+    peliculas_mural = _opciones_mural(
+        PELICULAS_MURAL,
+        perfil.peliculas_favoritas if perfil else [],
+    )
+    intereses_mural = _opciones_mural(
+        INTERESES_MURAL,
+        perfil.intereses_personales if perfil else [],
+    )
+    mural_grupos = [
+        ('Música', musica_mural),
+        ('Hobbies', hobbies_mural),
+        ('Películas y series', peliculas_mural),
+        ('Intereses', intereses_mural),
+    ]
+    mural_grupos_visibles = [
+        (
+            titulo,
+            [opcion for opcion in opciones if opcion['seleccionada']],
+        )
+        for titulo, opciones in mural_grupos
+        if any(opcion['seleccionada'] for opcion in opciones)
+    ]
+    mural_tiene_gustos = bool(mural_grupos_visibles)
+    contexto_social = contexto_social_perfil(request.user, asesor)
 
     if es_admin(asesor):
         asesor_rol = 'Administrador'
@@ -426,47 +523,55 @@ def comprobante_asesor_detalle(request, vendedora_id):
     else:
         asesor_rol = 'Usuario'
 
-    comprobantes = (
-        Comprobante.objects.filter(
-            Q(matricula__vendedora_id=vendedora_id) |
-            Q(matricula__vendedora__isnull=True, vendedora_id=vendedora_id)
+    if puede_ver_actividad_perfil:
+        comprobantes = (
+            Comprobante.objects.filter(
+                Q(matricula__vendedora_id=vendedora_id) |
+                Q(matricula__vendedora__isnull=True, vendedora_id=vendedora_id)
+            )
+            .select_related('curso', 'matricula', 'matricula__estudiante')
+            .order_by('-fecha_inscripcion', '-id')
         )
-        .select_related('curso', 'matricula', 'matricula__estudiante')
-        .order_by('-fecha_inscripcion', '-id')
-    )
-
-    comprobantes_globales = (
-        Comprobante.objects
-        .select_related('curso', 'matricula', 'matricula__estudiante')
-        .order_by('-fecha_inscripcion', '-id')
-    )
-
-    comprobantes_retirados_personales = comprobantes.filter(
-        matricula__estado='retiro_voluntario',
-    )
-    comprobantes_retirados = comprobantes_globales.filter(
-        matricula__estado='retiro_voluntario',
-    )
-    comprobantes_pendientes = comprobantes_globales.filter(
-        diferencia__gt=Decimal('0.00'),
-    ).exclude(
-        matricula__estado='retiro_voluntario',
-    )
-    recuperaciones = RecuperacionPendiente.objects.select_related(
-        'matricula', 'matricula__estudiante', 'matricula__curso',
-    ).distinct()
-
-    total_ventas = comprobantes.count()
-    total_retiros = comprobantes_retirados.count()
-    total_activas = total_ventas - comprobantes_retirados_personales.count()
-    total_saldos_pendientes = comprobantes_pendientes.count()
-    total_recuperaciones = recuperaciones.count()
-
-    registros = (
-        Matricula.objects.filter(registrado_por_id=vendedora_id)
-        .select_related('curso', 'estudiante')
-        .order_by('-fecha_matricula', '-id')
-    )
+        comprobantes_globales = (
+            Comprobante.objects
+            .select_related('curso', 'matricula', 'matricula__estudiante')
+            .order_by('-fecha_inscripcion', '-id')
+        )
+        comprobantes_retirados_personales = comprobantes.filter(
+            matricula__estado='retiro_voluntario',
+        )
+        comprobantes_retirados = comprobantes_globales.filter(
+            matricula__estado='retiro_voluntario',
+        )
+        comprobantes_pendientes = comprobantes_globales.filter(
+            diferencia__gt=Decimal('0.00'),
+        ).exclude(
+            matricula__estado='retiro_voluntario',
+        )
+        recuperaciones = RecuperacionPendiente.objects.select_related(
+            'matricula', 'matricula__estudiante', 'matricula__curso',
+        ).distinct()
+        total_ventas = comprobantes.count()
+        total_retiros = comprobantes_retirados.count()
+        total_activas = total_ventas - comprobantes_retirados_personales.count()
+        total_saldos_pendientes = comprobantes_pendientes.count()
+        total_recuperaciones = recuperaciones.count()
+        registros = (
+            Matricula.objects.filter(registrado_por_id=vendedora_id)
+            .select_related('curso', 'estudiante')
+            .order_by('-fecha_matricula', '-id')
+        )
+    else:
+        comprobantes = Comprobante.objects.none()
+        comprobantes_retirados = Comprobante.objects.none()
+        comprobantes_pendientes = Comprobante.objects.none()
+        recuperaciones = RecuperacionPendiente.objects.none()
+        registros = Matricula.objects.none()
+        total_ventas = 0
+        total_activas = 0
+        total_retiros = 0
+        total_saldos_pendientes = 0
+        total_recuperaciones = 0
 
     return render(request, 'comprobantes/asesor_detalle.html', {
         'asesor': asesor,
@@ -481,6 +586,8 @@ def comprobante_asesor_detalle(request, vendedora_id):
         'comprobantes_retirados': comprobantes_retirados,
         'recuperaciones': recuperaciones,
         'es_perfil_propio': es_perfil_propio,
+        'puede_ver_actividad_perfil': puede_ver_actividad_perfil,
+        'editar_mural': editar_mural,
         'asesor_rol': asesor_rol,
         'avatar_seleccionado': avatar_seleccionado,
         'avatar_asesor_archivo': ARCHIVOS_AVATAR_PERFIL.get(
@@ -494,4 +601,14 @@ def comprobante_asesor_detalle(request, vendedora_id):
             ARCHIVOS_PORTADA_PERFIL[PORTADA_PERFIL_PREDETERMINADA],
         ),
         'portadas': portadas,
+        'descripcion_personal': descripcion_personal,
+        'musica_mural': musica_mural,
+        'hobbies_mural': hobbies_mural,
+        'peliculas_mural': peliculas_mural,
+        'intereses_mural': intereses_mural,
+        'mural_grupos': mural_grupos,
+        'mural_grupos_visibles': mural_grupos_visibles,
+        'mural_tiene_gustos': mural_tiene_gustos,
+        'mural_max_selecciones': MURAL_MAX_SELECCIONES,
+        **contexto_social,
     })

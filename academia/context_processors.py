@@ -83,16 +83,37 @@ def recordatorios(request):
         return {
             'recordatorios_no_leidos': [],
             'recordatorios_no_leidos_n': 0,
+            'solicitudes_amistad_pendientes': [],
+            'solicitudes_amistad_pendientes_n': 0,
+            'notificaciones_no_leidas_n': 0,
         }
     try:
-        from .models import Recordatorio
+        from django.db.models import Q
+        from .models import AmistadUsuario, Recordatorio
+
         pendientes = list(Recordatorio.no_leidos_de(user)[:20])
+        solicitudes = list(
+            AmistadUsuario.objects
+            .filter(
+                Q(usuario_a=user) | Q(usuario_b=user),
+                estado='pendiente',
+            )
+            .exclude(solicitada_por=user)
+            .select_related(
+                'solicitada_por', 'solicitada_por__perfil_visual',
+                'usuario_a', 'usuario_b',
+            )[:20]
+        )
     except Exception:
         # Si el modelo aún no está migrado, no rompemos el render.
         pendientes = []
+        solicitudes = []
     return {
         'recordatorios_no_leidos': pendientes,
         'recordatorios_no_leidos_n': len(pendientes),
+        'solicitudes_amistad_pendientes': solicitudes,
+        'solicitudes_amistad_pendientes_n': len(solicitudes),
+        'notificaciones_no_leidas_n': len(pendientes) + len(solicitudes),
     }
 
 

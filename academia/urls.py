@@ -1,5 +1,9 @@
 from django.urls import path, re_path
-from . import views, views_pagos, views_comprobantes, views_admin, views_adicional, views_cierre, views_sedes, views_avisos, views_recordatorios
+from . import (
+    views, views_adicional, views_admin, views_avisos, views_cierre,
+    views_comprobantes, views_pagos, views_recordatorios, views_sedes,
+    views_social,
+)
 
 app_name = 'academia'
 
@@ -135,6 +139,16 @@ urlpatterns = [
     path('comprobantes/<int:pk>/editar/', views_comprobantes.comprobante_editar, name='comprobante_editar'),
     path('comprobantes/<int:pk>/eliminar/', views_comprobantes.comprobante_eliminar, name='comprobante_eliminar'),
     path('comprobantes/asesor/<int:vendedora_id>/detalle/', views_comprobantes.comprobante_asesor_detalle, name='comprobante_asesor_detalle'),
+
+    # ── Perfiles sociales ──────────────────────────────────────
+    path('perfiles/buscar-amigos/',
+         views_social.buscar_amigos, name='buscar_amigos'),
+    path('perfiles/amistad/solicitar/<int:usuario_id>/',
+         views_social.amistad_solicitar, name='amistad_solicitar'),
+    path('perfiles/amistad/<int:pk>/accion/',
+         views_social.amistad_accion, name='amistad_accion'),
+    path('perfiles/<int:usuario_id>/me-gusta/',
+         views_social.perfil_me_gusta, name='perfil_me_gusta'),
 
     # ── Endpoints AJAX ─────────────────────────────────────────
     path('api/curso/<int:pk>/', views.api_curso_detalle, name='api_curso_detalle'),
