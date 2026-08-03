@@ -4903,12 +4903,13 @@ def _calendario_alertas_pago(matricula):
     """
     Calendario exclusivo del panel "Gestión de Matrículas".
 
-    Cada obligación financiera empieza en la fecha real de la jornada y las
-    siguientes vencen cada siete días, o cada catorce cuando el curso tiene
-    activada esa configuración independiente. El panel conserva el primer
-    módulo impago: nunca salta al módulo de la semana actual. Los cursos con
-    pago único mantienen una sola obligación, aunque académicamente tengan
-    más de un módulo.
+    La primera obligación online se habilita un día antes del inicio de la
+    jornada; la presencial conserva exactamente la fecha de inicio. Las
+    obligaciones siguientes mantienen sus fechas actuales: cada siete días,
+    o cada catorce cuando el curso tiene activada esa configuración
+    independiente. El panel conserva el primer módulo impago: nunca salta al
+    módulo de la semana actual. Los cursos con pago único mantienen una sola
+    obligación, aunque académicamente tengan más de un módulo.
     """
     from datetime import timedelta
 
@@ -4917,9 +4918,14 @@ def _calendario_alertas_pago(matricula):
     pago_unico = matricula.curso.usa_pago_unico_recaudacion(
         matricula.modalidad
     )
+    primera_fecha = (
+        inicio - timedelta(days=1)
+        if matricula.modalidad == 'online'
+        else inicio
+    )
 
     if pago_unico:
-        return {1: (inicio, 'pago_unico')}
+        return {1: (primera_fecha, 'pago_unico')}
 
     intervalo_dias = (
         14 if matricula.curso.pagos_cada_dos_semanas else 7
@@ -4927,7 +4933,9 @@ def _calendario_alertas_pago(matricula):
 
     return {
         numero: (
-            inicio + timedelta(days=(numero - 1) * intervalo_dias),
+            primera_fecha if numero == 1 else (
+                inicio + timedelta(days=(numero - 1) * intervalo_dias)
+            ),
             'modulo',
         )
         for numero in range(1, total_cuotas + 1)
@@ -4946,12 +4954,22 @@ def _calcular_alertas_pago(usuario_actual=None):
     ya fueron marcadas como "revisadas hoy".
     """
     from .models import AlertaPagoRevisada
+    from datetime import timedelta
+
     hoy = date.today()
 
-    # La primera alerta nace el mismo día de inicio de la jornada.
+    # Online entra al panel un día antes; presencial conserva el día exacto.
     qs = Matricula.objects.filter(
         tipo_matricula__in=TIPOS_CON_RESERVA,
-        jornada__fecha_inicio__lte=hoy,
+    ).filter(
+        Q(
+            modalidad='online',
+            jornada__fecha_inicio__lte=hoy + timedelta(days=1),
+        )
+        | Q(
+            modalidad='presencial',
+            jornada__fecha_inicio__lte=hoy,
+        )
     ).exclude(estado='retiro_voluntario').select_related(
         'estudiante', 'curso', 'jornada', 'jornada__sede'
     ).prefetch_related(
