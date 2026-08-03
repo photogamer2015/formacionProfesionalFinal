@@ -66,6 +66,26 @@ class GlobalTablePaginationTests(SimpleTestCase):
         self.assertIn('display: table-row !important;', styles)
         self.assertIn('.fp-table-pagination {\n        display: none !important;', styles)
 
+    def test_alertas_del_panel_paginan_todos_los_casos_y_conservan_filtros(self):
+        template = self._read_project_file('templates/bienvenida.html')
+
+        self.assertIn('const GM_PAGE_SIZE = 5;', template)
+        self.assertIn('aria-label="Paginación de estudiantes con saldo pendiente"', template)
+        self.assertIn('data-gm-current-page', template)
+        self.assertIn('data-gm-total-pages', template)
+        self.assertIn("card.dataset.gmFilterMatch = matches ? 'true' : 'false';", template)
+        self.assertIn("const matchingCards = cards.filter", template)
+        self.assertNotIn('<details class="gm-vermas">', template)
+
+    def test_paginacion_de_alertas_es_responsive_accesible_e_imprimible(self):
+        template = self._read_project_file('templates/bienvenida.html')
+
+        self.assertIn('aria-controls="gm-case-list"', template)
+        self.assertIn('aria-live="polite"', template)
+        self.assertIn('.gm-card[hidden] { display: none; }', template)
+        self.assertIn('.gm-card[hidden] { display: grid !important; }', template)
+        self.assertIn("window.matchMedia('(prefers-reduced-motion: reduce)')", template)
+
 
 class ActividadUsuarioTests(TestCase):
     def setUp(self):

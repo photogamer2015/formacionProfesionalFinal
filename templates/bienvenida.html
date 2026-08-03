@@ -932,14 +932,19 @@
     .gm-btn-rev { background: #8496ab !important; color: #fff !important; border: none !important; }
     .gm-btn-rev:hover { background: #6f8299 !important; }
 
-    /* "Ver más" dentro del cuerpo */
-    .gm-vermas > summary {
-        cursor: pointer; list-style: none;
-        font-size: 12.5px; color: #4f8ef7; font-weight: 600;
-        margin-top: 10px; text-align: center;
+    /* Paginación de casos: comparte el lenguaje visual de las tablas. */
+    .gm-card[hidden] { display: none; }
+    .gm-pagination {
+        position: static;
+        margin-top: 12px;
+        border: 1px solid #e1e8f2;
+        border-radius: 10px;
+        box-shadow: 0 8px 20px rgba(27,42,78,.06);
     }
-    .gm-vermas > summary::-webkit-details-marker { display: none; }
-    body.dark-mode .gm-vermas > summary { color: #7fb0e8; }
+    .gm-pagination[hidden] { display: none; }
+    body.dark-mode .gm-pagination {
+        border-color: rgba(148,163,184,.18);
+    }
 
 	    @media (max-width: 640px) {
 		        .gm-panel {
@@ -1016,6 +1021,11 @@
 	            width: 100%;
 	        }
 	    }
+
+    @media print {
+        .gm-panel .gm-body { max-height: none !important; overflow: visible !important; }
+        .gm-card[hidden] { display: grid !important; }
+    }
 	</style>
 
 {% comment %}
@@ -1027,7 +1037,7 @@
 <div class="gm-panel" id="gm-panel">
     <div class="gm-head" onclick="if(!event.target.closest('.gm-search-wrapper')) document.getElementById('gm-panel').classList.toggle('abierto');">
         <span class="gm-ico">🎓</span>
-        <h3 class="gm-titulo">
+        <h3 class="gm-titulo" id="gm-panel-title">
             Gestión de Matrículas
             <span class="gm-count">{{ alertas_pago|length }}</span>
         </h3>
@@ -1065,8 +1075,9 @@
                 una sola alerta.
             </p>
 
+            <div class="gm-cases" id="gm-case-list" role="list" aria-labelledby="gm-panel-title">
             {% for a in alertas_pago|slice:":3" %}
-            <div class="gm-card" data-curso-id="{{ a.curso.id }}">
+            <div class="gm-card" data-curso-id="{{ a.curso.id }}" data-gm-filter-match="true" role="listitem">
                 <div>
                     <div class="gm-nombre">
                         {{ a.estudiante.nombres }}
@@ -1116,10 +1127,8 @@
             {% endfor %}
 
             {% if alertas_pago|length > 3 %}
-            <details class="gm-vermas">
-                <summary>▾ Ver {{ alertas_pago|length|add:"-3" }} caso{{ alertas_pago|length|add:"-3"|pluralize }} más</summary>
                 {% for a in alertas_pago|slice:"3:" %}
-                <div class="gm-card" data-curso-id="{{ a.curso.id }}">
+                <div class="gm-card" data-curso-id="{{ a.curso.id }}" data-gm-filter-match="true" role="listitem">
                     <div>
                         <div class="gm-nombre">
                             {{ a.estudiante.nombres }}
@@ -1167,16 +1176,45 @@
                     </div>
                 </div>
                 {% endfor %}
-            </details>
             {% endif %}
+            </div>
+
             <p class="gm-filter-empty" id="gm-filter-empty" hidden>
                 No hay alertas que coincidan con el curso o la búsqueda seleccionada.
             </p>
+
+            <nav class="fp-table-pagination gm-pagination" id="gm-pagination"
+                 aria-label="Paginación de estudiantes con saldo pendiente" hidden>
+                <div class="fp-table-pagination__summary">
+                    <span class="fp-table-pagination__summary-icon" aria-hidden="true">☷</span>
+                    <span>Casos <strong data-gm-page-range>0</strong> de
+                        <strong data-gm-page-total>{{ alertas_pago|length }}</strong></span>
+                </div>
+                <div class="fp-table-pagination__controls">
+                    <button type="button" class="fp-table-pagination__button" id="gm-previous-page"
+                            aria-controls="gm-case-list" aria-label="Ir a la página anterior de casos">
+                        <span class="fp-table-pagination__arrow" aria-hidden="true">←</span>
+                        <span>Anterior</span>
+                    </button>
+                    <span class="fp-table-pagination__indicator" aria-live="polite" aria-atomic="true">
+                        Página <strong data-gm-current-page>1</strong>/<strong data-gm-total-pages>1</strong>
+                    </span>
+                    <button type="button" class="fp-table-pagination__button" id="gm-next-page"
+                            aria-controls="gm-case-list" aria-label="Ir a la página siguiente de casos">
+                        <span>Siguiente</span>
+                        <span class="fp-table-pagination__arrow" aria-hidden="true">→</span>
+                    </button>
+                </div>
+                <span class="fp-table-pagination__size">5 por página</span>
+            </nav>
         </div>
     </div>
 </div>
 
 <script>
+const GM_PAGE_SIZE = 5;
+let gmCurrentPage = 1;
+
 function toggleGmSearch(e) {
     if (e) e.stopPropagation();
     const wrapper = document.getElementById('gm-search-wrapper');
@@ -1203,6 +1241,55 @@ function normalizarBusquedaGm(valor) {
         .trim();
 }
 
+function getGmCards() {
+    return Array.from(document.querySelectorAll('#gm-case-list .gm-card'));
+}
+
+function renderGmPagination() {
+    const pagination = document.getElementById('gm-pagination');
+    if (!pagination) return;
+
+    const cards = getGmCards();
+    const matchingCards = cards.filter(card => card.dataset.gmFilterMatch !== 'false');
+    const totalCases = matchingCards.length;
+    const totalPages = Math.max(1, Math.ceil(totalCases / GM_PAGE_SIZE));
+    gmCurrentPage = Math.min(Math.max(gmCurrentPage, 1), totalPages);
+
+    const firstIndex = (gmCurrentPage - 1) * GM_PAGE_SIZE;
+    const lastIndex = Math.min(firstIndex + GM_PAGE_SIZE, totalCases);
+    cards.forEach(card => { card.hidden = true; });
+    matchingCards.slice(firstIndex, lastIndex).forEach(card => { card.hidden = false; });
+
+    pagination.querySelector('[data-gm-page-range]').textContent = totalCases
+        ? (firstIndex + 1) + '–' + lastIndex
+        : '0';
+    pagination.querySelector('[data-gm-page-total]').textContent = totalCases;
+    pagination.querySelector('[data-gm-current-page]').textContent = gmCurrentPage;
+    pagination.querySelector('[data-gm-total-pages]').textContent = totalPages;
+    pagination.hidden = totalCases === 0;
+
+    document.getElementById('gm-previous-page').disabled = gmCurrentPage <= 1;
+    document.getElementById('gm-next-page').disabled = gmCurrentPage >= totalPages;
+}
+
+function goToGmPage(requestedPage) {
+    gmCurrentPage = requestedPage;
+    renderGmPagination();
+
+    const firstVisibleCard = getGmCards().find(card => !card.hidden);
+    const panel = document.getElementById('gm-panel');
+    if (!firstVisibleCard || !panel.classList.contains('abierto')) return;
+
+    const reduceMotion = window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => {
+        firstVisibleCard.scrollIntoView({
+            behavior: reduceMotion ? 'auto' : 'smooth',
+            block: 'start'
+        });
+    });
+}
+
 function filterGmCards() {
     const input = document.getElementById('gm-search-input');
     const course = document.getElementById('gm-course-filter');
@@ -1212,27 +1299,34 @@ function filterGmCards() {
     const cards = panel.querySelectorAll('.gm-card');
     let visible = 0;
     cards.forEach(card => {
-        const text = normalizarBusquedaGm(card.innerText);
+        const text = normalizarBusquedaGm(card.textContent);
         const matchesText = !query || text.includes(query);
         const matchesCourse = !courseId || card.dataset.cursoId === courseId;
         const matches = matchesText && matchesCourse;
-        card.style.display = matches ? '' : 'none';
+        card.dataset.gmFilterMatch = matches ? 'true' : 'false';
         if (matches) visible += 1;
     });
 
+    gmCurrentPage = 1;
+    renderGmPagination();
     document.getElementById('gm-filter-count').textContent = visible + ' visible' + (visible === 1 ? '' : 's');
     document.getElementById('gm-filter-empty').hidden = visible !== 0;
     const count = panel.querySelector('.gm-count');
     if (count) count.textContent = visible;
-
-    const details = panel.querySelector('.gm-vermas');
-    const filtering = query !== '' || courseId !== '';
-    if (details) {
-        details.open = filtering;
-        const summary = details.querySelector('summary');
-        if (summary) summary.style.display = filtering ? 'none' : '';
-    }
 }
+
+(function initGmPagination() {
+    const pagination = document.getElementById('gm-pagination');
+    if (!pagination) return;
+
+    document.getElementById('gm-previous-page').addEventListener('click', function () {
+        goToGmPage(gmCurrentPage - 1);
+    });
+    document.getElementById('gm-next-page').addEventListener('click', function () {
+        goToGmPage(gmCurrentPage + 1);
+    });
+    renderGmPagination();
+})();
 </script>
 
 {# ── Modal de confirmación para "Ya revisado" (reemplaza al confirm() nativo) ── #}
