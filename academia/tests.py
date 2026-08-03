@@ -1,12 +1,14 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import Group, User
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -32,6 +34,37 @@ from .views_pagos import (
     _construir_matriz_pagos, _hojas_recaudacion_data,
     _plan_recaudacion_matricula,
 )
+
+
+class GlobalTablePaginationTests(SimpleTestCase):
+    def _read_project_file(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text(
+            encoding='utf-8'
+        )
+
+    def test_base_carga_paginacion_global_con_version_actual(self):
+        base = self._read_project_file('templates/base.html')
+
+        self.assertIn("responsive.css' %}?v=20260803-1", base)
+        self.assertIn("responsive.js' %}?v=20260803-1", base)
+
+    def test_paginacion_global_usa_cinco_registros_y_controles_accesibles(self):
+        script = self._read_project_file('static/responsive.js')
+
+        self.assertIn('var TABLE_PAGE_SIZE = 5;', script)
+        self.assertIn('Página <strong data-current-page>', script)
+        self.assertIn('Ir a la página anterior', script)
+        self.assertIn('Ir a la página siguiente', script)
+        self.assertIn('if (!table.tHead || !table.tBodies.length) return;', script)
+
+    def test_estilos_incluyen_movil_modo_oscuro_e_impresion_completa(self):
+        styles = self._read_project_file('static/responsive.css')
+
+        self.assertIn('.fp-table-pagination__controls', styles)
+        self.assertIn('body.dark-mode .fp-table-pagination', styles)
+        self.assertIn('@media screen and (max-width: 760px)', styles)
+        self.assertIn('display: table-row !important;', styles)
+        self.assertIn('.fp-table-pagination {\n        display: none !important;', styles)
 
 
 class ActividadUsuarioTests(TestCase):
@@ -5199,6 +5232,22 @@ class AlertasPagoPorJornadaTests(TestCase):
 
         self.assertNotIn(matricula.pk, matriculas_con_alerta)
 
+    def test_presencial_no_alerta_un_dia_antes_y_aparece_en_fecha_exacta(self):
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 6, 30)
+            ids_con_alerta = {
+                alerta['matricula'].pk
+                for alerta in _calcular_alertas_pago()
+            }
+        self.assertNotIn(self.matricula_presencial.pk, ids_con_alerta)
+
+        alerta = self._alerta_de(
+            self.matricula_presencial,
+            date(2026, 7, 1),
+        )
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 1))
+        self.assertEqual(alerta['dias_atraso'], 0)
+
     def test_alerta_presencial_se_detiene_en_el_ultimo_modulo(self):
         # Cubre reserva y los tres primeros módulos; queda pendiente el cuarto.
         self.matricula_presencial.valor_pagado = Decimal('63.00')
@@ -5275,11 +5324,97 @@ class AlertasPagoPorJornadaTests(TestCase):
             valor_pagado=Decimal('45.00'),
         )
 
+        # La reserva y el Módulo 1 ya están cubiertos: no debe reaparecer una
+        # alerta anticipada por ese primer módulo.
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 7, 9)
+            ids_con_alerta = {
+                alerta['matricula'].pk
+                for alerta in _calcular_alertas_pago()
+            }
+        self.assertNotIn(matricula.pk, ids_con_alerta)
+
         alerta = self._alerta_de(matricula, date(2026, 7, 17))
 
         self.assertEqual(alerta['numero_modulo'], 2)
         self.assertEqual(alerta['hito'], 'modulo')
         self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 17))
+
+    def test_alerta_online_aparece_un_dia_antes_del_inicio(self):
+        curso = Curso.objects.create(
+            nombre='Curso Online Inicio Anticipado',
+            ofrece_presencial=False,
+            ofrece_online=True,
+            valor_online=Decimal('60.00'),
+            numero_modulos_online=2,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='otros',
+            descripcion_otros='Online',
+            fecha_inicio=date(2026, 8, 15),
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 8, 10),
+            valor_curso=Decimal('60.00'),
+            valor_pagado=Decimal('10.00'),
+        )
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 8, 13)
+            ids_con_alerta = {
+                alerta['matricula'].pk
+                for alerta in _calcular_alertas_pago()
+            }
+        self.assertNotIn(matricula.pk, ids_con_alerta)
+
+        alerta = self._alerta_de(matricula, date(2026, 8, 14))
+        self.assertEqual(alerta['numero_modulo'], 1)
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 8, 14))
+        self.assertEqual(alerta['dias_atraso'], 0)
+
+    def test_online_pagado_no_alerta_un_dia_antes_del_inicio(self):
+        curso = Curso.objects.create(
+            nombre='Curso Online Pagado',
+            ofrece_presencial=False,
+            ofrece_online=True,
+            valor_online=Decimal('60.00'),
+            numero_modulos_online=2,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='otros',
+            descripcion_otros='Online',
+            fecha_inicio=date(2026, 8, 15),
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 8, 10),
+            valor_curso=Decimal('60.00'),
+            valor_pagado=Decimal('60.00'),
+        )
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 8, 14)
+            ids_con_alerta = {
+                alerta['matricula'].pk
+                for alerta in _calcular_alertas_pago()
+            }
+
+        self.assertNotIn(matricula.pk, ids_con_alerta)
 
     def test_pago_cada_dos_semanas_alerta_el_18_para_jornada_del_04(self):
         curso = Curso.objects.create(

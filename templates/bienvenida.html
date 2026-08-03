@@ -1056,11 +1056,13 @@
     <div class="gm-body">
         <div class="gm-body-inner">
             <p class="gm-resumen">
-                Estudiantes con saldo pendiente: el Módulo 1 se gestiona desde la fecha de
-                inicio de la jornada y cada módulo siguiente se habilita 7 días después,
-                o cada 14 días en los cursos configurados para pagos cada 2 semanas.
-                Al pagar un módulo, la alerta se oculta hasta el próximo vencimiento; con
-                saldo cero deja de aparecer. Los cursos de pago único generan una sola alerta.
+                Estudiantes con saldo pendiente: en cursos online, el Módulo 1 se gestiona
+                desde un día antes del inicio de la jornada; en cursos presenciales, desde
+                la fecha exacta de inicio. Los módulos siguientes conservan el calendario
+                semanal desde el inicio, o cada 14 días en los cursos configurados para pagos
+                cada 2 semanas. Al pagar un módulo, la alerta se oculta hasta el próximo
+                vencimiento; con saldo cero deja de aparecer. Los cursos de pago único generan
+                una sola alerta.
             </p>
 
             {% for a in alertas_pago|slice:":3" %}
