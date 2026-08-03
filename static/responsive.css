@@ -104,7 +104,7 @@ a.btn,
     max-width: none;
 }
 
-/* Paginación global de tablas: cinco registros por página. */
+/* Paginación global de tablas: diez registros por página. */
 .fp-table-page-hidden {
     display: none !important;
 }

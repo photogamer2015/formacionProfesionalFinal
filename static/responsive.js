@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    var TABLE_PAGE_SIZE = 5;
+    var TABLE_PAGE_SIZE = 10;
     var resizeObserver = null;
     var updateFrame = 0;
     var paginationSequence = 0;

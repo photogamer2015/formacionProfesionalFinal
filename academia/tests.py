@@ -45,13 +45,13 @@ class GlobalTablePaginationTests(SimpleTestCase):
     def test_base_carga_paginacion_global_con_version_actual(self):
         base = self._read_project_file('templates/base.html')
 
-        self.assertIn("responsive.css' %}?v=20260803-1", base)
-        self.assertIn("responsive.js' %}?v=20260803-1", base)
+        self.assertIn("responsive.css' %}?v=20260803-2", base)
+        self.assertIn("responsive.js' %}?v=20260803-2", base)
 
-    def test_paginacion_global_usa_cinco_registros_y_controles_accesibles(self):
+    def test_paginacion_global_usa_diez_registros_y_controles_accesibles(self):
         script = self._read_project_file('static/responsive.js')
 
-        self.assertIn('var TABLE_PAGE_SIZE = 5;', script)
+        self.assertIn('var TABLE_PAGE_SIZE = 10;', script)
         self.assertIn('Página <strong data-current-page>', script)
         self.assertIn('Ir a la página anterior', script)
         self.assertIn('Ir a la página siguiente', script)
@@ -69,7 +69,7 @@ class GlobalTablePaginationTests(SimpleTestCase):
     def test_alertas_del_panel_paginan_todos_los_casos_y_conservan_filtros(self):
         template = self._read_project_file('templates/bienvenida.html')
 
-        self.assertIn('const GM_PAGE_SIZE = 5;', template)
+        self.assertIn('const GM_PAGE_SIZE = 10;', template)
         self.assertIn('aria-label="Paginación de estudiantes con saldo pendiente"', template)
         self.assertIn('data-gm-current-page', template)
         self.assertIn('data-gm-total-pages', template)
