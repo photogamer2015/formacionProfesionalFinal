@@ -17,7 +17,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import (
     CategoriaForm, CursoForm, EstudianteForm,
-    JornadaCursoForm, MatriculaForm,
+    JornadaCursoForm, MatriculaForm, es_cedula_ruc_ecuador_valido,
 )
 from .models import (
     Abono, Categoria, Curso, Estudiante, JornadaCurso, Matricula,
@@ -767,7 +767,7 @@ def matricula_registrar(request, modalidad):
 
         cedula = request.POST.get('est-cedula', '').strip()
         estudiante_existente = None
-        if cedula:
+        if cedula and es_cedula_ruc_ecuador_valido(cedula):
             estudiante_existente = Estudiante.objects.filter(cedula=cedula).first()
 
         if not error_vendedora:

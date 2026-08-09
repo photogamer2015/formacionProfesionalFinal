@@ -9,6 +9,19 @@ from .models import (
 )
 
 
+def es_cedula_ruc_ecuador_valido(valor):
+    """Acepta cédula de 10 dígitos o RUC de 13 dígitos terminado en 001."""
+    documento = (valor or '').strip()
+    return bool(
+        documento.isascii()
+        and documento.isdigit()
+        and (
+            len(documento) == 10
+            or (len(documento) == 13 and documento.endswith('001'))
+        )
+    )
+
+
 class CategoriaForm(forms.ModelForm):
     class Meta:
         model = Categoria
@@ -237,6 +250,10 @@ class EstudianteForm(forms.ModelForm):
         # pasan a ser OBLIGATORIOS (necesarios para emitir la factura).
         self.factura_si = kwargs.pop('factura_si', False)
         super().__init__(*args, **kwargs)
+        self.fields['cedula'].widget.attrs['maxlength'] = '13'
+        # El modelo conserva hasta 20 caracteres por compatibilidad, pero el
+        # formulario de matrícula trabaja con celulares nacionales de 10 dígitos.
+        self.fields['celular'].widget.attrs['maxlength'] = '10'
 
     def clean(self):
         cleaned = super().clean()
@@ -252,6 +269,32 @@ class EstudianteForm(forms.ModelForm):
                     faltantes.append(etiqueta)
         return cleaned
 
+    def clean_cedula(self):
+        cedula = (self.cleaned_data.get('cedula') or '').strip()
+        if cedula and (not cedula.isascii() or not cedula.isdigit()):
+            raise forms.ValidationError(
+                'La cédula o RUC debe contener únicamente números.'
+            )
+        if len(cedula) < 10:
+            raise forms.ValidationError(
+                'La cédula debe tener 10 dígitos.'
+            )
+        if len(cedula) == 10:
+            return cedula
+        if len(cedula) < 13:
+            raise forms.ValidationError(
+                'El RUC debe tener 13 dígitos y terminar en 001.'
+            )
+        if len(cedula) == 13 and not cedula.endswith('001'):
+            raise forms.ValidationError(
+                'El RUC debe terminar en 001.'
+            )
+        if len(cedula) > 13:
+            raise forms.ValidationError(
+                'El RUC debe tener 13 dígitos y terminar en 001.'
+            )
+        return cedula
+
     class Meta:
         model = Estudiante
         fields = [
@@ -265,14 +308,29 @@ class EstudianteForm(forms.ModelForm):
                 'placeholder': '0102030405',
                 'id': 'id_est-cedula',
                 'autocomplete': 'off',
+                'inputmode': 'numeric',
+                'pattern': '(?:[0-9]{10}|[0-9]{10}001)',
+                'maxlength': '13',
+                'title': 'Ingresa una cédula de 10 dígitos o un RUC de 13 dígitos terminado en 001.',
+                'data-digits-only': 'true',
             }),
             'nombres': forms.TextInput(attrs={'class': 'form-input'}),
-            'edad': forms.NumberInput(attrs={'class': 'form-input', 'min': 0, 'max': 120}),
+            'edad': forms.TextInput(attrs={
+                'class': 'form-input',
+                'inputmode': 'numeric',
+                'pattern': '[0-9]*',
+                'maxlength': '3',
+                'data-digits-only': 'true',
+            }),
             'correo': forms.TextInput(attrs={'class': 'form-input', 'placeholder': 'correo@ejemplo.com'}),
             'celular': forms.TextInput(attrs={
                 'class': 'form-input', 'placeholder': '0991234567',
                 'id': 'id_est-celular',
                 'autocomplete': 'off',
+                'inputmode': 'numeric',
+                'pattern': '[0-9]*',
+                'maxlength': '10',
+                'data-digits-only': 'true',
             }),
             'nivel_formacion': forms.Select(attrs={'class': 'form-input'}),
             'titulo_profesional': forms.TextInput(attrs={'class': 'form-input'}),
@@ -293,10 +351,13 @@ class EstudianteForm(forms.ModelForm):
         if not celular:
             return celular  # opcional, se permite vacío
 
-        celular_digits = ''.join(filter(str.isdigit, celular))
-        if len(celular_digits) < 10:
+        if not celular.isascii() or not celular.isdigit():
+            raise forms.ValidationError(
+                'El celular debe contener únicamente números.'
+            )
+        if len(celular) < 10:
             raise forms.ValidationError("Por favor ingrese los diez dígitos completos.")
-        elif len(celular_digits) > 10:
+        elif len(celular) > 10:
             raise forms.ValidationError("Hay más de 10 dígitos, por favor verifique.")
 
 
@@ -358,7 +419,10 @@ class MatriculaForm(forms.ModelForm):
     )
     monto_pago_1 = forms.DecimalField(
         required=False, min_value=0, decimal_places=2,
-        widget=forms.NumberInput(attrs={'class': 'form-input', 'step': '0.01', 'id': 'id_monto_pago_1'})
+        widget=forms.NumberInput(attrs={
+            'class': 'form-input', 'step': '0.01', 'id': 'id_monto_pago_1',
+            'inputmode': 'decimal', 'data-decimal-only': 'true',
+        })
     )
     metodo_pago_1 = forms.ChoiceField(
         choices=[], required=False,
@@ -370,7 +434,10 @@ class MatriculaForm(forms.ModelForm):
     )
     monto_pago_2 = forms.DecimalField(
         required=False, min_value=0, decimal_places=2,
-        widget=forms.NumberInput(attrs={'class': 'form-input', 'step': '0.01', 'id': 'id_monto_pago_2'})
+        widget=forms.NumberInput(attrs={
+            'class': 'form-input', 'step': '0.01', 'id': 'id_monto_pago_2',
+            'inputmode': 'decimal', 'data-decimal-only': 'true',
+        })
     )
     metodo_pago_2 = forms.ChoiceField(
         choices=[], required=False,
@@ -422,14 +489,17 @@ class MatriculaForm(forms.ModelForm):
             'talla_camiseta': forms.RadioSelect(attrs={'class': 'talla-radio'}),
             'valor_curso': forms.NumberInput(attrs={
                 'class': 'form-input', 'step': '0.01', 'id': 'id_valor_curso',
+                'inputmode': 'decimal', 'data-decimal-only': 'true',
             }),
             'descuento': forms.NumberInput(attrs={
                 'class': 'form-input', 'step': '0.01', 'min': '0',
                 'id': 'id_descuento', 'placeholder': '0.00',
+                'inputmode': 'decimal', 'data-decimal-only': 'true',
             }),
             'valor_pagado': forms.NumberInput(attrs={
                 'class': 'form-input', 'step': '0.01', 'min': '0.01',
                 'id': 'id_valor_pagado',
+                'inputmode': 'decimal', 'data-decimal-only': 'true',
             }),
             'observaciones': forms.Textarea(attrs={'class': 'form-input', 'rows': 3}),
             # Comprobante
@@ -446,6 +516,10 @@ class MatriculaForm(forms.ModelForm):
             'fact_cedula': forms.TextInput(attrs={
                 'class': 'form-input',
                 'placeholder': 'Cédula / RUC',
+                'inputmode': 'numeric',
+                'pattern': '[0-9]*',
+                'maxlength': '20',
+                'data-digits-only': 'true',
             }),
             'fact_correo': forms.TextInput(attrs={
                 'class': 'form-input',
@@ -596,6 +670,14 @@ class MatriculaForm(forms.ModelForm):
             if valor is None or valor <= 0:
                 raise forms.ValidationError("Para registrar una matrícula es obligatorio realizar un pago inicial mayor a $0.")
         return valor
+
+    def clean_fact_cedula(self):
+        cedula = (self.cleaned_data.get('fact_cedula') or '').strip()
+        if cedula and (not cedula.isascii() or not cedula.isdigit()):
+            raise forms.ValidationError(
+                'La cédula o RUC de factura debe contener únicamente números.'
+            )
+        return cedula
 
     def clean_descuento(self):
         """El descuento no puede ser negativo ni mayor al valor del curso."""
@@ -892,6 +974,7 @@ class AbonoForm(forms.ModelForm):
         self.fields['banco'].empty_label = '— Selecciona un banco —'
         self.fields['numero_modulo'].required = False
         self.modulos_con_pago_registrado = []
+        self.modulos_con_recuperacion_pendiente = []
 
         if matricula:
             pagos_modulo_qs = matricula.abonos.filter(
@@ -902,6 +985,14 @@ class AbonoForm(forms.ModelForm):
                 pagos_modulo_qs = pagos_modulo_qs.exclude(pk=self.instance.pk)
             self.modulos_con_pago_registrado = sorted(
                 set(pagos_modulo_qs.values_list('numero_modulo', flat=True))
+            )
+            self.modulos_con_recuperacion_pendiente = sorted(
+                set(
+                    matricula.recuperaciones_pendientes.filter(
+                        pagada=False,
+                        numero_modulo__isnull=False,
+                    ).values_list('numero_modulo', flat=True)
+                )
             )
 
         # "Abono + Módulo" se retiró del registro de pagos nuevos. Se conserva
@@ -932,6 +1023,8 @@ class AbonoForm(forms.ModelForm):
             for i in range(1, n + 1):
                 nombre_per = nombres[i-1] if i - 1 < len(nombres) else None
                 label = f'Módulo {i} - {nombre_per}' if nombre_per else f'Módulo {i}'
+                if i in self.modulos_con_recuperacion_pendiente:
+                    label = f'{label} - recuperación'
                 modulo_choices.append((i, label))
         else:
             # Fallback genérico
@@ -1001,6 +1094,20 @@ class AbonoForm(forms.ModelForm):
                     f'No se puede registrar este pago porque el Módulo '
                     f'{numero_modulo} ya se encuentra registrado en el '
                     f'historial de pagos.'
+                ),
+            )
+
+        if (
+            tipo_pago in ('por_modulo', 'solo_modulo')
+            and numero_modulo
+            and numero_modulo in self.modulos_con_recuperacion_pendiente
+        ):
+            self.add_error(
+                'numero_modulo',
+                (
+                    f'El Módulo {numero_modulo} está marcado como '
+                    f'recuperación. No se puede tomar como pago normal; '
+                    f'cóbralo desde la recuperación correspondiente.'
                 ),
             )
 

@@ -299,6 +299,9 @@ def _filtrar_matriculas(request):
     mes = request.GET.get('mes', '').strip()
     q = request.GET.get('q', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
+    modulo_curso_id = request.GET.get('modulo_curso', '').strip()
+    modulo_numero = request.GET.get('modulo_numero', '').strip()
+    modulo_estado = request.GET.get('modulo_estado', '').strip()
     fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date = (
         _rango_fecha_matricula_desde_request(request)
     )
@@ -356,6 +359,28 @@ def _filtrar_matriculas(request):
             )
         ).distinct()
 
+    # Filtro independiente por curso + módulo + estado del módulo.
+    # "Pendiente de pago" incluye módulos sin pago o con pago parcial.
+    if modulo_curso_id.isdigit():
+        qs = qs.filter(curso_id=int(modulo_curso_id))
+    else:
+        modulo_curso_id = ''
+
+    if (
+        modulo_curso_id
+        and modulo_numero.isdigit()
+        and modulo_estado in ('pendiente', 'pagado')
+    ):
+        numero = int(modulo_numero)
+        ids = [
+            m.pk for m in qs.exclude(estado='retiro_voluntario').select_related('curso')
+            if _matricula_coincide_filtro_modulo(m, numero, modulo_estado)
+        ]
+        qs = qs.filter(pk__in=ids)
+    else:
+        modulo_numero = '' if not modulo_numero.isdigit() else modulo_numero
+        modulo_estado = '' if modulo_estado not in ('pendiente', 'pagado') else modulo_estado
+
     return qs, {
         'estado': estado,
         'curso': curso_id,
@@ -364,6 +389,9 @@ def _filtrar_matriculas(request):
         'mes': mes,
         'q': q,
         'descuento': descuento_str,
+        'modulo_curso': modulo_curso_id,
+        'modulo_numero': modulo_numero,
+        'modulo_estado': modulo_estado,
         'fecha_desde': fecha_desde,
         'fecha_hasta': fecha_hasta,
     }
@@ -383,6 +411,130 @@ def _tiene_modulo_pendiente(matricula):
         modulo['estado'] != 'Pagado'
         for modulo in matricula.desglose_pagos_por_modulo()
     )
+
+
+def _detalle_modulo_pago(matricula, numero_modulo):
+    """Devuelve el detalle de pago de un módulo concreto de una matrícula."""
+    try:
+        numero = int(numero_modulo)
+    except (TypeError, ValueError):
+        return None
+
+    for modulo in matricula.desglose_pagos_por_modulo():
+        if modulo['numero'] != numero:
+            continue
+
+        estado_real = modulo['estado']
+        saldo_modulo = max(
+            (modulo.get('esperado') or Decimal('0.00')) - (modulo.get('pagado') or Decimal('0.00')),
+            Decimal('0.00'),
+        )
+        estado_codigo = 'pagado' if estado_real == 'Pagado' else 'pendiente'
+        return {
+            'numero': numero,
+            'label': modulo.get('label') or f'Módulo {numero}',
+            'estado': estado_real,
+            'estado_codigo': estado_codigo,
+            'pagado': modulo.get('pagado') or Decimal('0.00'),
+            'esperado': modulo.get('esperado') or Decimal('0.00'),
+            'saldo': saldo_modulo,
+            'fecha_ultimo_pago': modulo.get('fecha_ultimo_pago'),
+        }
+    return None
+
+
+def _matricula_coincide_filtro_modulo(matricula, numero_modulo, estado_filtro):
+    detalle = _detalle_modulo_pago(matricula, numero_modulo)
+    if not detalle:
+        return False
+    if estado_filtro == 'pagado':
+        return detalle['estado'] == 'Pagado'
+    if estado_filtro == 'pendiente':
+        return detalle['estado'] in ('Pendiente', 'Parcial')
+    return False
+
+
+def _adjuntar_detalle_modulo_filtrado(matriculas, filtros):
+    if not (
+        filtros.get('modulo_curso')
+        and filtros.get('modulo_numero')
+        and filtros.get('modulo_estado') in ('pendiente', 'pagado')
+    ):
+        return matriculas
+
+    for matricula in matriculas:
+        matricula.modulo_filtro_detalle = _detalle_modulo_pago(
+            matricula,
+            filtros['modulo_numero'],
+        )
+    return matriculas
+
+
+def _max_modulos_curso_para_filtro(curso):
+    cantidades = []
+    if curso.ofrece_presencial:
+        cantidades.append(curso.numero_modulos or 1)
+    if curso.ofrece_online:
+        cantidades.append(
+            1 if curso.usa_pago_unico_recaudacion('online')
+            else (curso.numero_modulos_online or 1)
+        )
+    return max(cantidades or [1])
+
+
+def _nombre_modulo_curso_para_filtro(curso, numero_modulo):
+    if not curso.nombrar_modulos or not isinstance(curso.nombres_modulos, dict):
+        return ''
+
+    nombres = []
+    for modalidad in ('presencial', 'online'):
+        if not curso.ofrece(modalidad):
+            continue
+        total = (
+            1 if curso.usa_pago_unico_recaudacion(modalidad)
+            else curso.get_numero_modulos(modalidad)
+        )
+        if numero_modulo > total:
+            continue
+        nombres_modalidad = curso.nombres_modulos.get(modalidad, [])
+        if 1 <= numero_modulo <= len(nombres_modalidad):
+            nombre = (nombres_modalidad[numero_modulo - 1] or '').strip()
+            if nombre:
+                nombres.append(nombre)
+
+    nombres_unicos = sorted(set(nombres))
+    return nombres_unicos[0] if len(nombres_unicos) == 1 else ''
+
+
+def _opciones_modulos_curso_para_filtro(curso):
+    if not curso:
+        return []
+    opciones = []
+    for numero in range(1, _max_modulos_curso_para_filtro(curso) + 1):
+        nombre = _nombre_modulo_curso_para_filtro(curso, numero)
+        opciones.append({
+            'numero': numero,
+            'label': f'Módulo {numero}' + (f' - {nombre}' if nombre else ''),
+        })
+    return opciones
+
+
+def _payload_cursos_modulo_filtro(cursos):
+    return {
+        str(curso.pk): {
+            'nombre': curso.nombre,
+            'modulos': _opciones_modulos_curso_para_filtro(curso),
+        }
+        for curso in cursos
+    }
+
+
+def _modulo_filtro_estado_label(estado):
+    if estado == 'pagado':
+        return 'Pagado'
+    if estado == 'pendiente':
+        return 'Pendiente de pago'
+    return ''
 
 
 def _resumen_abonos(abonos):
@@ -511,6 +663,7 @@ def pagos_lista(request):
         )
     ).order_by('-creado', '-id')
     matriculas = _adjuntar_resumen_abonos(list(qs))
+    matriculas = _adjuntar_detalle_modulo_filtrado(matriculas, filtros)
 
     # Estadísticas globales (con los filtros aplicados, excepto el de estado)
     qs_sin_estado = Matricula.objects.select_related('curso').all()
@@ -577,7 +730,7 @@ def pagos_lista(request):
             else:
                 conteo_estado['Pendiente'] += 1
 
-    cursos = Curso.objects.filter(activo=True).order_by('nombre')
+    cursos = list(Curso.objects.filter(activo=True).order_by('nombre'))
     anios = sorted(
         set(Matricula.objects.dates('fecha_matricula', 'year').values_list('fecha_matricula__year', flat=True)),
         reverse=True
@@ -585,6 +738,30 @@ def pagos_lista(request):
     filtros_query = urlencode({
         key: value for key, value in filtros.items() if value
     })
+    filtros_query_sin_modulo = urlencode({
+        key: value for key, value in filtros.items()
+        if value and key not in ('modulo_curso', 'modulo_numero', 'modulo_estado')
+    })
+
+    modulo_curso_sel = next(
+        (curso for curso in cursos if str(curso.pk) == filtros.get('modulo_curso')),
+        None,
+    )
+    modulo_filtro_opciones = _opciones_modulos_curso_para_filtro(modulo_curso_sel)
+    modulo_filtro_activo = bool(
+        modulo_curso_sel
+        and filtros.get('modulo_numero')
+        and filtros.get('modulo_estado') in ('pendiente', 'pagado')
+    )
+    modulo_filtro_label = ''
+    if filtros.get('modulo_numero'):
+        modulo_filtro_label = next(
+            (
+                opcion['label'] for opcion in modulo_filtro_opciones
+                if str(opcion['numero']) == filtros['modulo_numero']
+            ),
+            f"Módulo {filtros['modulo_numero']}",
+        )
 
     return render(request, 'pagos/lista.html', {
         'matriculas': matriculas,
@@ -592,10 +769,19 @@ def pagos_lista(request):
         'anios': anios,
         'filtros': filtros,
         'filtros_query': filtros_query,
+        'filtros_query_sin_modulo': filtros_query_sin_modulo,
         'hay_filtros': bool(filtros_query),
         'totales': totales,
         'conteo_estado': conteo_estado,
         'conteo_modulos_pendientes': conteo_modulos_pendientes,
+        'cursos_modulo_filtro': _payload_cursos_modulo_filtro(cursos),
+        'modulo_filtro_opciones': modulo_filtro_opciones,
+        'modulo_filtro_activo': modulo_filtro_activo,
+        'modulo_filtro_resumen': {
+            'curso': modulo_curso_sel.nombre if modulo_curso_sel else '',
+            'modulo': modulo_filtro_label,
+            'estado': _modulo_filtro_estado_label(filtros.get('modulo_estado')),
+        },
     })
 
 

@@ -73,6 +73,8 @@
                 <span id="cedula-status" style="margin-left:8px; font-weight:400; font-size:11px;"></span>
             </label>
             {{ est_form.cedula }}{{ est_form.cedula.errors }}
+            <div id="cedula-format-status" aria-live="polite"
+                 style="display:none; font-size:11px; margin-top:4px; font-weight:600;"></div>
         </div>
         
         <div>
@@ -910,6 +912,7 @@
         // ── Elementos del DOM ──────────────
         const cedulaInput = document.querySelector('[name="est-cedula"]') || document.querySelector('[name="cedula"]');
         const cedulaStatus = document.getElementById('cedula-status');
+        const cedulaFormatStatus = document.getElementById('cedula-format-status');
         const cursoSelect = document.querySelector('[name="mat-curso"]') || document.querySelector('[name="curso"]');
         const valorCursoInput = document.querySelector('[name="mat-valor_curso"]') || document.querySelector('[name="valor_curso"]');
         const descuentoInput = document.querySelector('[name="mat-descuento"]') || document.querySelector('[name="descuento"]');
@@ -935,6 +938,36 @@
         const cursoCards = Array.from(document.querySelectorAll('.course-option'));
         const cursoEmpty = document.getElementById('curso-empty');
         const modalidadTabs = Array.from(document.querySelectorAll('.course-mode-tab'));
+
+        // Los identificadores y datos personales numéricos conservan los ceros
+        // iniciales, pero nunca admiten letras ni signos, incluso al pegar.
+        document.querySelectorAll('[data-digits-only="true"]').forEach(function (input) {
+            input.addEventListener('beforeinput', function (event) {
+                if (event.data && /[^0-9]/.test(event.data)) {
+                    event.preventDefault();
+                }
+            });
+            input.addEventListener('input', function () {
+                const limpio = this.value.replace(/[^0-9]/g, '');
+                if (this.value !== limpio) this.value = limpio;
+            });
+        });
+
+        // Los importes permiten números y centavos, pero no notación científica,
+        // signos ni letras que algunos navegadores aceptan en type="number".
+        document.querySelectorAll('[data-decimal-only="true"]').forEach(function (input) {
+            input.addEventListener('keydown', function (event) {
+                if (!event.ctrlKey && !event.metaKey && !event.altKey
+                    && (/^[a-z]$/i.test(event.key) || ['+', '-'].includes(event.key))) {
+                    event.preventDefault();
+                }
+            });
+            input.addEventListener('beforeinput', function (event) {
+                if (event.data && /[a-z+\-]/i.test(event.data)) {
+                    event.preventDefault();
+                }
+            });
+        });
 
         // ── Calcular valor neto (con descuento) en tiempo real ──
         function valorNetoActual() {
@@ -1736,9 +1769,78 @@
         let cedulaTimer = null;
         let esPrimeraCargaPost = {% if request.method == 'POST' %}true{% else %}false{% endif %};
 
+        function clasificarCedulaRuc(valor) {
+            const documento = (valor || '').trim();
+            if (!documento) {
+                return { valido: false, vacio: true, tipo: '', mensaje: '' };
+            }
+            if (documento.length < 10) {
+                return {
+                    valido: false,
+                    tipo: 'cedula',
+                    mensaje: 'La cédula debe tener 10 dígitos.',
+                };
+            }
+            if (documento.length === 10) {
+                return {
+                    valido: true,
+                    tipo: 'cedula',
+                    mensaje: 'Cédula válida: 10 dígitos.',
+                };
+            }
+            if (documento.length < 13) {
+                return {
+                    valido: false,
+                    tipo: 'ruc',
+                    mensaje: 'El RUC debe tener 13 dígitos y terminar en 001.',
+                };
+            }
+            if (documento.length === 13 && documento.endsWith('001')) {
+                return {
+                    valido: true,
+                    tipo: 'ruc',
+                    mensaje: 'RUC válido: 13 dígitos terminados en 001.',
+                };
+            }
+            return {
+                valido: false,
+                tipo: 'ruc',
+                mensaje: documento.length === 13
+                    ? 'El RUC debe terminar en 001.'
+                    : 'El RUC debe tener 13 dígitos y terminar en 001.',
+            };
+        }
+
+        function actualizarFormatoCedulaRuc() {
+            const resultado = clasificarCedulaRuc(cedulaInput ? cedulaInput.value : '');
+            if (!cedulaInput) return resultado;
+
+            cedulaInput.setCustomValidity(
+                resultado.vacio || resultado.valido ? '' : resultado.mensaje
+            );
+            if (resultado.vacio) {
+                cedulaInput.style.borderColor = '';
+                if (cedulaFormatStatus) {
+                    cedulaFormatStatus.textContent = '';
+                    cedulaFormatStatus.style.display = 'none';
+                }
+                return resultado;
+            }
+
+            cedulaInput.style.borderColor = resultado.valido ? '' : '#c62828';
+            cedulaInput.style.borderWidth = resultado.valido ? '' : '2px';
+            if (cedulaFormatStatus) {
+                cedulaFormatStatus.textContent = resultado.mensaje;
+                cedulaFormatStatus.style.color = resultado.valido ? '#2e7d32' : '#c62828';
+                cedulaFormatStatus.style.display = 'block';
+            }
+            return resultado;
+        }
+
         async function buscarPorCedula(cedula) {
             cedula = (cedula || '').trim();
-            if (!cedula || cedula.length < 4) {
+            const formato = clasificarCedulaRuc(cedula);
+            if (!formato.valido) {
                 if (cedulaStatus) cedulaStatus.textContent = '';
                 matriculasEstudiante = [];
                 if (cursoDuplicadoAlert) cursoDuplicadoAlert.style.display = 'none';
@@ -1748,6 +1850,7 @@
             try {
                 const resp = await fetch(`/api/estudiante/${encodeURIComponent(cedula)}/`);
                 const data = await resp.json();
+                if (cedulaInput && cedulaInput.value.trim() !== cedula) return;
                 if (data.ok && data.encontrado) {
                     const e = data.estudiante;
                     CAMPOS_ESTUDIANTE.forEach(c => setCampoEstudiante(c, e[c]));
@@ -1779,9 +1882,21 @@
                 clearTimeout(cedulaTimer);
                 const valor = this.value;
                 esPrimeraCargaPost = false; // Si el usuario escribe manualmente, no es carga inicial
+                const formato = actualizarFormatoCedulaRuc();
+                if (!formato.valido) {
+                    if (cedulaStatus) cedulaStatus.textContent = '';
+                    matriculasEstudiante = [];
+                    if (cursoDuplicadoAlert) cursoDuplicadoAlert.style.display = 'none';
+                    validarCamposPrincipales();
+                    return;
+                }
                 cedulaTimer = setTimeout(() => buscarPorCedula(valor), 350);
             });
-            if (cedulaInput.value && MODO !== 'editar') buscarPorCedula(cedulaInput.value);
+            actualizarFormatoCedulaRuc();
+            if (cedulaInput.value && MODO !== 'editar'
+                && clasificarCedulaRuc(cedulaInput.value).valido) {
+                buscarPorCedula(cedulaInput.value);
+            }
         }
 
         // ── Aviso de celular compartido (informativo, NO bloquea) ─────────
@@ -2197,6 +2312,13 @@
                     agregarFaltante(label);
                 }
             });
+
+            const formatoDocumento = clasificarCedulaRuc(
+                cedulaInput ? cedulaInput.value : ''
+            );
+            if (cedulaInput && cedulaInput.value && !formatoDocumento.valido) {
+                agregarFaltante(formatoDocumento.mensaje);
+            }
 
             // 1. Valor pagado debe ser mayor a 0.00 (solo en modo registrar)
             if (valorPagadoInput && MODO !== 'editar') {

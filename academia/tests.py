@@ -18,7 +18,8 @@ from .authentication import (
     LOGIN_MFA_USER_ID_SESSION_KEY,
 )
 from .forms import (
-    AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, MatriculaForm,
+    AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, EstudianteForm,
+    MatriculaForm, es_cedula_ruc_ecuador_valido,
 )
 from .models import (
     Abono, ActividadUsuario, Adicional, AdicionalArchivado, AmistadUsuario,
@@ -85,6 +86,37 @@ class GlobalTablePaginationTests(SimpleTestCase):
         self.assertIn('.gm-card[hidden] { display: none; }', template)
         self.assertIn('.gm-card[hidden] { display: grid !important; }', template)
         self.assertIn("window.matchMedia('(prefers-reduced-motion: reduce)')", template)
+
+    def test_cursos_tienen_buscador_normalizado_por_nombre(self):
+        template = self._read_project_file('templates/cursos/lista.html')
+
+        self.assertIn('data-course-search', template)
+        self.assertIn('data-course-card', template)
+        self.assertIn('data-course-name="{{ curso.nombre }}"', template)
+        self.assertIn(".normalize('NFD')", template)
+        self.assertIn("replace(/[\\u0300-\\u036f]/g, '')", template)
+        self.assertIn('No hay cursos que coincidan con la búsqueda.', template)
+
+    def test_centro_ayuda_actualizado_sin_video(self):
+        template = self._read_project_file('templates/ayuda.html')
+
+        self.assertNotIn('<video', template)
+        self.assertNotIn('El Plan Maestro.mp4', template)
+        self.assertNotIn('Video Tutorial', template)
+        self.assertIn('Última revisión: agosto 2026.', template)
+        self.assertIn('📚 Cursos y Categorías', template)
+        self.assertIn('Filtro separado por módulo', template)
+        self.assertIn('mayúsculas, minúsculas, tildes', template)
+
+    def test_historial_meses_tienen_flecha_desplegable_funcional(self):
+        template = self._read_project_file('templates/historial/lista.html')
+
+        self.assertIn('class="hist-month"', template)
+        self.assertIn('class="hist-month-summary"', template)
+        self.assertIn('class="hist-month-arrow"', template)
+        self.assertIn('.hist-month summary::-webkit-details-marker', template)
+        self.assertIn('.hist-month[open] .hist-month-arrow', template)
+        self.assertIn("summary.setAttribute('aria-expanded'", template)
 
 
 class ActividadUsuarioTests(TestCase):
@@ -1995,6 +2027,125 @@ class CierreCursoManualTests(TestCase):
         self.assertEqual(estudiante_archivado.nombre_completo, 'Osmár Manual')
 
 
+class CamposNumericosMatriculaTests(TestCase):
+    def _estudiante_data(self, **overrides):
+        data = {
+            'cedula': '0102030405',
+            'nombres': 'Estudiante Numérico',
+            'edad': '24',
+            'correo': '',
+            'celular': '0991234567',
+            'nivel_formacion': '',
+            'titulo_profesional': '',
+            'ciudad': '',
+        }
+        data.update(overrides)
+        return data
+
+    def test_campos_personales_numericos_conservan_ceros_iniciales(self):
+        form = EstudianteForm(self._estudiante_data())
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['cedula'], '0102030405')
+        self.assertEqual(form.cleaned_data['celular'], '0991234567')
+
+    def test_cedula_ruc_rechaza_letras_y_signos(self):
+        form = EstudianteForm(
+            self._estudiante_data(cedula='01020A040-5')
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('cedula', form.errors)
+        self.assertIn('únicamente números', form.errors['cedula'][0])
+
+    def test_cedula_rechaza_menos_de_diez_digitos(self):
+        form = EstudianteForm(self._estudiante_data(cedula='010203040'))
+
+        self.assertFalse(form.is_valid())
+        self.assertEqual(
+            form.errors['cedula'][0],
+            'La cédula debe tener 10 dígitos.',
+        )
+
+    def test_ruc_valido_acepta_trece_digitos_terminados_en_001(self):
+        ruc = '1207342716001'
+        form = EstudianteForm(self._estudiante_data(cedula=ruc))
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['cedula'], ruc)
+        self.assertTrue(es_cedula_ruc_ecuador_valido(ruc))
+
+    def test_ruc_rechaza_longitud_incompleta(self):
+        form = EstudianteForm(self._estudiante_data(cedula='120734271602'))
+
+        self.assertFalse(form.is_valid())
+        self.assertEqual(
+            form.errors['cedula'][0],
+            'El RUC debe tener 13 dígitos y terminar en 001.',
+        )
+
+    def test_ruc_rechaza_trece_digitos_sin_terminacion_001(self):
+        form = EstudianteForm(self._estudiante_data(cedula='1207342716123'))
+
+        self.assertFalse(form.is_valid())
+        self.assertEqual(
+            form.errors['cedula'][0],
+            'El RUC debe terminar en 001.',
+        )
+
+    def test_celular_rechaza_letras_aunque_contenga_diez_digitos(self):
+        form = EstudianteForm(
+            self._estudiante_data(celular='0991234567abc')
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('celular', form.errors)
+        self.assertIn('únicamente números', form.errors['celular'][0])
+
+    def test_edad_rechaza_letras(self):
+        form = EstudianteForm(self._estudiante_data(edad='2a'))
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('edad', form.errors)
+
+    def test_widgets_numericos_exponen_teclado_y_restriccion_correctos(self):
+        estudiante_form = EstudianteForm()
+        matricula_form = MatriculaForm()
+
+        for campo in ('edad', 'celular'):
+            attrs = estudiante_form.fields[campo].widget.attrs
+            self.assertEqual(attrs['inputmode'], 'numeric')
+            self.assertEqual(attrs['pattern'], '[0-9]*')
+            self.assertEqual(attrs['data-digits-only'], 'true')
+        cedula_attrs = estudiante_form.fields['cedula'].widget.attrs
+        self.assertEqual(cedula_attrs['inputmode'], 'numeric')
+        self.assertEqual(cedula_attrs['data-digits-only'], 'true')
+        self.assertEqual(
+            estudiante_form.fields['celular'].widget.attrs['maxlength'],
+            '10',
+        )
+        self.assertEqual(
+            estudiante_form.fields['cedula'].widget.attrs['maxlength'],
+            '13',
+        )
+        self.assertEqual(
+            estudiante_form.fields['cedula'].widget.attrs['pattern'],
+            '(?:[0-9]{10}|[0-9]{10}001)',
+        )
+
+        fact_attrs = matricula_form.fields['fact_cedula'].widget.attrs
+        self.assertEqual(fact_attrs['inputmode'], 'numeric')
+        self.assertEqual(fact_attrs['data-digits-only'], 'true')
+
+        for campo in (
+            'valor_curso', 'descuento', 'valor_pagado',
+            'monto_pago_1', 'monto_pago_2',
+        ):
+            attrs = matricula_form.fields[campo].widget.attrs
+            self.assertEqual(attrs['inputmode'], 'decimal')
+            self.assertEqual(attrs['data-decimal-only'], 'true')
+
+
 class PagoInicialMatriculaTests(TestCase):
     def setUp(self):
         self.usuario = User.objects.create_user(username='soporte')
@@ -2117,6 +2268,23 @@ class PagoInicialMatriculaTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn('metodo_pago', form.errors)
+
+    def test_matricula_rechaza_letras_en_cedula_ruc_de_factura(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-factura_realizada': 'si',
+                    'mat-fact_nombres': 'Cliente Factura',
+                    'mat-fact_cedula': '0102030405A',
+                    'mat-fact_correo': 'cliente@example.com',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('fact_cedula', form.errors)
+        self.assertIn('únicamente números', form.errors['fact_cedula'][0])
 
     def test_matricula_mixta_rechaza_metodos_vacios(self):
         form = MatriculaForm(
@@ -3740,6 +3908,74 @@ class PagoInicialMatriculaTests(TestCase):
             form.errors['numero_modulo'][0],
         )
 
+    def test_registrar_pago_normal_bloquea_modulo_en_recuperacion_pendiente(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('10.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 12),
+            saldo_pendiente_al_marcar=Decimal('105.00'),
+        )
+
+        form = AbonoForm(
+            self._abono_data(tipo_pago='solo_modulo', numero_modulo='1'),
+            matricula=matricula,
+        )
+
+        self.assertEqual(form.modulos_con_recuperacion_pendiente, [1])
+        self.assertIn(
+            (1, 'Módulo 1 - recuperación'),
+            list(form.fields['numero_modulo'].widget.choices),
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn('numero_modulo', form.errors)
+        self.assertIn('recuperación', form.errors['numero_modulo'][0])
+
+    def test_pago_recuperacion_permite_modulo_en_recuperacion_pendiente(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('10.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 12),
+            saldo_pendiente_al_marcar=Decimal('105.00'),
+        )
+
+        form = AbonoForm(
+            self._abono_data(
+                tipo_pago='recuperacion',
+                numero_modulo='1',
+                fecha_marcada='2026-07-12',
+                fecha_programada='2026-07-19',
+            ),
+            matricula=matricula,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+
     def test_detalle_pago_expone_modulos_registrados_para_el_selector(self):
         matricula = self._crear_matricula_pago_unico_online()
         Abono.objects.create(
@@ -3768,6 +4004,44 @@ class PagoInicialMatriculaTests(TestCase):
         )
         self.assertContains(response, 'modulos-registrados-pago')
         self.assertContains(response, 'aviso-modulo-registrado')
+
+    def test_detalle_pago_expone_modulos_en_recuperacion_para_el_selector(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('10.00'),
+            tipo_registro='central_ia',
+            registrado_por=self.usuario,
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 12),
+            saldo_pendiente_al_marcar=Decimal('105.00'),
+        )
+        admin = User.objects.create_superuser(
+            username='admin_modulo_recuperacion_selector',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:matricula_abonos', kwargs={'pk': matricula.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['form'].modulos_con_recuperacion_pendiente,
+            [1],
+        )
+        self.assertContains(response, 'modulos-recuperacion-pendiente')
+        self.assertContains(response, 'Módulo 1 - recuperación')
 
     def test_editar_pago_conserva_su_modulo_actual(self):
         matricula = Matricula.objects.create(
@@ -4425,6 +4699,56 @@ class PagosPorModuloFiltroTests(TestCase):
             [mod['numero'] for mod in matriculas[0]['modulos_visibles_data']],
             [1],
         )
+
+    def test_lista_pagos_filtra_por_curso_modulo_y_estado(self):
+        matricula_pagada = self._crear_matricula(
+            '0955555555', 'Estudiante Modulo Pagado', modulo_pagado=1
+        )
+        matricula_pendiente = self._crear_matricula(
+            '0966666666', 'Estudiante Modulo Pendiente', modulo_pagado=2
+        )
+        admin = User.objects.create_superuser(
+            username='admin_lista_modulos',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:pagos_lista'),
+            {
+                'modulo_curso': str(self.curso.pk),
+                'modulo_numero': '1',
+                'modulo_estado': 'pagado',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['modulo_filtro_activo'])
+        self.assertEqual(
+            [matricula.pk for matricula in response.context['matriculas']],
+            [matricula_pagada.pk],
+        )
+        self.assertContains(response, 'Filtro separado por módulo de pago')
+        self.assertContains(response, 'Módulo 1 · Pagado')
+        self.assertNotContains(response, 'Estudiante Modulo Pendiente')
+
+        response = self.client.get(
+            reverse('academia:pagos_lista'),
+            {
+                'modulo_curso': str(self.curso.pk),
+                'modulo_numero': '1',
+                'modulo_estado': 'pendiente',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [matricula.pk for matricula in response.context['matriculas']],
+            [matricula_pendiente.pk],
+        )
+        self.assertContains(response, 'Pendiente de pago')
+        self.assertContains(response, 'Módulo 1 · Pendiente')
+        self.assertNotContains(response, 'Estudiante Modulo Pagado')
 
     def test_vista_pagos_por_modulo_renderiza_solo_columna_filtrada(self):
         self._crear_matricula(

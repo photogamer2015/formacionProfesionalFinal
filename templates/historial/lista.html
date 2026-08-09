@@ -2,6 +2,113 @@
 
 {% block title %}Historial de matriculados{% endblock %}
 
+{% block extra_head %}
+<style>
+    .hist-month {
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .hist-month summary {
+        list-style: none;
+    }
+
+    .hist-month summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .hist-month-summary {
+        padding: 14px 20px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        background: #fafafa;
+        user-select: none;
+        transition: background .18s ease;
+    }
+
+    .hist-month-summary:hover {
+        background: #f3f6fb;
+    }
+
+    .hist-month-summary:focus-visible {
+        outline: 3px solid rgba(26, 35, 126, .22);
+        outline-offset: -3px;
+    }
+
+    .hist-month-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 240px;
+    }
+
+    .hist-month-arrow {
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 22px;
+        background: #e8eaf6;
+        color: #1a237e;
+        font-size: 18px;
+        line-height: 1;
+        font-weight: 800;
+        transform: rotate(0deg);
+        transition: transform .18s ease, background .18s ease;
+    }
+
+    .hist-month[open] .hist-month-arrow {
+        transform: rotate(90deg);
+        background: #dfe6ff;
+    }
+
+    .hist-month-name {
+        color: #1a237e;
+        font-size: 15px;
+    }
+
+    .hist-month-count {
+        background: #e8eaf6;
+        color: #1a237e;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .hist-month-totals {
+        font-size: 12px;
+        color: #666;
+    }
+
+    .hist-month-body {
+        overflow-x: auto;
+    }
+
+    @media (max-width: 720px) {
+        .hist-month-summary {
+            padding: 12px 14px;
+            align-items: flex-start;
+        }
+
+        .hist-month-title {
+            min-width: 0;
+            width: 100%;
+        }
+
+        .hist-month-totals {
+            padding-left: 32px;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Historial
@@ -119,21 +226,22 @@
 
         {# Cada mes #}
         {% for mes in bloque.meses %}
-            <details {% if forloop.counter <= 2 %}open{% endif %} style="border-bottom:1px solid #f0f0f0;">
-                <summary style="padding:14px 20px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#fafafa;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <strong style="color:#1a237e; font-size:15px;">▸ {{ mes.nombre }}</strong>
-                        <span style="background:#e8eaf6; color:#1a237e; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:600;">
+            <details class="hist-month" {% if forloop.counter <= 2 %}open{% endif %}>
+                <summary class="hist-month-summary">
+                    <div class="hist-month-title">
+                        <span class="hist-month-arrow" aria-hidden="true">›</span>
+                        <strong class="hist-month-name">{{ mes.nombre }}</strong>
+                        <span class="hist-month-count">
                             {{ mes.totales.count }} matrícula{{ mes.totales.count|pluralize }}
                         </span>
                     </div>
-                    <div style="font-size:12px; color:#666;">
+                    <div class="hist-month-totals">
                         Mes: <strong>${{ mes.totales.facturado|floatformat:2 }}</strong>
                         · Cobrado: <strong style="color:#2e7d32;">${{ mes.totales.cobrado|floatformat:2 }}</strong>
                     </div>
                 </summary>
 
-                <div style="overflow-x:auto;">
+                <div class="hist-month-body">
                     <table style="width:100%; border-collapse:collapse; font-size:13px;">
                         <thead>
                             <tr style="background:#f5f5f7; color:#666;">
@@ -209,4 +317,22 @@
         <a href="{% url 'academia:historial_lista' %}" class="btn btn-secondary" style="margin-top:12px;">Limpiar filtros</a>
     </div>
 {% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        document.querySelectorAll('.hist-month').forEach(function (month) {
+            var summary = month.querySelector('.hist-month-summary');
+            if (!summary) return;
+
+            summary.setAttribute('role', 'button');
+            summary.setAttribute('aria-expanded', month.open ? 'true' : 'false');
+
+            month.addEventListener('toggle', function () {
+                summary.setAttribute('aria-expanded', month.open ? 'true' : 'false');
+            });
+        });
+    })();
+</script>
 {% endblock %}

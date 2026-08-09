@@ -314,6 +314,111 @@
         min-height: 44px;
         white-space: nowrap;
     }
+    .payments-module-filter-card {
+        margin-bottom: 18px;
+        padding: 16px;
+    }
+    .payments-module-inline {
+        flex: 0 0 100%;
+        min-width: 100%;
+        width: 100%;
+        padding: 0 0 14px;
+        margin-bottom: 2px;
+        border-bottom: 1px solid var(--fp-line);
+    }
+    .payments-module-filter-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+    .payments-module-filter-title {
+        color: var(--fp-ink);
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+    .payments-module-filter-note {
+        margin-top: 3px;
+        color: var(--fp-muted);
+        font-size: 12px;
+        line-height: 1.35;
+    }
+    .payments-module-filter-form {
+        display: grid;
+        grid-template-columns: minmax(260px, 1.5fr) minmax(160px, .75fr) minmax(190px, .85fr) auto;
+        gap: 12px;
+        align-items: end;
+    }
+    .payments-module-filter-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        min-height: 44px;
+        white-space: nowrap;
+    }
+    .module-filter-active {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid #dfe6f5;
+        border-radius: 8px;
+        background: #f8fbff;
+        color: var(--fp-ink);
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .module-filter-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: #eef3fb;
+        color: #1a237e;
+        border: 1px solid #dce5f7;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .module-status-badge {
+        display: inline-flex;
+        align-items: center;
+        margin-top: 6px;
+        max-width: 100%;
+        white-space: normal;
+        line-height: 1.25;
+    }
+    .module-status-pagado {
+        background: #e8f5e9;
+        color: #2e7d32;
+        border: 1px solid #a5d6a7;
+    }
+    .module-status-pendiente {
+        background: #ffebee;
+        color: #c62828;
+        border: 1px solid #ef9a9a;
+    }
+    .module-status-amount {
+        display: block;
+        margin-top: 4px;
+        color: #666;
+        font-size: 11px;
+        line-height: 1.3;
+    }
+    body.dark-mode .module-filter-active {
+        background: #101827;
+        border-color: var(--fp-dark-line);
+        color: var(--fp-dark-text);
+    }
+    body.dark-mode .module-filter-badge {
+        background: #1f2a44;
+        border-color: #34446a;
+        color: #d8e2ff;
+    }
     .payments-filter-card {
         position: relative;
         z-index: 20;
@@ -620,7 +725,7 @@
     }
     @media (min-width: 1500px) {
         .payments-filter-form {
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
         }
     }
     @media (max-width: 1280px) {
@@ -637,6 +742,12 @@
         .payments-filter-actions {
             flex: 1 1 100%;
         }
+        .payments-module-filter-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .payments-module-filter-actions {
+            grid-column: 1 / -1;
+        }
     }
     @media (max-width: 760px) {
         .payments-filter-search,
@@ -648,6 +759,18 @@
             width: 100%;
         }
         .payments-filter-actions .btn {
+            flex: 1;
+        }
+        .payments-module-filter-head {
+            flex-direction: column;
+        }
+        .payments-module-filter-form {
+            grid-template-columns: 1fr;
+        }
+        .payments-module-filter-actions {
+            width: 100%;
+        }
+        .payments-module-filter-actions .btn {
             flex: 1;
         }
         .date-range-popover {
@@ -810,7 +933,78 @@
 
 {# ─── Filtros ──────────────────────────────────────────── #}
 <div class="card-box payments-filter-card" style="margin-bottom:18px; padding:16px;">
-    <form method="get" class="payments-filter-form">
+    <form method="get" class="payments-filter-form" data-module-filter-form>
+
+        <div class="payments-module-inline">
+            <div class="payments-module-filter-head">
+                <div>
+                    <div class="payments-module-filter-title">Filtro separado por módulo de pago</div>
+                    <div class="payments-module-filter-note">
+                        Primero elige el curso; después selecciona módulo y estado: pendiente de pago o pagado.
+                    </div>
+                </div>
+                {% if modulo_filtro_activo %}
+                    <a href="{% url 'academia:pagos_lista' %}{% if filtros_query_sin_modulo %}?{{ filtros_query_sin_modulo }}{% endif %}"
+                       class="btn btn-secondary btn-sm">Limpiar módulo</a>
+                {% endif %}
+            </div>
+
+            <div class="payments-module-filter-form">
+                <div>
+                    <label class="form-label" style="font-size:11px;">Curso para módulos</label>
+                    <select name="modulo_curso" class="form-input" data-module-course-select>
+                        <option value="">— Primero elige un curso —</option>
+                        {% for c in cursos %}
+                            <option value="{{ c.id }}" {% if filtros.modulo_curso == c.id|stringformat:"s" %}selected{% endif %}>
+                                {{ c.nombre }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label" style="font-size:11px;">Módulo</label>
+                    <select name="modulo_numero" class="form-input" data-module-number-select
+                            data-selected="{{ filtros.modulo_numero }}" {% if not filtros.modulo_curso %}disabled{% endif %}>
+                        <option value="">
+                            {% if filtros.modulo_curso %}— Selecciona módulo —{% else %}— Selecciona curso —{% endif %}
+                        </option>
+                        {% for modulo in modulo_filtro_opciones %}
+                            <option value="{{ modulo.numero }}" {% if filtros.modulo_numero == modulo.numero|stringformat:"s" %}selected{% endif %}>
+                                {{ modulo.label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label" style="font-size:11px;">Estado del módulo</label>
+                    <select name="modulo_estado" class="form-input" data-module-status-select
+                            {% if not filtros.modulo_curso %}disabled{% endif %}>
+                        <option value="">— Estado —</option>
+                        <option value="pendiente" {% if filtros.modulo_estado == 'pendiente' %}selected{% endif %}>Pendiente de pago</option>
+                        <option value="pagado" {% if filtros.modulo_estado == 'pagado' %}selected{% endif %}>Pagado</option>
+                    </select>
+                </div>
+
+                <div class="payments-module-filter-actions">
+                    <button type="submit" class="btn btn-primary" data-module-submit>Filtrar módulo</button>
+                </div>
+            </div>
+
+            {% if modulo_filtro_activo %}
+                <div class="module-filter-active">
+                    <span class="module-filter-badge">{{ modulo_filtro_resumen.curso }}</span>
+                    <span class="module-filter-badge">{{ modulo_filtro_resumen.modulo }}</span>
+                    <span class="module-filter-badge">{{ modulo_filtro_resumen.estado }}</span>
+                    <span>{{ matriculas|length }} resultado(s)</span>
+                </div>
+            {% elif filtros.modulo_curso %}
+                <div class="module-filter-active">
+                    Completa módulo y estado para aplicar este filtro.
+                </div>
+            {% endif %}
+        </div>
 
         <div class="payments-filter-search">
             <label class="form-label" style="font-size:11px;">Buscar por curso, cédula o nombre</label>
@@ -1068,6 +1262,16 @@
                             ✱ Recuperación · ${{ m.total_pago_recuperacion|floatformat:2 }}
                         </span>
                     {% endif %}
+                    {% if m.modulo_filtro_detalle %}
+                        <span class="badge module-status-badge module-status-{{ m.modulo_filtro_detalle.estado_codigo }}">
+                            {{ m.modulo_filtro_detalle.label }} · {{ m.modulo_filtro_detalle.estado }}
+                        </span>
+                        <span class="module-status-amount">
+                            Pagado ${{ m.modulo_filtro_detalle.pagado|floatformat:2 }}
+                            · Debe ${{ m.modulo_filtro_detalle.esperado|floatformat:2 }}
+                            · Saldo ${{ m.modulo_filtro_detalle.saldo|floatformat:2 }}
+                        </span>
+                    {% endif %}
                 </td>
                 <td>
                     <span class="asistencia-line"></span>
@@ -1098,6 +1302,77 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ cursos_modulo_filtro|json_script:"module-filter-courses-data" }}
+<script>
+    (function () {
+        const form = document.querySelector('[data-module-filter-form]');
+        const dataElement = document.getElementById('module-filter-courses-data');
+        if (!form || !dataElement) return;
+
+        let courses = {};
+        try {
+            courses = JSON.parse(dataElement.textContent || '{}');
+        } catch (error) {
+            courses = {};
+        }
+
+        const courseSelect = form.querySelector('[data-module-course-select]');
+        const moduleSelect = form.querySelector('[data-module-number-select]');
+        const statusSelect = form.querySelector('[data-module-status-select]');
+        const submitButton = form.querySelector('[data-module-submit]');
+
+        function createOption(value, text) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = text;
+            return option;
+        }
+
+        function syncModuleControls(resetSelection) {
+            const courseId = courseSelect ? courseSelect.value : '';
+            const selectedModule = resetSelection ? '' : (moduleSelect.dataset.selected || moduleSelect.value || '');
+            const course = courses[courseId];
+            const hasCourse = Boolean(courseId && course);
+
+            moduleSelect.innerHTML = '';
+            moduleSelect.appendChild(createOption('', hasCourse ? '— Selecciona módulo —' : '— Selecciona curso —'));
+
+            if (hasCourse) {
+                (course.modulos || []).forEach(function (modulo) {
+                    moduleSelect.appendChild(createOption(String(modulo.numero), modulo.label));
+                });
+            }
+
+            const selectedExists = Array.from(moduleSelect.options).some(function (option) {
+                return option.value === selectedModule;
+            });
+            moduleSelect.value = selectedExists ? selectedModule : '';
+            moduleSelect.disabled = !hasCourse;
+            statusSelect.disabled = !hasCourse;
+            if (!hasCourse || resetSelection) {
+                statusSelect.value = '';
+            }
+            if (submitButton) {
+                submitButton.disabled = !(hasCourse && moduleSelect.value && statusSelect.value);
+            }
+        }
+
+        if (courseSelect && moduleSelect && statusSelect) {
+            courseSelect.addEventListener('change', function () {
+                moduleSelect.dataset.selected = '';
+                syncModuleControls(true);
+            });
+            moduleSelect.addEventListener('change', function () {
+                moduleSelect.dataset.selected = moduleSelect.value;
+                syncModuleControls(false);
+            });
+            statusSelect.addEventListener('change', function () {
+                syncModuleControls(false);
+            });
+            syncModuleControls(false);
+        }
+    })();
+</script>
 <script>
     (function () {
         const pickers = document.querySelectorAll('[data-date-range-picker]');

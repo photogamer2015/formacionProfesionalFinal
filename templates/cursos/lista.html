@@ -120,6 +120,86 @@
         display: flex; gap: 6px; flex-wrap: wrap;
     }
     body.dark-mode .crm-card-acciones { background: rgba(255,255,255,.02); }
+    .course-search-panel {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin: 18px 0 6px;
+        padding: 14px;
+        border: 1px solid rgba(27,42,78,.10);
+        border-radius: 12px;
+        background: var(--card-bg, #fff);
+        box-shadow: 0 6px 18px rgba(27,42,78,.06);
+    }
+    body.dark-mode .course-search-panel {
+        background: #161922;
+        border-color: #262b38;
+    }
+    .course-search-field {
+        position: relative;
+        flex: 1 1 420px;
+        min-width: 220px;
+    }
+    .course-search-icon {
+        position: absolute;
+        left: 13px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-muted, #6f7889);
+        font-size: 16px;
+        pointer-events: none;
+    }
+    .course-search-input {
+        padding-left: 40px;
+        min-height: 46px;
+        font-size: 15px;
+    }
+    .course-search-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-muted, #6f7889);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .course-search-empty {
+        display: none;
+        margin-top: 22px;
+        padding: 24px;
+        border: 1px dashed #c8d1e1;
+        border-radius: 12px;
+        background: rgba(255,255,255,.74);
+        color: var(--text-muted, #6f7889);
+        text-align: center;
+        font-weight: 700;
+    }
+    body.dark-mode .course-search-empty {
+        background: rgba(255,255,255,.03);
+        border-color: #384152;
+    }
+    .course-search-empty.is-visible {
+        display: block;
+    }
+    [data-course-card][hidden],
+    [data-course-category][hidden] {
+        display: none !important;
+    }
+    @media (max-width: 760px) {
+        .course-search-panel {
+            align-items: stretch;
+            flex-direction: column;
+        }
+        .course-search-field,
+        .course-search-meta,
+        .course-search-panel .btn {
+            width: 100%;
+        }
+        .course-search-meta {
+            justify-content: space-between;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -194,6 +274,25 @@
     </a>
 </div>
 
+<div class="course-search-panel" data-course-search-panel>
+    <div class="course-search-field">
+        <span class="course-search-icon" aria-hidden="true">🔎</span>
+        <input type="search"
+               class="form-input course-search-input"
+               data-course-search
+               placeholder="Buscar curso por nombre..."
+               autocomplete="off"
+               aria-label="Buscar curso por nombre">
+    </div>
+    <div class="course-search-meta">
+        <span data-course-search-count>{{ total_cursos }} curso{{ total_cursos|pluralize }}</span>
+        <button type="button" class="btn btn-secondary btn-sm" data-course-search-clear hidden>Limpiar</button>
+    </div>
+</div>
+<div class="course-search-empty" data-course-search-empty>
+    No hay cursos que coincidan con la búsqueda.
+</div>
+
 {# ── Resumen tipo CRM de la modalidad activa ──────────── #}
 <div class="crm-resumen">
     <div class="crm-stat" style="border-left-color:{% if modalidad == 'online' %}#2e7d32{% else %}#1B2A4E{% endif %};">
@@ -218,7 +317,7 @@
 
 {% for cat in categorias %}
     {% if cat.total > 0 %}
-    <div style="margin-top: 28px;">
+    <div style="margin-top: 28px;" data-course-category>
         <div class="crm-cat-head">
             <div style="width:6px; height:28px; background:{{ cat.obj.color }}; border-radius:3px;"></div>
             <h3 style="font-size:18px; color:{{ cat.obj.color }}; font-weight:800; margin:0;">
@@ -236,7 +335,10 @@
 
         <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px; align-items:stretch;">
             {% for curso in cat.cursos %}
-                <div class="crm-card" style="border-top: 4px solid {{ cat.obj.color }}; {% if not curso.activo %}opacity:0.55;{% endif %}">
+                <div class="crm-card"
+                     data-course-card
+                     data-course-name="{{ curso.nombre }}"
+                     style="border-top: 4px solid {{ cat.obj.color }}; {% if not curso.activo %}opacity:0.55;{% endif %}">
                     {# ── Cabecera: nombre + precio ── #}
                     <div class="crm-card-top">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
@@ -372,11 +474,14 @@
 {% endif %}
 
 {% if sin_categoria %}
-<div style="margin-top: 28px;">
+<div style="margin-top: 28px;" data-course-category>
     <h3 style="font-size:16px; color:#888; margin-bottom:12px;">⚠️ Cursos sin categoría</h3>
     <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
         {% for curso in sin_categoria %}
-            <div class="card-box" style="padding: 18px; border-left: 4px solid #888;">
+            <div class="card-box"
+                 data-course-card
+                 data-course-name="{{ curso.nombre }}"
+                 style="padding: 18px; border-left: 4px solid #888;">
                 <h4 style="font-size:15px; color:#1a237e;">{{ curso.nombre }}</h4>
                 {% if puede_cambiar_cursos %}
                 <a href="{% url 'academia:curso_editar' curso.pk %}" class="btn btn-warning btn-sm" style="margin-top:8px;">Asignar categoría</a>
@@ -703,6 +808,72 @@
 })();
 </script>
 {% endif %}
+
+<script>
+(function () {
+    const input = document.querySelector('[data-course-search]');
+    const clearButton = document.querySelector('[data-course-search-clear]');
+    const countLabel = document.querySelector('[data-course-search-count]');
+    const emptyState = document.querySelector('[data-course-search-empty]');
+    const cards = Array.from(document.querySelectorAll('[data-course-card]'));
+    const categories = Array.from(document.querySelectorAll('[data-course-category]'));
+    if (!input || !cards.length) return;
+
+    function normalizeText(value) {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    cards.forEach(function (card) {
+        card.dataset.courseSearchText = normalizeText(card.dataset.courseName);
+    });
+
+    function updateCategoryVisibility() {
+        categories.forEach(function (category) {
+            const visibleCards = category.querySelectorAll('[data-course-card]:not([hidden])');
+            category.hidden = visibleCards.length === 0;
+        });
+    }
+
+    function updateSearch() {
+        const term = normalizeText(input.value);
+        let visibleCount = 0;
+
+        cards.forEach(function (card) {
+            const matches = !term || card.dataset.courseSearchText.includes(term);
+            card.hidden = !matches;
+            if (matches) visibleCount += 1;
+        });
+
+        updateCategoryVisibility();
+        if (countLabel) {
+            countLabel.textContent = term
+                ? visibleCount + ' resultado' + (visibleCount === 1 ? '' : 's')
+                : cards.length + ' curso' + (cards.length === 1 ? '' : 's');
+        }
+        if (clearButton) {
+            clearButton.hidden = !term;
+        }
+        if (emptyState) {
+            emptyState.classList.toggle('is-visible', Boolean(term && visibleCount === 0));
+        }
+    }
+
+    input.addEventListener('input', updateSearch);
+    if (clearButton) {
+        clearButton.addEventListener('click', function () {
+            input.value = '';
+            updateSearch();
+            input.focus();
+        });
+    }
+    updateSearch();
+})();
+</script>
 
 {% if es_admin %}
 <script>

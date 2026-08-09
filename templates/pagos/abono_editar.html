@@ -170,6 +170,7 @@
 
 {% block extra_js %}
 {{ form.modulos_con_pago_registrado|json_script:"modulos-registrados-pago" }}
+{{ form.modulos_con_recuperacion_pendiente|json_script:"modulos-recuperacion-pendiente" }}
 <script>
     // ========== MOSTRAR/OCULTAR BANCO SEGÚN MÉTODO DE PAGO ==========
     function _aplicarToggleBanco(metodoSel, bancoCont, bancoSel) {
@@ -252,6 +253,12 @@
             ? JSON.parse(modulosRegistradosNode.textContent).map((valor) => Number(valor))
             : []
     );
+    const modulosRecuperacionNode = document.getElementById('modulos-recuperacion-pendiente');
+    const modulosRecuperacionPendiente = new Set(
+        modulosRecuperacionNode
+            ? JSON.parse(modulosRecuperacionNode.textContent).map((valor) => Number(valor))
+            : []
+    );
     const opcionesModuloOriginales = moduloSelect
         ? Array.from(moduloSelect.options).map((opcion) => ({
             opcion,
@@ -262,6 +269,10 @@
 
     function tipoPagoUsaModulo(tipoPago) {
         return tipoPago === 'por_modulo' || tipoPago === 'solo_modulo' || tipoPago === 'recuperacion';
+    }
+
+    function tipoPagoEsModuloNormal(tipoPago) {
+        return tipoPago === 'por_modulo' || tipoPago === 'solo_modulo';
     }
 
     function estaVisible(el) {
@@ -276,9 +287,32 @@
             .join(', ');
     }
 
+    function modulosRecuperacionTexto() {
+        return Array.from(modulosRecuperacionPendiente)
+            .sort((a, b) => a - b)
+            .map((numero) => `Mód. ${numero}`)
+            .join(', ');
+    }
+
     function moduloSeleccionadoYaRegistrado() {
         if (!moduloSelect || !moduloSelect.value) return false;
         return modulosRegistradosPago.has(Number(moduloSelect.value));
+    }
+
+    function moduloSeleccionadoEnRecuperacionPendiente() {
+        if (!moduloSelect || !moduloSelect.value) return false;
+        return modulosRecuperacionPendiente.has(Number(moduloSelect.value));
+    }
+
+    function moduloSeleccionadoBloqueado() {
+        if (!tipoSel) return false;
+        return (
+            moduloSeleccionadoYaRegistrado()
+            || (
+                tipoPagoEsModuloNormal(tipoSel.value)
+                && moduloSeleccionadoEnRecuperacionPendiente()
+            )
+        );
     }
 
     function aplicarBloqueoModulosRegistrados({ limpiarSeleccion = true } = {}) {
@@ -295,24 +329,48 @@
             if (!opcion.value) return;
             const numero = Number(opcion.value);
             const registrado = modulosRegistradosPago.has(numero);
-            const textoBase = opcion.textContent.replace(/\s+\(ya registrado\)$/i, '');
+            const recuperacion = modulosRecuperacionPendiente.has(numero);
+            let textoBase = opcion.textContent.replace(/\s+\(ya registrado\)$/i, '').trim();
+            if (recuperacion && !/recuperaci[oó]n/i.test(textoBase)) {
+                textoBase = `${textoBase} - recuperación`;
+            }
             opcion.textContent = registrado ? `${textoBase} (ya registrado)` : textoBase;
-            if (usaModulo && registrado) {
+            if (
+                usaModulo
+                && (
+                    registrado
+                    || (tipoPagoEsModuloNormal(tipoSel.value) && recuperacion)
+                )
+            ) {
                 opcion.disabled = true;
             }
         });
 
-        if (limpiarSeleccion && usaModulo && moduloSeleccionadoYaRegistrado()) {
+        if (limpiarSeleccion && usaModulo && moduloSeleccionadoBloqueado()) {
             moduloSelect.value = '';
         }
 
         if (avisoModuloRegistrado) {
+            const mensajes = [];
             if (usaModulo && modulosRegistradosPago.size > 0) {
-                avisoModuloRegistrado.style.display = 'block';
-                avisoModuloRegistrado.textContent = (
-                    `No se puede registrar otro pago para módulos ya registrados: `
-                    + `${modulosRegistradosTexto()}.`
+                mensajes.push(
+                    `Módulos ya registrados: ${modulosRegistradosTexto()}.`
                 );
+            }
+            if (
+                usaModulo
+                && tipoSel
+                && tipoPagoEsModuloNormal(tipoSel.value)
+                && modulosRecuperacionPendiente.size > 0
+            ) {
+                mensajes.push(
+                    `Módulos en recuperación: ${modulosRecuperacionTexto()}. `
+                    + `Cobra esos módulos desde Recuperación.`
+                );
+            }
+            if (mensajes.length) {
+                avisoModuloRegistrado.style.display = 'block';
+                avisoModuloRegistrado.textContent = mensajes.join(' ');
             } else {
                 avisoModuloRegistrado.style.display = 'none';
                 avisoModuloRegistrado.textContent = '';
@@ -407,7 +465,7 @@
         }
 
         if (bloqueModulo && estaVisible(bloqueModulo)) {
-            if (!moduloSelect || !moduloSelect.value || moduloSeleccionadoYaRegistrado()) {
+            if (!moduloSelect || !moduloSelect.value || moduloSeleccionadoBloqueado()) {
                 esValido = false;
             }
         }

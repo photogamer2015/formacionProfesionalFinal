@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-{% load static %}
 
 {% block title %}Ayuda y Soporte{% endblock %}
 
@@ -8,22 +7,11 @@
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Ayuda
 </div>
 
-{# ── Cabecera con Título y Video Tutorial ── #}
+{# ── Cabecera ── #}
 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:20px; margin-bottom: 24px;">
     <div style="flex: 1; min-width: 300px;">
         <h2 class="page-title">Centro de Ayuda</h2>
-        <p class="page-subtitle">Manuales, tutoriales y soporte técnico para el uso del sistema. Última revisión: mayo 2026 (v2.4).</p>
-    </div>
-    
-    <div style="flex-shrink: 0;">
-        {# Bloque de video corregido #}
-        <video controls style="max-width: 380px; width: 100%; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; background: #000;">
-            <source src="{% static 'El Plan Maestro.mp4' %}" type="video/mp4">
-            Tu navegador no soporta el reproductor de video.
-        </video>
-        <p style="font-size: 11px; color: #888; text-align: center; margin-top: 6px;">
-            <i class="fas fa-play-circle"></i> Video Tutorial: Uso General del Sistema
-        </p>
+        <p class="page-subtitle">Manuales, guías rápidas y soporte técnico para el uso del sistema. Última revisión: agosto 2026.</p>
     </div>
 </div>
 
@@ -38,10 +26,18 @@
         <a href="#ayuda-matriculas" class="btn btn-secondary btn-sm">Ver manual ↓</a>
     </div>
 
+    <div class="card-box" style="padding: 18px; border-top: 4px solid #1565c0;">
+        <h3 style="font-size:16px; color:#1a237e; margin-bottom: 8px;">📚 Cursos y Categorías</h3>
+        <p style="font-size:13px; color:#666; margin-bottom:12px; line-height:1.4;">
+            Crear cursos, organizar categorías, gestionar jornadas y usar el buscador por nombre de curso.
+        </p>
+        <a href="#ayuda-cursos" class="btn btn-secondary btn-sm">Ver manual ↓</a>
+    </div>
+
     <div class="card-box" style="padding: 18px; border-top: 4px solid #2e7d32;">
         <h3 style="font-size:16px; color:#1a237e; margin-bottom: 8px;">💵 Pagos y Abonos</h3>
         <p style="font-size:13px; color:#666; margin-bottom:12px; line-height:1.4;">
-            Registrar Abono, Pago Completo, Pago por Módulo o Clase de Recuperación. Generación automática de recibos.
+            Registrar pagos y usar el filtro separado por curso, módulo y estado de pago.
         </p>
         <a href="#ayuda-pagos" class="btn btn-secondary btn-sm">Ver manual ↓</a>
     </div>
@@ -98,6 +94,19 @@
 
 {# ── Contenido Detallado ── #}
 
+<div id="ayuda-cursos" class="card-box" style="padding: 24px; margin-bottom: 24px;">
+    <h3 style="font-size:18px; color:#1565c0; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+        📚 Cursos y Categorías
+    </h3>
+    <ul style="font-size:14px; color:#555; line-height:1.6; padding-left: 20px;">
+        <li><strong>Presencial / Online:</strong> Usa las pestañas superiores para cambiar de modalidad y ver solo los cursos de esa modalidad.</li>
+        <li><strong>Buscador de curso:</strong> Escribe el nombre del curso en la lupa. El sistema filtra en vivo y muestra solo los cursos coincidentes.</li>
+        <li><strong>Búsqueda flexible:</strong> Acepta mayúsculas, minúsculas, tildes o texto sin tilde. Ejemplo: <em>tributacion</em> encuentra <em>Tributación contable</em>.</li>
+        <li><strong>Categorías:</strong> Si una búsqueda no tiene cursos dentro de una categoría, esa categoría se oculta automáticamente.</li>
+        <li><strong>Jornadas:</strong> Desde cada tarjeta puedes abrir, editar o revisar las jornadas del curso según tus permisos.</li>
+    </ul>
+</div>
+
 <div id="ayuda-matriculas" class="card-box" style="padding: 24px; margin-bottom: 24px;">
     <h3 style="font-size:18px; color:#1a237e; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
         🎓 Gestión de Matrículas
@@ -118,6 +127,8 @@
         <li><strong>Tipos de pago:</strong> Abono, Pago Completo, Por Módulo o Recuperación.</li>
         <li><strong>Recibos:</strong> Se generan automáticamente si se deja el campo en blanco.</li>
         <li><strong>Clases de Recuperación:</strong> Puedes decidir si el cobro afecta al saldo del curso o no.</li>
+        <li><strong>Filtro separado por módulo:</strong> En Estado de Pagos, selecciona primero el curso, luego el módulo y después el estado: <em>Pendiente de pago</em> o <em>Pagado</em>.</li>
+        <li><strong>Resultados por módulo:</strong> Cuando aplicas ese filtro, cada fila muestra el módulo consultado, lo pagado, lo que debe y el saldo del módulo.</li>
     </ul>
 </div>
 
@@ -132,6 +143,7 @@
         <li><strong>Verde (Pagado):</strong> El módulo está cubierto totalmente.</li>
         <li><strong>Rojo (Sin pagar):</strong> Pendiente de pago. Muestra abonos parciales en gris.</li>
         <li><strong>Regla del derrame:</strong> La reserva se aplica al primer módulo y el sobrante pasa al siguiente.</li>
+        <li><strong>Filtro de Estado de Pagos:</strong> Si solo necesitas ver un módulo específico, usa el filtro separado del apartado Estado de Pagos sin entrar a la matriz completa.</li>
     </ul>
 </div>
 
@@ -191,6 +203,8 @@
         🆕 Novedades de la versión 2.x
     </h3>
     <ul style="font-size:13px; color:#555; line-height:1.6; padding-left: 20px;">
+        <li><strong>Agosto 2026:</strong> Buscador de cursos por nombre en Cursos y Categorías, compatible con mayúsculas, minúsculas, tildes y texto sin tilde.</li>
+        <li><strong>Agosto 2026:</strong> Nuevo filtro separado en Estado de Pagos para consultar curso + módulo + estado de pago.</li>
         <li><strong>v2.4 (mayo 2026):</strong> Mejora en matriz de pagos y distribución de reserva por derrame.</li>
         <li><strong>v2.3:</strong> Inclusión de sección Adicional y KPIs de supletorios/camisas.</li>
         <li><strong>v2.2:</strong> Columnas de asistencia y firma en reportes PDF A3.</li>
