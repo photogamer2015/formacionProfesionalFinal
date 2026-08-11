@@ -2075,6 +2075,12 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertEqual(form.cleaned_data['cedula'], ruc)
         self.assertTrue(es_cedula_ruc_ecuador_valido(ruc))
 
+    def test_cedula_pegada_con_separadores_se_normaliza(self):
+        form = EstudianteForm(self._estudiante_data(cedula='010-203-0405'))
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['cedula'], '0102030405')
+
     def test_ruc_rechaza_longitud_incompleta(self):
         form = EstudianteForm(self._estudiante_data(cedula='120734271602'))
 
@@ -2102,6 +2108,14 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertIn('celular', form.errors)
         self.assertIn('únicamente números', form.errors['celular'][0])
 
+    def test_celular_pegado_desde_whatsapp_se_normaliza(self):
+        form = EstudianteForm(
+            self._estudiante_data(celular='+593 99 759 6744')
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['celular'], '0997596744')
+
     def test_edad_rechaza_letras(self):
         form = EstudianteForm(self._estudiante_data(edad='2a'))
 
@@ -2123,6 +2137,10 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertEqual(
             estudiante_form.fields['celular'].widget.attrs['maxlength'],
             '10',
+        )
+        self.assertEqual(
+            estudiante_form.fields['celular'].widget.attrs['data-phone-ecuador'],
+            'true',
         )
         self.assertEqual(
             estudiante_form.fields['cedula'].widget.attrs['maxlength'],
@@ -2285,6 +2303,22 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('fact_cedula', form.errors)
         self.assertIn('únicamente números', form.errors['fact_cedula'][0])
+
+    def test_matricula_normaliza_cedula_ruc_de_factura_pegada(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-factura_realizada': 'si',
+                    'mat-fact_nombres': 'Cliente Factura',
+                    'mat-fact_cedula': '010 203 0405',
+                    'mat-fact_correo': 'cliente@example.com',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['fact_cedula'], '0102030405')
 
     def test_matricula_mixta_rechaza_metodos_vacios(self):
         form = MatriculaForm(
