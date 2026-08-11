@@ -22,6 +22,33 @@ def es_cedula_ruc_ecuador_valido(valor):
     )
 
 
+def _normalizar_digitos_formateados(valor):
+    """Quita separadores comunes sin aceptar letras dentro de datos numéricos."""
+    texto = (valor or '').strip()
+    if any(c.isalpha() for c in texto):
+        return texto
+    return ''.join(c for c in texto if c.isdigit())
+
+
+def _normalizar_celular_ecuador(valor):
+    """
+    Acepta celulares pegados como 0991234567 o +593 99 123 4567 y los deja
+    en formato nacional de 10 dígitos.
+    """
+    texto = (valor or '').strip()
+    if any(c.isalpha() for c in texto):
+        return texto
+
+    digitos = ''.join(c for c in texto if c.isdigit())
+    if digitos.startswith('593'):
+        local = digitos[3:]
+        if local.startswith('0'):
+            digitos = local
+        elif len(local) >= 9:
+            digitos = '0' + local[:9]
+    return digitos
+
+
 class CategoriaForm(forms.ModelForm):
     class Meta:
         model = Categoria
@@ -270,7 +297,9 @@ class EstudianteForm(forms.ModelForm):
         return cleaned
 
     def clean_cedula(self):
-        cedula = (self.cleaned_data.get('cedula') or '').strip()
+        cedula = _normalizar_digitos_formateados(
+            self.cleaned_data.get('cedula')
+        )
         if cedula and (not cedula.isascii() or not cedula.isdigit()):
             raise forms.ValidationError(
                 'La cédula o RUC debe contener únicamente números.'
@@ -331,6 +360,7 @@ class EstudianteForm(forms.ModelForm):
                 'pattern': '[0-9]*',
                 'maxlength': '10',
                 'data-digits-only': 'true',
+                'data-phone-ecuador': 'true',
             }),
             'nivel_formacion': forms.Select(attrs={'class': 'form-input'}),
             'titulo_profesional': forms.TextInput(attrs={'class': 'form-input'}),
@@ -347,7 +377,9 @@ class EstudianteForm(forms.ModelForm):
         para confirmar que es intencional (familia, hijos, etc.) y saltarse
         esta validación.
         """
-        celular = (self.cleaned_data.get('celular') or '').strip()
+        celular = _normalizar_celular_ecuador(
+            self.cleaned_data.get('celular')
+        )
         if not celular:
             return celular  # opcional, se permite vacío
 
@@ -672,7 +704,9 @@ class MatriculaForm(forms.ModelForm):
         return valor
 
     def clean_fact_cedula(self):
-        cedula = (self.cleaned_data.get('fact_cedula') or '').strip()
+        cedula = _normalizar_digitos_formateados(
+            self.cleaned_data.get('fact_cedula')
+        )
         if cedula and (not cedula.isascii() or not cedula.isdigit()):
             raise forms.ValidationError(
                 'La cédula o RUC de factura debe contener únicamente números.'

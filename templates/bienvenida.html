@@ -1090,7 +1090,7 @@
                         <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                         <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
                         {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
-                        {% if a.pagos_cada_dos_semanas %}<span class="gm-chip jornada">📅 Cada 2 semanas · Vence {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>{% endif %}
+                        {% if a.pagos_cada_dos_semanas %}<span class="gm-chip jornada">📅 Cada 2 semanas · Vence {{ a.fecha_pago|date:"d/m/Y" }}</span>{% endif %}
                         <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                         <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
                         <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>
@@ -1141,7 +1141,7 @@
                             <span class="gm-chip modulo">📘 {% if a.hito == 'modulo' %}Módulo {{ a.numero_modulo }}{% if a.total_modulos %} de {{ a.total_modulos }}{% endif %}{% else %}{{ a.hito_label }}{% endif %}</span>
                             <span class="gm-chip pendiente">💵 Saldo total pendiente: ${{ a.saldo_total|floatformat:2 }}</span>
                             {% if a.es_ciclo_corto %}<span class="gm-chip ciclo-corto">🚀 {{ a.ciclo_corto_label }}</span>{% endif %}
-                            {% if a.pagos_cada_dos_semanas %}<span class="gm-chip jornada">📅 Cada 2 semanas · Vence {{ a.fecha_vencimiento|date:"d/m/Y" }}</span>{% endif %}
+                            {% if a.pagos_cada_dos_semanas %}<span class="gm-chip jornada">📅 Cada 2 semanas · Vence {{ a.fecha_pago|date:"d/m/Y" }}</span>{% endif %}
                             <span class="gm-chip sede">📍 Sede: {{ a.sede_label }}</span>
                             <span class="gm-chip modalidad">{% if a.modalidad == 'online' %}🟢{% else %}🏫{% endif %} {{ a.modalidad_label }}</span>
                             <span class="gm-chip jornada">📅 Inicio jornada: {{ a.fecha_inicio_jornada|date:"d/m/Y" }}</span>

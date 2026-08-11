@@ -2075,6 +2075,12 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertEqual(form.cleaned_data['cedula'], ruc)
         self.assertTrue(es_cedula_ruc_ecuador_valido(ruc))
 
+    def test_cedula_pegada_con_separadores_se_normaliza(self):
+        form = EstudianteForm(self._estudiante_data(cedula='010-203-0405'))
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['cedula'], '0102030405')
+
     def test_ruc_rechaza_longitud_incompleta(self):
         form = EstudianteForm(self._estudiante_data(cedula='120734271602'))
 
@@ -2102,6 +2108,14 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertIn('celular', form.errors)
         self.assertIn('únicamente números', form.errors['celular'][0])
 
+    def test_celular_pegado_desde_whatsapp_se_normaliza(self):
+        form = EstudianteForm(
+            self._estudiante_data(celular='+593 99 759 6744')
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['celular'], '0997596744')
+
     def test_edad_rechaza_letras(self):
         form = EstudianteForm(self._estudiante_data(edad='2a'))
 
@@ -2123,6 +2137,10 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertEqual(
             estudiante_form.fields['celular'].widget.attrs['maxlength'],
             '10',
+        )
+        self.assertEqual(
+            estudiante_form.fields['celular'].widget.attrs['data-phone-ecuador'],
+            'true',
         )
         self.assertEqual(
             estudiante_form.fields['cedula'].widget.attrs['maxlength'],
@@ -2285,6 +2303,22 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('fact_cedula', form.errors)
         self.assertIn('únicamente números', form.errors['fact_cedula'][0])
+
+    def test_matricula_normaliza_cedula_ruc_de_factura_pegada(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-factura_realizada': 'si',
+                    'mat-fact_nombres': 'Cliente Factura',
+                    'mat-fact_cedula': '010 203 0405',
+                    'mat-fact_correo': 'cliente@example.com',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['fact_cedula'], '0102030405')
 
     def test_matricula_mixta_rechaza_metodos_vacios(self):
         form = MatriculaForm(
@@ -5760,7 +5794,7 @@ class AlertasPagoPorJornadaTests(TestCase):
 
         self.assertNotIn(matricula.pk, ids_con_alerta)
 
-    def test_pago_cada_dos_semanas_alerta_el_18_para_jornada_del_04(self):
+    def test_pago_cada_dos_semanas_alerta_el_17_para_pago_del_18(self):
         curso = Curso.objects.create(
             nombre='Asistente Contable Pagos Cada Dos Semanas',
             ofrece_presencial=False,
@@ -5792,20 +5826,85 @@ class AlertasPagoPorJornadaTests(TestCase):
         self.assertEqual(calendario[2][0], date(2026, 8, 18))
 
         with patch('academia.views_pagos.date') as fecha_mock:
-            fecha_mock.today.return_value = date(2026, 8, 17)
+            fecha_mock.today.return_value = date(2026, 8, 16)
             ids_con_alerta = {
                 alerta['matricula'].pk
                 for alerta in _calcular_alertas_pago()
             }
         self.assertNotIn(matricula.pk, ids_con_alerta)
 
-        alerta = self._alerta_de(matricula, date(2026, 8, 18))
+        alerta = self._alerta_de(matricula, date(2026, 8, 17))
         self.assertEqual(alerta['numero_modulo'], 2)
-        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 8, 18))
+        self.assertEqual(alerta['fecha_alerta'], date(2026, 8, 17))
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 8, 17))
+        self.assertEqual(alerta['fecha_pago'], date(2026, 8, 18))
         self.assertEqual(alerta['dias_atraso'], 0)
         self.assertTrue(alerta['pagos_cada_dos_semanas'])
 
-    def test_jornada_del_18_programa_el_segundo_pago_para_el_01_de_septiembre(self):
+    def test_pago_registrado_el_17_retira_alerta_hasta_la_siguiente_cuota(self):
+        curso = Curso.objects.create(
+            nombre='Curso Online Quincenal con Cuota Futura',
+            ofrece_presencial=False,
+            ofrece_online=True,
+            valor_online=Decimal('120.00'),
+            numero_modulos_online=3,
+            pagos_cada_dos_semanas=True,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso,
+            modalidad='online',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 8, 4),
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=curso,
+            jornada=jornada,
+            modalidad='online',
+            tipo_matricula='reserva_modulo_1',
+            forma_pago='abono_modulo',
+            fecha_matricula=date(2026, 8, 3),
+            valor_curso=Decimal('120.00'),
+            valor_pagado=Decimal('0.00'),
+        )
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 3),
+            monto=Decimal('40.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+        )
+
+        alerta = self._alerta_de(matricula, date(2026, 8, 17))
+        self.assertEqual(alerta['numero_modulo'], 2)
+        self.assertEqual(alerta['fecha_pago'], date(2026, 8, 18))
+
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 8, 17),
+            monto=Decimal('40.00'),
+            tipo_pago='solo_modulo',
+            numero_modulo=2,
+            cuenta_para_saldo=True,
+        )
+        matricula.refresh_from_db()
+        self.assertEqual(matricula.valor_pagado, Decimal('80.00'))
+        self.assertEqual(matricula.saldo, Decimal('40.00'))
+
+        with patch('academia.views_pagos.date') as fecha_mock:
+            fecha_mock.today.return_value = date(2026, 8, 17)
+            ids_con_alerta = {
+                item['matricula'].pk
+                for item in _calcular_alertas_pago()
+            }
+        self.assertNotIn(matricula.pk, ids_con_alerta)
+
+        siguiente_alerta = self._alerta_de(matricula, date(2026, 8, 31))
+        self.assertEqual(siguiente_alerta['numero_modulo'], 3)
+        self.assertEqual(siguiente_alerta['fecha_pago'], date(2026, 9, 1))
+
+    def test_jornada_del_18_alerta_el_31_para_pago_del_01_de_septiembre(self):
         curso = Curso.objects.create(
             nombre='Curso Quincenal Segunda Jornada',
             ofrece_online=True,
@@ -5831,10 +5930,15 @@ class AlertasPagoPorJornadaTests(TestCase):
             valor_pagado=Decimal('50.00'),
         )
 
-        alerta = self._alerta_de(matricula, date(2026, 9, 1))
+        calendario = _calendario_vencimientos(matricula)
+        self.assertEqual(calendario[2][0], date(2026, 9, 1))
+
+        alerta = self._alerta_de(matricula, date(2026, 8, 31))
 
         self.assertEqual(alerta['numero_modulo'], 2)
-        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 9, 1))
+        self.assertEqual(alerta['fecha_alerta'], date(2026, 8, 31))
+        self.assertEqual(alerta['fecha_vencimiento'], date(2026, 8, 31))
+        self.assertEqual(alerta['fecha_pago'], date(2026, 9, 1))
         self.assertEqual(alerta['dias_atraso'], 0)
 
     def test_saldo_cero_elimina_alerta_definitivamente(self):
