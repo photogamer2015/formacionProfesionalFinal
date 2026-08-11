@@ -118,7 +118,6 @@ class GlobalTablePaginationTests(SimpleTestCase):
         self.assertIn('.hist-month[open] .hist-month-arrow', template)
         self.assertIn("summary.setAttribute('aria-expanded'", template)
 
-
 class ActividadUsuarioTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(
