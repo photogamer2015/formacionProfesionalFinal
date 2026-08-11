@@ -500,7 +500,7 @@
         </div>
         <div>
             <label class="form-label" style="font-size:11px;">Estado</label>
-            <select name="estado" class="form-input">
+            <select name="estado" id="recup-estado-filter" class="form-input">
                 <option value="pendientes" {% if filtros.estado == 'pendientes' %}selected{% endif %}>Pendiente</option>
                 <option value="pagadas" {% if filtros.estado == 'pagadas' %}selected{% endif %}>Pagado</option>
                 <option value="todas" {% if filtros.estado == 'todas' %}selected{% endif %}>Todos</option>
@@ -522,6 +522,8 @@
                 {% for estudiante in estudiantes_filtro %}
                 <option value="{{ estudiante.id }}"
                         data-course-ids="{{ estudiante.curso_ids|join:',' }}"
+                        data-course-ids-pendientes="{{ estudiante.curso_ids_pendientes|join:',' }}"
+                        data-course-ids-pagadas="{{ estudiante.curso_ids_pagadas|join:',' }}"
                         {% if filtros.estudiante == estudiante.id|stringformat:"s" %}selected{% endif %}>
                     {{ estudiante.nombre }} · {{ estudiante.cedula }}
                 </option>
@@ -767,26 +769,41 @@
 <script>
     (function () {
         const courseSelect = document.getElementById('recup-curso-filter');
+        const stateSelect = document.getElementById('recup-estado-filter');
         const studentSelect = document.getElementById('recup-estudiante-filter');
         const helpText = document.querySelector('[data-student-help]');
         if (!courseSelect || !studentSelect) return;
 
         const placeholder = studentSelect.querySelector('option[value=""]');
 
-        function optionBelongsToCourse(option, courseId) {
-            return (option.dataset.courseIds || '')
+        function courseIdsForState(option, state) {
+            if (state === 'pendientes') return option.dataset.courseIdsPendientes || '';
+            if (state === 'pagadas') return option.dataset.courseIdsPagadas || '';
+            return option.dataset.courseIds || '';
+        }
+
+        function optionBelongsToCourse(option, courseId, state) {
+            return courseIdsForState(option, state)
                 .split(',')
                 .filter(Boolean)
                 .includes(courseId);
         }
 
+        function studentStateLabel(state) {
+            if (state === 'pendientes') return 'pendiente(s)';
+            if (state === 'pagadas') return 'pagada(s)';
+            return 'registrada(s)';
+        }
+
         function syncStudents() {
             const courseId = courseSelect.value;
+            const state = stateSelect ? stateSelect.value : 'pendientes';
+            const stateLabel = studentStateLabel(state);
             let visibleCount = 0;
 
             Array.from(studentSelect.options).forEach(function (option) {
                 if (!option.value) return;
-                const visible = Boolean(courseId) && optionBelongsToCourse(option, courseId);
+                const visible = Boolean(courseId) && optionBelongsToCourse(option, courseId, state);
                 option.hidden = !visible;
                 option.disabled = !visible;
                 if (visible) visibleCount += 1;
@@ -812,12 +829,13 @@
             }
             if (helpText) {
                 helpText.textContent = visibleCount
-                    ? visibleCount + ' estudiante(s) con recuperación en este curso.'
-                    : 'Este curso no tiene estudiantes en recuperación.';
+                    ? visibleCount + ' estudiante(s) con recuperación ' + stateLabel + ' en este curso.'
+                    : 'Este curso no tiene recuperaciones ' + stateLabel + '.';
             }
         }
 
         courseSelect.addEventListener('change', syncStudents);
+        if (stateSelect) stateSelect.addEventListener('change', syncStudents);
         syncStudents();
     })();
 

@@ -300,6 +300,8 @@ def _filtrar_matriculas(request):
     q = request.GET.get('q', '').strip()
     descuento_str = request.GET.get('descuento', '').strip()
     modulo_curso_id = request.GET.get('modulo_curso', '').strip()
+    modulo_modalidad = request.GET.get('modulo_modalidad', '').strip().lower()
+    modulo_campus = request.GET.get('modulo_campus', '').strip()
     modulo_numero = request.GET.get('modulo_numero', '').strip()
     modulo_estado = request.GET.get('modulo_estado', '').strip()
     fecha_desde, fecha_hasta, fecha_desde_date, fecha_hasta_date = (
@@ -361,14 +363,47 @@ def _filtrar_matriculas(request):
 
     # Filtro independiente por curso + módulo + estado del módulo.
     # "Pendiente de pago" incluye módulos sin pago o con pago parcial.
+    modulo_curso = None
     if modulo_curso_id.isdigit():
+        modulo_curso = Curso.objects.filter(pk=int(modulo_curso_id)).first()
         qs = qs.filter(curso_id=int(modulo_curso_id))
     else:
         modulo_curso_id = ''
 
     if (
+        modulo_curso
+        and modulo_modalidad in ('presencial', 'online')
+        and modulo_curso.ofrece(modulo_modalidad)
+    ):
+        qs = qs.filter(modalidad=modulo_modalidad)
+    else:
+        modulo_modalidad = ''
+
+    campus_validos = {
+        opcion['value']
+        for opcion in _opciones_campus_curso_para_filtro(
+            modulo_curso,
+            modulo_modalidad,
+        )
+    }
+    if modulo_campus in campus_validos:
+        qs = _filtrar_matriculas_por_campus_modulo(qs, modulo_campus)
+    else:
+        modulo_campus = ''
+
+    numeros_validos = {
+        str(opcion['numero'])
+        for opcion in _opciones_modulos_curso_para_filtro(
+            modulo_curso,
+            modulo_modalidad,
+        )
+    }
+    if modulo_numero not in numeros_validos:
+        modulo_numero = ''
+
+    if (
         modulo_curso_id
-        and modulo_numero.isdigit()
+        and modulo_numero
         and modulo_estado in ('pendiente', 'pagado')
     ):
         numero = int(modulo_numero)
@@ -390,6 +425,8 @@ def _filtrar_matriculas(request):
         'q': q,
         'descuento': descuento_str,
         'modulo_curso': modulo_curso_id,
+        'modulo_modalidad': modulo_modalidad,
+        'modulo_campus': modulo_campus,
         'modulo_numero': modulo_numero,
         'modulo_estado': modulo_estado,
         'fecha_desde': fecha_desde,
@@ -482,21 +519,26 @@ def _max_modulos_curso_para_filtro(curso):
     return max(cantidades or [1])
 
 
-def _nombre_modulo_curso_para_filtro(curso, numero_modulo):
+def _nombre_modulo_curso_para_filtro(curso, numero_modulo, modalidad=''):
     if not curso.nombrar_modulos or not isinstance(curso.nombres_modulos, dict):
         return ''
 
     nombres = []
-    for modalidad in ('presencial', 'online'):
-        if not curso.ofrece(modalidad):
+    modalidades = (
+        (modalidad,)
+        if modalidad in ('presencial', 'online')
+        else ('presencial', 'online')
+    )
+    for modalidad_actual in modalidades:
+        if not curso.ofrece(modalidad_actual):
             continue
         total = (
-            1 if curso.usa_pago_unico_recaudacion(modalidad)
-            else curso.get_numero_modulos(modalidad)
+            1 if curso.usa_pago_unico_recaudacion(modalidad_actual)
+            else curso.get_numero_modulos(modalidad_actual)
         )
         if numero_modulo > total:
             continue
-        nombres_modalidad = curso.nombres_modulos.get(modalidad, [])
+        nombres_modalidad = curso.nombres_modulos.get(modalidad_actual, [])
         if 1 <= numero_modulo <= len(nombres_modalidad):
             nombre = (nombres_modalidad[numero_modulo - 1] or '').strip()
             if nombre:
@@ -506,12 +548,25 @@ def _nombre_modulo_curso_para_filtro(curso, numero_modulo):
     return nombres_unicos[0] if len(nombres_unicos) == 1 else ''
 
 
-def _opciones_modulos_curso_para_filtro(curso):
+def _opciones_modulos_curso_para_filtro(curso, modalidad=''):
     if not curso:
         return []
+    if modalidad in ('presencial', 'online'):
+        if not curso.ofrece(modalidad):
+            return []
+        total = (
+            1 if curso.usa_pago_unico_recaudacion(modalidad)
+            else curso.get_numero_modulos(modalidad)
+        )
+    else:
+        total = _max_modulos_curso_para_filtro(curso)
     opciones = []
-    for numero in range(1, _max_modulos_curso_para_filtro(curso) + 1):
-        nombre = _nombre_modulo_curso_para_filtro(curso, numero)
+    for numero in range(1, total + 1):
+        nombre = _nombre_modulo_curso_para_filtro(
+            curso,
+            numero,
+            modalidad,
+        )
         opciones.append({
             'numero': numero,
             'label': f'Módulo {numero}' + (f' - {nombre}' if nombre else ''),
@@ -519,14 +574,111 @@ def _opciones_modulos_curso_para_filtro(curso):
     return opciones
 
 
-def _payload_cursos_modulo_filtro(cursos):
+def _opciones_modalidades_curso_para_filtro(curso):
+    if not curso:
+        return []
+    opciones = []
+    if curso.ofrece_presencial:
+        opciones.append({'value': 'presencial', 'label': 'Presencial'})
+    if curso.ofrece_online:
+        opciones.append({'value': 'online', 'label': 'Virtual / Online'})
+    return opciones
+
+
+def _opciones_campus_curso_para_filtro(
+    curso,
+    modalidad='presencial',
+    campus_por_curso=None,
+):
+    """Campus con matrículas del curso; no aplica a la modalidad online."""
+    if not curso or modalidad != 'presencial' or not curso.ofrece_presencial:
+        return []
+    if campus_por_curso is not None:
+        return campus_por_curso.get(str(curso.pk), [])
+
+    return _mapa_campus_cursos_para_filtro([curso]).get(str(curso.pk), [])
+
+
+def _mapa_campus_cursos_para_filtro(cursos):
+    """Carga en una consulta los campus usados en matrículas presenciales."""
+    curso_ids = [curso.pk for curso in cursos if curso.ofrece_presencial]
+    if not curso_ids:
+        return {}
+
+    matriculas = Matricula.objects.filter(
+        curso_id__in=curso_ids,
+        modalidad='presencial',
+        jornada__isnull=False,
+    ).select_related('jornada__sede').order_by(
+        'jornada__sede__pais',
+        'jornada__sede__orden',
+        'jornada__sede__nombre',
+        'jornada__ciudad',
+    )
+    opciones_por_curso = defaultdict(dict)
+    for matricula in matriculas:
+        jornada = matricula.jornada
+        if jornada.sede_id:
+            value = f'sede:{jornada.sede_id}'
+            label = jornada.sede.etiqueta
+        else:
+            ciudad = (jornada.ciudad or '').strip()
+            if not ciudad:
+                continue
+            value = f'ciudad:{ciudad}'
+            label = ciudad
+        opciones_por_curso[str(matricula.curso_id)].setdefault(
+            value,
+            {'value': value, 'label': label},
+        )
     return {
-        str(curso.pk): {
-            'nombre': curso.nombre,
-            'modulos': _opciones_modulos_curso_para_filtro(curso),
-        }
-        for curso in cursos
+        curso_id: list(opciones.values())
+        for curso_id, opciones in opciones_por_curso.items()
     }
+
+
+def _filtrar_matriculas_por_campus_modulo(qs, campus):
+    tipo, separador, valor = campus.partition(':')
+    if not separador or not valor:
+        return qs.none()
+    if tipo == 'sede' and valor.isdigit():
+        return qs.filter(jornada__sede_id=int(valor))
+    if tipo == 'ciudad':
+        return qs.filter(jornada__ciudad__iexact=valor)
+    return qs.none()
+
+
+def _payload_cursos_modulo_filtro(cursos, campus_por_curso=None):
+    payload = {}
+    for curso in cursos:
+        modalidades = []
+        for modalidad in _opciones_modalidades_curso_para_filtro(curso):
+            codigo = modalidad['value']
+            modalidades.append({
+                **modalidad,
+                'modulos': _opciones_modulos_curso_para_filtro(curso, codigo),
+                'campus': _opciones_campus_curso_para_filtro(
+                    curso,
+                    codigo,
+                    campus_por_curso,
+                ),
+            })
+        payload[str(curso.pk)] = {
+            'nombre': curso.nombre,
+            # `modulos` conserva compatibilidad con enlaces antiguos que no
+            # incluían modalidad. La interfaz nueva usa los de cada modalidad.
+            'modulos': _opciones_modulos_curso_para_filtro(curso),
+            'modalidades': modalidades,
+        }
+    return payload
+
+
+def _modalidad_filtro_label(modalidad):
+    if modalidad == 'presencial':
+        return 'Presencial'
+    if modalidad == 'online':
+        return 'Virtual / Online'
+    return ''
 
 
 def _modulo_filtro_estado_label(estado):
@@ -740,14 +892,29 @@ def pagos_lista(request):
     })
     filtros_query_sin_modulo = urlencode({
         key: value for key, value in filtros.items()
-        if value and key not in ('modulo_curso', 'modulo_numero', 'modulo_estado')
+        if value and key not in (
+            'modulo_curso', 'modulo_modalidad', 'modulo_campus',
+            'modulo_numero', 'modulo_estado',
+        )
     })
 
     modulo_curso_sel = next(
         (curso for curso in cursos if str(curso.pk) == filtros.get('modulo_curso')),
         None,
     )
-    modulo_filtro_opciones = _opciones_modulos_curso_para_filtro(modulo_curso_sel)
+    modulo_filtro_modalidades = _opciones_modalidades_curso_para_filtro(
+        modulo_curso_sel
+    )
+    campus_modulo_por_curso = _mapa_campus_cursos_para_filtro(cursos)
+    modulo_filtro_campus = _opciones_campus_curso_para_filtro(
+        modulo_curso_sel,
+        filtros.get('modulo_modalidad'),
+        campus_modulo_por_curso,
+    )
+    modulo_filtro_opciones = _opciones_modulos_curso_para_filtro(
+        modulo_curso_sel,
+        filtros.get('modulo_modalidad'),
+    )
     modulo_filtro_activo = bool(
         modulo_curso_sel
         and filtros.get('modulo_numero')
@@ -774,11 +941,26 @@ def pagos_lista(request):
         'totales': totales,
         'conteo_estado': conteo_estado,
         'conteo_modulos_pendientes': conteo_modulos_pendientes,
-        'cursos_modulo_filtro': _payload_cursos_modulo_filtro(cursos),
+        'cursos_modulo_filtro': _payload_cursos_modulo_filtro(
+            cursos,
+            campus_modulo_por_curso,
+        ),
+        'modulo_filtro_modalidades': modulo_filtro_modalidades,
+        'modulo_filtro_campus': modulo_filtro_campus,
         'modulo_filtro_opciones': modulo_filtro_opciones,
         'modulo_filtro_activo': modulo_filtro_activo,
         'modulo_filtro_resumen': {
             'curso': modulo_curso_sel.nombre if modulo_curso_sel else '',
+            'modalidad': _modalidad_filtro_label(
+                filtros.get('modulo_modalidad')
+            ),
+            'campus': next(
+                (
+                    opcion['label'] for opcion in modulo_filtro_campus
+                    if opcion['value'] == filtros.get('modulo_campus')
+                ),
+                '',
+            ),
             'modulo': modulo_filtro_label,
             'estado': _modulo_filtro_estado_label(filtros.get('modulo_estado')),
         },
@@ -3062,6 +3244,17 @@ def _filtrar_recuperaciones(request):
         estudiante_id = ''
     if estudiante_id and not curso_id:
         estudiante_id = ''
+    if estudiante_id and curso_id:
+        estudiante_scope = RecuperacionPendiente.objects.filter(
+            matricula__curso_id=int(curso_id),
+            matricula__estudiante_id=int(estudiante_id),
+        )
+        if estado == 'pendientes':
+            estudiante_scope = estudiante_scope.filter(pagada=False)
+        elif estado == 'pagadas':
+            estudiante_scope = estudiante_scope.filter(pagada=True)
+        if not estudiante_scope.exists():
+            estudiante_id = ''
 
     qs = RecuperacionPendiente.objects.select_related(
         'matricula', 'matricula__estudiante', 'matricula__curso',
@@ -3115,7 +3308,7 @@ def _filtrar_recuperaciones(request):
 
 
 def _estudiantes_para_filtro_recuperaciones():
-    """Opciones del filtro dependiente Curso -> Estudiante."""
+    """Opciones del filtro dependiente Estado + Curso -> Estudiante."""
     estudiantes = {}
     rows = (
         RecuperacionPendiente.objects
@@ -3125,10 +3318,11 @@ def _estudiantes_para_filtro_recuperaciones():
             'matricula__estudiante__nombres',
             'matricula__estudiante__cedula',
             'matricula__curso_id',
+            'pagada',
         )
         .distinct()
     )
-    for estudiante_id, nombres, cedula, curso_id in rows:
+    for estudiante_id, nombres, cedula, curso_id, pagada in rows:
         if not estudiante_id or not curso_id:
             continue
         data = estudiantes.setdefault(estudiante_id, {
@@ -3136,14 +3330,23 @@ def _estudiantes_para_filtro_recuperaciones():
             'nombre': nombres or 'Sin nombre',
             'cedula': cedula or '',
             'curso_ids': set(),
+            'curso_ids_pendientes': set(),
+            'curso_ids_pagadas': set(),
         })
-        data['curso_ids'].add(str(curso_id))
+        curso_id_str = str(curso_id)
+        data['curso_ids'].add(curso_id_str)
+        if pagada:
+            data['curso_ids_pagadas'].add(curso_id_str)
+        else:
+            data['curso_ids_pendientes'].add(curso_id_str)
 
     opciones = []
     for data in estudiantes.values():
         opciones.append({
             **data,
             'curso_ids': sorted(data['curso_ids']),
+            'curso_ids_pendientes': sorted(data['curso_ids_pendientes']),
+            'curso_ids_pagadas': sorted(data['curso_ids_pagadas']),
         })
     return sorted(opciones, key=lambda item: (item['nombre'].lower(), item['cedula']))
 

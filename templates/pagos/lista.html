@@ -347,14 +347,30 @@
     }
     .payments-module-filter-form {
         display: grid;
-        grid-template-columns: minmax(260px, 1.5fr) minmax(160px, .75fr) minmax(190px, .85fr) auto;
+        grid-template-columns:
+            minmax(230px, 1.35fr)
+            minmax(155px, .75fr)
+            minmax(175px, .9fr)
+            minmax(145px, .7fr)
+            minmax(175px, .85fr)
+            auto;
         gap: 12px;
-        align-items: end;
+        align-items: start;
+    }
+    .payments-module-field-hint {
+        display: block;
+        min-height: 16px;
+        margin-top: 4px;
+        color: var(--fp-muted);
+        font-size: 10px;
+        line-height: 1.25;
     }
     .payments-module-filter-actions {
         display: flex;
         gap: 8px;
         align-items: center;
+        align-self: start;
+        padding-top: 23px;
         min-height: 44px;
         white-space: nowrap;
     }
@@ -418,6 +434,9 @@
         background: #1f2a44;
         border-color: #34446a;
         color: #d8e2ff;
+    }
+    body.dark-mode .payments-module-field-hint {
+        color: var(--fp-dark-muted);
     }
     .payments-filter-card {
         position: relative;
@@ -747,6 +766,8 @@
         }
         .payments-module-filter-actions {
             grid-column: 1 / -1;
+            justify-content: flex-end;
+            padding-top: 0;
         }
     }
     @media (max-width: 760px) {
@@ -769,6 +790,7 @@
         }
         .payments-module-filter-actions {
             width: 100%;
+            justify-content: flex-start;
         }
         .payments-module-filter-actions .btn {
             flex: 1;
@@ -940,13 +962,11 @@
                 <div>
                     <div class="payments-module-filter-title">Filtro separado por módulo de pago</div>
                     <div class="payments-module-filter-note">
-                        Primero elige el curso; después selecciona módulo y estado: pendiente de pago o pagado.
+                        Elige curso y modalidad. Verás únicamente sus campus y módulos disponibles; el campus no aplica en virtual.
                     </div>
                 </div>
-                {% if modulo_filtro_activo %}
-                    <a href="{% url 'academia:pagos_lista' %}{% if filtros_query_sin_modulo %}?{{ filtros_query_sin_modulo }}{% endif %}"
-                       class="btn btn-secondary btn-sm">Limpiar módulo</a>
-                {% endif %}
+                <a href="{% url 'academia:pagos_lista' %}{% if filtros_query_sin_modulo %}?{{ filtros_query_sin_modulo }}{% endif %}"
+                   class="btn btn-secondary btn-sm">Limpiar filtro</a>
             </div>
 
             <div class="payments-module-filter-form">
@@ -963,11 +983,47 @@
                 </div>
 
                 <div>
+                    <label class="form-label" style="font-size:11px;">Modalidad</label>
+                    <select name="modulo_modalidad" class="form-input"
+                            data-module-modality-select data-selected="{{ filtros.modulo_modalidad }}"
+                            {% if not filtros.modulo_curso %}disabled{% endif %}>
+                        <option value="">— Selecciona —</option>
+                        {% for modalidad in modulo_filtro_modalidades %}
+                            <option value="{{ modalidad.value }}" {% if filtros.modulo_modalidad == modalidad.value %}selected{% endif %}>
+                                {{ modalidad.label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <small class="payments-module-field-hint" data-module-modality-hint>
+                        Solo aparecen modalidades ofrecidas por el curso.
+                    </small>
+                </div>
+
+                <div>
+                    <label class="form-label" style="font-size:11px;">Campus</label>
+                    <select name="modulo_campus" class="form-input"
+                            data-module-campus-select data-selected="{{ filtros.modulo_campus }}"
+                            {% if filtros.modulo_modalidad != 'presencial' %}disabled{% endif %}>
+                        <option value="">
+                            {% if filtros.modulo_modalidad == 'online' %}— No aplica en virtual —{% else %}— Todos los campus —{% endif %}
+                        </option>
+                        {% for campus in modulo_filtro_campus %}
+                            <option value="{{ campus.value }}" {% if filtros.modulo_campus == campus.value %}selected{% endif %}>
+                                {{ campus.label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <small class="payments-module-field-hint" data-module-campus-hint>
+                        Opcional para modalidad presencial.
+                    </small>
+                </div>
+
+                <div>
                     <label class="form-label" style="font-size:11px;">Módulo</label>
                     <select name="modulo_numero" class="form-input" data-module-number-select
-                            data-selected="{{ filtros.modulo_numero }}" {% if not filtros.modulo_curso %}disabled{% endif %}>
+                            data-selected="{{ filtros.modulo_numero }}" {% if not filtros.modulo_modalidad %}disabled{% endif %}>
                         <option value="">
-                            {% if filtros.modulo_curso %}— Selecciona módulo —{% else %}— Selecciona curso —{% endif %}
+                            {% if filtros.modulo_modalidad %}— Selecciona módulo —{% else %}— Selecciona modalidad —{% endif %}
                         </option>
                         {% for modulo in modulo_filtro_opciones %}
                             <option value="{{ modulo.numero }}" {% if filtros.modulo_numero == modulo.numero|stringformat:"s" %}selected{% endif %}>
@@ -980,7 +1036,8 @@
                 <div>
                     <label class="form-label" style="font-size:11px;">Estado del módulo</label>
                     <select name="modulo_estado" class="form-input" data-module-status-select
-                            {% if not filtros.modulo_curso %}disabled{% endif %}>
+                            data-selected="{{ filtros.modulo_estado }}"
+                            {% if not filtros.modulo_numero %}disabled{% endif %}>
                         <option value="">— Estado —</option>
                         <option value="pendiente" {% if filtros.modulo_estado == 'pendiente' %}selected{% endif %}>Pendiente de pago</option>
                         <option value="pagado" {% if filtros.modulo_estado == 'pagado' %}selected{% endif %}>Pagado</option>
@@ -995,6 +1052,8 @@
             {% if modulo_filtro_activo %}
                 <div class="module-filter-active">
                     <span class="module-filter-badge">{{ modulo_filtro_resumen.curso }}</span>
+                    {% if modulo_filtro_resumen.modalidad %}<span class="module-filter-badge">{{ modulo_filtro_resumen.modalidad }}</span>{% endif %}
+                    {% if modulo_filtro_resumen.campus %}<span class="module-filter-badge">Campus: {{ modulo_filtro_resumen.campus }}</span>{% endif %}
                     <span class="module-filter-badge">{{ modulo_filtro_resumen.modulo }}</span>
                     <span class="module-filter-badge">{{ modulo_filtro_resumen.estado }}</span>
                     <span>{{ matriculas|length }} resultado(s)</span>
@@ -1317,9 +1376,13 @@
         }
 
         const courseSelect = form.querySelector('[data-module-course-select]');
+        const modalitySelect = form.querySelector('[data-module-modality-select]');
+        const campusSelect = form.querySelector('[data-module-campus-select]');
         const moduleSelect = form.querySelector('[data-module-number-select]');
         const statusSelect = form.querySelector('[data-module-status-select]');
         const submitButton = form.querySelector('[data-module-submit]');
+        const modalityHint = form.querySelector('[data-module-modality-hint]');
+        const campusHint = form.querySelector('[data-module-campus-hint]');
 
         function createOption(value, text) {
             const option = document.createElement('option');
@@ -1328,48 +1391,152 @@
             return option;
         }
 
-        function syncModuleControls(resetSelection) {
+        function replaceOptions(select, placeholder, options, selectedValue) {
+            select.innerHTML = '';
+            select.appendChild(createOption('', placeholder));
+            (options || []).forEach(function (item) {
+                select.appendChild(createOption(String(item.value), item.label));
+            });
+            const selectedExists = Array.from(select.options).some(function (option) {
+                return option.value === selectedValue;
+            });
+            select.value = selectedExists ? selectedValue : '';
+        }
+
+        function syncModuleControls(resetFrom) {
             const courseId = courseSelect ? courseSelect.value : '';
-            const selectedModule = resetSelection ? '' : (moduleSelect.dataset.selected || moduleSelect.value || '');
             const course = courses[courseId];
             const hasCourse = Boolean(courseId && course);
+            const modalities = hasCourse ? (course.modalidades || []) : [];
 
-            moduleSelect.innerHTML = '';
-            moduleSelect.appendChild(createOption('', hasCourse ? '— Selecciona módulo —' : '— Selecciona curso —'));
-
-            if (hasCourse) {
-                (course.modulos || []).forEach(function (modulo) {
-                    moduleSelect.appendChild(createOption(String(modulo.numero), modulo.label));
-                });
+            let selectedModality = (
+                resetFrom === 'course'
+                    ? ''
+                    : (modalitySelect.value || modalitySelect.dataset.selected || '')
+            );
+            replaceOptions(
+                modalitySelect,
+                hasCourse ? '— Selecciona modalidad —' : '— Selecciona curso —',
+                modalities,
+                selectedModality
+            );
+            if (!modalitySelect.value && modalities.length === 1) {
+                modalitySelect.value = String(modalities[0].value);
             }
+            selectedModality = modalitySelect.value;
+            modalitySelect.dataset.selected = selectedModality;
+            modalitySelect.disabled = !hasCourse;
 
-            const selectedExists = Array.from(moduleSelect.options).some(function (option) {
-                return option.value === selectedModule;
+            const modality = modalities.find(function (item) {
+                return String(item.value) === selectedModality;
             });
-            moduleSelect.value = selectedExists ? selectedModule : '';
-            moduleSelect.disabled = !hasCourse;
-            statusSelect.disabled = !hasCourse;
-            if (!hasCourse || resetSelection) {
-                statusSelect.value = '';
+            const isPresential = Boolean(modality && modality.value === 'presencial');
+            const isOnline = Boolean(modality && modality.value === 'online');
+
+            const selectedCampus = (
+                resetFrom === 'course' || resetFrom === 'modality'
+                    ? ''
+                    : (campusSelect.value || campusSelect.dataset.selected || '')
+            );
+            let campusPlaceholder = '— Selecciona modalidad —';
+            if (isPresential) campusPlaceholder = '— Todos los campus —';
+            if (isOnline) campusPlaceholder = '— No aplica en virtual —';
+            replaceOptions(
+                campusSelect,
+                campusPlaceholder,
+                isPresential ? (modality.campus || []) : [],
+                selectedCampus
+            );
+            campusSelect.dataset.selected = campusSelect.value;
+            campusSelect.disabled = !isPresential;
+
+            const selectedModule = (
+                resetFrom === 'course' || resetFrom === 'modality'
+                    ? ''
+                    : (moduleSelect.value || moduleSelect.dataset.selected || '')
+            );
+            const moduleOptions = modality
+                ? (modality.modulos || []).map(function (modulo) {
+                    return {value: String(modulo.numero), label: modulo.label};
+                })
+                : [];
+            replaceOptions(
+                moduleSelect,
+                modality ? '— Selecciona módulo —' : '— Selecciona modalidad —',
+                moduleOptions,
+                selectedModule
+            );
+            moduleSelect.dataset.selected = moduleSelect.value;
+            moduleSelect.disabled = !modality;
+
+            const selectedStatus = (
+                resetFrom === 'course' || resetFrom === 'modality' || resetFrom === 'module'
+                    ? ''
+                    : (statusSelect.value || statusSelect.dataset.selected || '')
+            );
+            statusSelect.value = selectedStatus;
+            statusSelect.dataset.selected = statusSelect.value;
+            statusSelect.disabled = !(modality && moduleSelect.value);
+
+            if (modalityHint) {
+                if (!hasCourse) {
+                    modalityHint.textContent = 'Primero elige un curso.';
+                } else if (!modalities.length) {
+                    modalityHint.textContent = 'Este curso no tiene una modalidad habilitada.';
+                } else if (modalities.length === 1) {
+                    modalityHint.textContent = 'Este curso solo se ofrece en ' + modalities[0].label.toLowerCase() + '.';
+                } else {
+                    modalityHint.textContent = 'Disponible presencial y virtual / online.';
+                }
             }
+            if (campusHint) {
+                if (isOnline) {
+                    campusHint.textContent = 'La modalidad virtual no requiere campus.';
+                } else if (isPresential && !(modality.campus || []).length) {
+                    campusHint.textContent = 'No hay campus con matrículas registradas para este curso.';
+                } else if (isPresential) {
+                    campusHint.textContent = 'Opcional: elige un campus o consulta todos.';
+                } else {
+                    campusHint.textContent = 'Disponible al elegir modalidad presencial.';
+                }
+            }
+
             if (submitButton) {
-                submitButton.disabled = !(hasCourse && moduleSelect.value && statusSelect.value);
+                submitButton.disabled = !(
+                    hasCourse && modality && moduleSelect.value && statusSelect.value
+                );
             }
         }
 
-        if (courseSelect && moduleSelect && statusSelect) {
+        if (courseSelect && modalitySelect && campusSelect && moduleSelect && statusSelect) {
             courseSelect.addEventListener('change', function () {
+                modalitySelect.dataset.selected = '';
+                campusSelect.dataset.selected = '';
                 moduleSelect.dataset.selected = '';
-                syncModuleControls(true);
+                statusSelect.dataset.selected = '';
+                syncModuleControls('course');
+            });
+            modalitySelect.addEventListener('change', function () {
+                modalitySelect.dataset.selected = modalitySelect.value;
+                campusSelect.dataset.selected = '';
+                moduleSelect.dataset.selected = '';
+                statusSelect.dataset.selected = '';
+                syncModuleControls('modality');
+            });
+            campusSelect.addEventListener('change', function () {
+                campusSelect.dataset.selected = campusSelect.value;
+                syncModuleControls('campus');
             });
             moduleSelect.addEventListener('change', function () {
                 moduleSelect.dataset.selected = moduleSelect.value;
-                syncModuleControls(false);
+                statusSelect.dataset.selected = '';
+                syncModuleControls('module');
             });
             statusSelect.addEventListener('change', function () {
-                syncModuleControls(false);
+                statusSelect.dataset.selected = statusSelect.value;
+                syncModuleControls('status');
             });
-            syncModuleControls(false);
+            syncModuleControls('initial');
         }
     })();
 </script>
