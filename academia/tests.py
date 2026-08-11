@@ -4750,6 +4750,125 @@ class PagosPorModuloFiltroTests(TestCase):
         self.assertContains(response, 'Módulo 1 · Pendiente')
         self.assertNotContains(response, 'Estudiante Modulo Pagado')
 
+    def test_filtro_lista_usa_solo_modalidades_y_modulos_del_curso(self):
+        self.curso.ofrece_online = True
+        self.curso.numero_modulos_online = 2
+        self.curso.nombrar_modulos = True
+        self.curso.nombres_modulos = {
+            'presencial': ['Presencial 1', 'Presencial 2', 'Presencial 3'],
+            'online': ['Virtual 1', 'Virtual 2'],
+        }
+        self.curso.save()
+        self._crear_matricula(
+            '0910101010',
+            'Estudiante Presencial Modalidad',
+        )
+        jornada_online = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='online',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 7, 6),
+            ciudad='Zoom',
+        )
+        estudiante_online = Estudiante.objects.create(
+            cedula='0920202020',
+            nombres='Estudiante Virtual Modalidad',
+        )
+        matricula_online = Matricula.objects.create(
+            estudiante=estudiante_online,
+            curso=self.curso,
+            jornada=jornada_online,
+            modalidad='online',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 6),
+            valor_curso=Decimal('60.00'),
+            tipo_registro='central_ia',
+        )
+        admin = User.objects.create_superuser(
+            username='admin_modalidad_modulos',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:pagos_lista'),
+            {
+                'modulo_curso': str(self.curso.pk),
+                'modulo_modalidad': 'online',
+                'modulo_numero': '2',
+                'modulo_estado': 'pendiente',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [matricula.pk for matricula in response.context['matriculas']],
+            [matricula_online.pk],
+        )
+        payload = response.context['cursos_modulo_filtro'][str(self.curso.pk)]
+        virtual = next(
+            modalidad for modalidad in payload['modalidades']
+            if modalidad['value'] == 'online'
+        )
+        self.assertEqual(
+            [modulo['label'] for modulo in virtual['modulos']],
+            ['Módulo 1 - Virtual 1', 'Módulo 2 - Virtual 2'],
+        )
+        self.assertEqual(virtual['campus'], [])
+        self.assertContains(response, 'Virtual / Online')
+        self.assertContains(response, 'La modalidad virtual no requiere campus.')
+
+    def test_filtro_lista_limita_por_campus_y_limpia_solo_el_bloque_modulo(self):
+        sede_guayaquil = Sede.objects.create(nombre='Guayaquil', pais='Ecuador')
+        sede_quito = Sede.objects.create(nombre='Quito', pais='Ecuador')
+        self.jornada.sede = sede_guayaquil
+        self.jornada.save()
+        matricula_guayaquil = self._crear_matricula(
+            '0930303030',
+            'Estudiante Campus Guayaquil',
+        )
+        jornada_quito = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_mie_jue',
+            fecha_inicio=date(2026, 7, 7),
+            sede=sede_quito,
+        )
+        self._crear_matricula(
+            '0940404040',
+            'Estudiante Campus Quito',
+            jornada=jornada_quito,
+        )
+        admin = User.objects.create_superuser(
+            username='admin_campus_modulos',
+            password='clave12345',
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:pagos_lista'),
+            {
+                'q': 'Campus',
+                'modulo_curso': str(self.curso.pk),
+                'modulo_modalidad': 'presencial',
+                'modulo_campus': f'sede:{sede_guayaquil.pk}',
+                'modulo_numero': '1',
+                'modulo_estado': 'pendiente',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [matricula.pk for matricula in response.context['matriculas']],
+            [matricula_guayaquil.pk],
+        )
+        self.assertEqual(response.context['filtros_query_sin_modulo'], 'q=Campus')
+        self.assertContains(response, 'Campus: Guayaquil')
+        self.assertContains(response, 'Limpiar filtro')
+        self.assertContains(response, '?q=Campus')
+        self.assertNotContains(response, 'Estudiante Campus Quito')
+
     def test_vista_pagos_por_modulo_renderiza_solo_columna_filtrada(self):
         self._crear_matricula(
             '0933333333', 'Estudiante Vista Modulo 1', modulo_pagado=1
