@@ -3244,6 +3244,17 @@ def _filtrar_recuperaciones(request):
         estudiante_id = ''
     if estudiante_id and not curso_id:
         estudiante_id = ''
+    if estudiante_id and curso_id:
+        estudiante_scope = RecuperacionPendiente.objects.filter(
+            matricula__curso_id=int(curso_id),
+            matricula__estudiante_id=int(estudiante_id),
+        )
+        if estado == 'pendientes':
+            estudiante_scope = estudiante_scope.filter(pagada=False)
+        elif estado == 'pagadas':
+            estudiante_scope = estudiante_scope.filter(pagada=True)
+        if not estudiante_scope.exists():
+            estudiante_id = ''
 
     qs = RecuperacionPendiente.objects.select_related(
         'matricula', 'matricula__estudiante', 'matricula__curso',
@@ -3297,7 +3308,7 @@ def _filtrar_recuperaciones(request):
 
 
 def _estudiantes_para_filtro_recuperaciones():
-    """Opciones del filtro dependiente Curso -> Estudiante."""
+    """Opciones del filtro dependiente Estado + Curso -> Estudiante."""
     estudiantes = {}
     rows = (
         RecuperacionPendiente.objects
@@ -3307,10 +3318,11 @@ def _estudiantes_para_filtro_recuperaciones():
             'matricula__estudiante__nombres',
             'matricula__estudiante__cedula',
             'matricula__curso_id',
+            'pagada',
         )
         .distinct()
     )
-    for estudiante_id, nombres, cedula, curso_id in rows:
+    for estudiante_id, nombres, cedula, curso_id, pagada in rows:
         if not estudiante_id or not curso_id:
             continue
         data = estudiantes.setdefault(estudiante_id, {
@@ -3318,14 +3330,23 @@ def _estudiantes_para_filtro_recuperaciones():
             'nombre': nombres or 'Sin nombre',
             'cedula': cedula or '',
             'curso_ids': set(),
+            'curso_ids_pendientes': set(),
+            'curso_ids_pagadas': set(),
         })
-        data['curso_ids'].add(str(curso_id))
+        curso_id_str = str(curso_id)
+        data['curso_ids'].add(curso_id_str)
+        if pagada:
+            data['curso_ids_pagadas'].add(curso_id_str)
+        else:
+            data['curso_ids_pendientes'].add(curso_id_str)
 
     opciones = []
     for data in estudiantes.values():
         opciones.append({
             **data,
             'curso_ids': sorted(data['curso_ids']),
+            'curso_ids_pendientes': sorted(data['curso_ids_pendientes']),
+            'curso_ids_pagadas': sorted(data['curso_ids_pagadas']),
         })
     return sorted(opciones, key=lambda item: (item['nombre'].lower(), item['cedula']))
 

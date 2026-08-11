@@ -2575,6 +2575,97 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertIn(recuperacion_curso.id, recuperaciones_sin_curso)
         self.assertIn(recuperacion_otro_curso.id, recuperaciones_sin_curso)
 
+    def test_recuperaciones_lista_estudiantes_respetan_estado_de_pago(self):
+        admin = User.objects.create_superuser(
+            username='admin_filtro_estudiante_estado_recuperacion',
+            password='clave12345',
+        )
+        estudiante_pagado = Estudiante.objects.create(
+            cedula='0102030410',
+            nombres='Estudiante Recuperacion Pagada',
+        )
+        recuperacion_pendiente = self._crear_recuperacion_para_filtro(
+            admin,
+            self.estudiante,
+            date(2026, 7, 10),
+            date(2026, 7, 15),
+        )
+        matricula_pagada = Matricula.objects.create(
+            estudiante=estudiante_pagado,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('25.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        abono = Abono.objects.create(
+            matricula=matricula_pagada,
+            fecha=date(2026, 7, 20),
+            monto=Decimal('10.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+        )
+        recuperacion_pagada = RecuperacionPendiente.objects.create(
+            matricula=matricula_pagada,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 7, 10),
+            fecha_programada=date(2026, 7, 15),
+            fecha_recuperacion=date(2026, 7, 20),
+            saldo_pendiente_al_marcar=Decimal('90.00'),
+            pagada=True,
+            abono=abono,
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:recuperaciones_lista'),
+            {
+                'estado': 'pendientes',
+                'curso': str(self.curso.pk),
+                'estudiante': str(estudiante_pagado.pk),
+            },
+        )
+
+        recuperaciones = set(response.context['recuperaciones'].values_list('id', flat=True))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['filtros']['estudiante'], '')
+        self.assertIn(recuperacion_pendiente.id, recuperaciones)
+        self.assertNotIn(recuperacion_pagada.id, recuperaciones)
+
+        opciones = response.context['estudiantes_filtro']
+        opcion_pagada = next(
+            opcion for opcion in opciones
+            if opcion['id'] == estudiante_pagado.pk
+        )
+        self.assertNotIn(str(self.curso.pk), opcion_pagada['curso_ids_pendientes'])
+        self.assertIn(str(self.curso.pk), opcion_pagada['curso_ids_pagadas'])
+        self.assertContains(response, 'data-course-ids-pendientes=""')
+
+        response_pagadas = self.client.get(
+            reverse('academia:recuperaciones_lista'),
+            {
+                'estado': 'pagadas',
+                'curso': str(self.curso.pk),
+                'estudiante': str(estudiante_pagado.pk),
+            },
+        )
+
+        recuperaciones_pagadas = set(
+            response_pagadas.context['recuperaciones'].values_list('id', flat=True),
+        )
+        self.assertEqual(
+            response_pagadas.context['filtros']['estudiante'],
+            str(estudiante_pagado.pk),
+        )
+        self.assertIn(recuperacion_pagada.id, recuperaciones_pagadas)
+        self.assertNotIn(recuperacion_pendiente.id, recuperaciones_pagadas)
+
     def test_reserva_modulo_respeta_valor_pagado_digitado(self):
         matricula = Matricula.objects.create(
             estudiante=self.estudiante,
