@@ -939,16 +939,70 @@
         const cursoEmpty = document.getElementById('curso-empty');
         const modalidadTabs = Array.from(document.querySelectorAll('.course-mode-tab'));
 
+        function normalizarCelularEcuadorDigitos(digitos) {
+            let limpio = String(digitos || '').replace(/\D/g, '');
+            if (limpio.startsWith('593')) {
+                let local = limpio.slice(3);
+                if (local.startsWith('0')) {
+                    limpio = local;
+                } else if (local.length >= 9) {
+                    limpio = '0' + local.slice(0, 9);
+                }
+            }
+            return limpio;
+        }
+
+        function esCampoCelular(input) {
+            const nombre = `${input.name || ''} ${input.id || ''}`.toLowerCase();
+            return input.dataset.phoneEcuador === 'true' || nombre.includes('celular');
+        }
+
+        function limpiarDigitosCampo(input, valor) {
+            let limpio = String(valor || '').replace(/\D/g, '');
+            if (esCampoCelular(input)) {
+                limpio = normalizarCelularEcuadorDigitos(limpio);
+            }
+            if (input.maxLength > -1 && limpio.length > input.maxLength) {
+                limpio = limpio.slice(0, input.maxLength);
+            }
+            return limpio;
+        }
+
+        function pegarDigitosLimpios(event, input) {
+            const texto = event.clipboardData ? event.clipboardData.getData('text') : '';
+            if (!texto) return;
+
+            event.preventDefault();
+            const inicio = typeof input.selectionStart === 'number'
+                ? input.selectionStart
+                : input.value.length;
+            const fin = typeof input.selectionEnd === 'number'
+                ? input.selectionEnd
+                : input.value.length;
+            const digitosPegados = texto.replace(/\D/g, '');
+            const combinado = input.value.slice(0, inicio)
+                + digitosPegados
+                + input.value.slice(fin);
+            input.value = limpiarDigitosCampo(input, combinado);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
         // Los identificadores y datos personales numéricos conservan los ceros
-        // iniciales, pero nunca admiten letras ni signos, incluso al pegar.
+        // iniciales. Al pegar, se limpian espacios, guiones y el prefijo +593.
         document.querySelectorAll('[data-digits-only="true"]').forEach(function (input) {
+            input.addEventListener('paste', function (event) {
+                pegarDigitosLimpios(event, this);
+            });
             input.addEventListener('beforeinput', function (event) {
+                if (event.inputType && event.inputType.startsWith('insertFromPaste')) {
+                    return;
+                }
                 if (event.data && /[^0-9]/.test(event.data)) {
                     event.preventDefault();
                 }
             });
             input.addEventListener('input', function () {
-                const limpio = this.value.replace(/[^0-9]/g, '');
+                const limpio = limpiarDigitosCampo(this, this.value);
                 if (this.value !== limpio) this.value = limpio;
             });
         });

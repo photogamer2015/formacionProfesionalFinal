@@ -5093,7 +5093,9 @@ def _calendario_alertas_pago(matricula):
     jornada; la presencial conserva exactamente la fecha de inicio. Las
     obligaciones siguientes mantienen sus fechas actuales: cada siete días,
     o cada catorce cuando el curso tiene activada esa configuración
-    independiente. El panel conserva el primer módulo impago: nunca salta al
+    independiente. En los cursos online con pagos cada dos semanas, cada
+    alerta se habilita un día antes de la fecha de pago; la fecha real del
+    pago no cambia. El panel conserva el primer módulo impago: nunca salta al
     módulo de la semana actual. Los cursos con pago único mantienen una sola
     obligación, aunque académicamente tengan más de un módulo.
     """
@@ -5116,11 +5118,20 @@ def _calendario_alertas_pago(matricula):
     intervalo_dias = (
         14 if matricula.curso.pagos_cada_dos_semanas else 7
     )
+    adelanto_online_quincenal = (
+        timedelta(days=1)
+        if (
+            matricula.modalidad == 'online'
+            and matricula.curso.pagos_cada_dos_semanas
+        )
+        else timedelta(0)
+    )
 
     return {
         numero: (
             primera_fecha if numero == 1 else (
                 inicio + timedelta(days=(numero - 1) * intervalo_dias)
+                - adelanto_online_quincenal
             ),
             'modulo',
         )
@@ -5131,7 +5142,7 @@ def _calendario_alertas_pago(matricula):
 def _calcular_alertas_pago(usuario_actual=None):
     """
     Devuelve la lista de alertas activas: matrículas tipo "Reserva/Abono" o
-    "Reserva + Módulo 1" con saldo pendiente cuyo hito de pago YA venció
+    "Reserva + Módulo 1" con saldo pendiente cuya fecha de aviso ya llegó
     según el calendario semanal del panel (ver _calendario_alertas_pago).
 
     Siempre muestra el primer módulo que todavía no está cubierto. Cuando se
@@ -5197,12 +5208,12 @@ def _calcular_alertas_pago(usuario_actual=None):
 
         numero_modulo = primer_modulo_pendiente
 
-        fecha_venc, hito = calendario.get(
+        fecha_alerta, hito = calendario.get(
             numero_modulo, (m.jornada.fecha_inicio, 'modulo')
         )
 
-        if hoy < fecha_venc:
-            continue  # su próximo pago todavía no vence: no molestar
+        if hoy < fecha_alerta:
+            continue  # la fecha de aviso todavía no llega: no molestar
 
         if (m.pk, numero_modulo) in revisadas_hoy:
             continue  # ya revisada hoy para ese módulo
@@ -5217,8 +5228,14 @@ def _calcular_alertas_pago(usuario_actual=None):
             cuota_modulo,
         )
 
-        # Días de seguimiento desde que venció ESE hito de pago.
-        dias_atraso = max((hoy - fecha_venc).days, 0)
+        # Días de seguimiento desde que se activó este aviso.
+        dias_atraso = max((hoy - fecha_alerta).days, 0)
+
+        # El aviso online quincenal se adelanta un día, pero la tarjeta debe
+        # seguir informando la fecha real en la que corresponde pagar.
+        fecha_pago = _calendario_vencimientos(m).get(
+            numero_modulo, (fecha_alerta, hito)
+        )[0]
 
         # Monto que corresponde reclamar en este hito:
         #  - pago único / saldo restante → todo el saldo pendiente
@@ -5292,7 +5309,11 @@ def _calcular_alertas_pago(usuario_actual=None):
             'modalidad': m.modalidad,
             'modalidad_label': m.get_modalidad_display(),
             'fecha_inicio_jornada': m.jornada.fecha_inicio,
-            'fecha_vencimiento': fecha_venc,
+            'fecha_alerta': fecha_alerta,
+            # Se conserva esta clave por compatibilidad con el calendario
+            # histórico del panel; representa la activación del aviso.
+            'fecha_vencimiento': fecha_alerta,
+            'fecha_pago': fecha_pago,
             'hito': hito,
             'hito_label': hito_label,
             'dias_atraso': dias_atraso,
