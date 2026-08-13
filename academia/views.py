@@ -754,7 +754,12 @@ def matricula_registrar(request, modalidad):
 
     if request.method == 'POST':
         factura_si = request.POST.get('mat-factura_realizada', '') == 'si'
-        est_form = EstudianteForm(request.POST, prefix='est', factura_si=factura_si)
+        est_form = EstudianteForm(
+            request.POST,
+            prefix='est',
+            factura_si=factura_si,
+            documento_flexible=True,
+        )
         mat_form = MatriculaForm(request.POST, prefix='mat', modalidad=modalidad)
 
         vendedora_id = request.POST.get('vendedora_id', '').strip()
@@ -767,7 +772,10 @@ def matricula_registrar(request, modalidad):
 
         cedula = request.POST.get('est-cedula', '').strip()
         estudiante_existente = None
-        if cedula and es_cedula_ruc_ecuador_valido(cedula):
+        if cedula and es_cedula_ruc_ecuador_valido(
+            cedula,
+            permitir_longitud_flexible=True,
+        ):
             estudiante_existente = Estudiante.objects.filter(cedula=cedula).first()
 
         if not error_vendedora:
@@ -820,7 +828,7 @@ def matricula_registrar(request, modalidad):
                     )
 
     else:
-        est_form = EstudianteForm(prefix='est')
+        est_form = EstudianteForm(prefix='est', documento_flexible=True)
         mat_form = MatriculaForm(prefix='mat', modalidad=modalidad)
 
     return render(request, 'matricula/form.html', {

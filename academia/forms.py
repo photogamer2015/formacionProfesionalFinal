@@ -9,15 +9,38 @@ from .models import (
 )
 
 
-def es_cedula_ruc_ecuador_valido(valor):
-    """Acepta cédula de 10 dígitos o RUC de 13 dígitos terminado en 001."""
+def es_ruc_ecuador(valor):
+    """Un RUC debe tener exactamente 13 dígitos y terminar en 001."""
     documento = (valor or '').strip()
+    return bool(
+        documento.isascii()
+        and documento.isdigit()
+        and len(documento) == 13
+        and documento.endswith('001')
+    )
+
+
+def es_cedula_ruc_ecuador_valido(valor, permitir_longitud_flexible=False):
+    """
+    Valida el formato numérico del documento.
+
+    Por defecto conserva la regla general de cédula/RUC ecuatoriano. El modo
+    flexible se usa únicamente al registrar una matrícula, donde la longitud
+    no debe impedir buscar o guardar al estudiante.
+    """
+    documento = (valor or '').strip()
+    if permitir_longitud_flexible:
+        return bool(
+            documento
+            and documento.isascii()
+            and documento.isdigit()
+        )
     return bool(
         documento.isascii()
         and documento.isdigit()
         and (
             len(documento) == 10
-            or (len(documento) == 13 and documento.endswith('001'))
+            or es_ruc_ecuador(documento)
         )
     )
 
@@ -276,8 +299,21 @@ class EstudianteForm(forms.ModelForm):
         # Cuando la matrícula lleva factura con datos, correo/celular/ciudad
         # pasan a ser OBLIGATORIOS (necesarios para emitir la factura).
         self.factura_si = kwargs.pop('factura_si', False)
+        # Solo el alta de matrícula permite documentos con una cantidad de
+        # dígitos distinta de 10/13. Los demás usos mantienen la regla normal.
+        self.documento_flexible = kwargs.pop('documento_flexible', False)
         super().__init__(*args, **kwargs)
-        self.fields['cedula'].widget.attrs['maxlength'] = '13'
+        if self.documento_flexible:
+            cedula_attrs = self.fields['cedula'].widget.attrs
+            cedula_attrs.pop('pattern', None)
+            cedula_attrs['maxlength'] = '20'
+            cedula_attrs['placeholder'] = 'Cédula o RUC'
+            cedula_attrs['title'] = (
+                'Ingresa el número sin letras. Solo se identificará como RUC '
+                'si tiene exactamente 13 dígitos y termina en 001.'
+            )
+        else:
+            self.fields['cedula'].widget.attrs['maxlength'] = '13'
         # El modelo conserva hasta 20 caracteres por compatibilidad, pero el
         # formulario de matrícula trabaja con celulares nacionales de 10 dígitos.
         self.fields['celular'].widget.attrs['maxlength'] = '10'
@@ -304,6 +340,8 @@ class EstudianteForm(forms.ModelForm):
             raise forms.ValidationError(
                 'La cédula o RUC debe contener únicamente números.'
             )
+        if self.documento_flexible:
+            return cedula
         if len(cedula) < 10:
             raise forms.ValidationError(
                 'La cédula debe tener 10 dígitos.'

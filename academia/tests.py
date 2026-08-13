@@ -19,7 +19,7 @@ from .authentication import (
 )
 from .forms import (
     AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, EstudianteForm,
-    MatriculaForm, es_cedula_ruc_ecuador_valido,
+    MatriculaForm, es_cedula_ruc_ecuador_valido, es_ruc_ecuador,
 )
 from .models import (
     Abono, ActividadUsuario, Adicional, AdicionalArchivado, AmistadUsuario,
@@ -117,6 +117,7 @@ class GlobalTablePaginationTests(SimpleTestCase):
         self.assertIn('.hist-month summary::-webkit-details-marker', template)
         self.assertIn('.hist-month[open] .hist-month-arrow', template)
         self.assertIn("summary.setAttribute('aria-expanded'", template)
+
 
 class ActividadUsuarioTests(TestCase):
     def setUp(self):
@@ -2073,6 +2074,45 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data['cedula'], ruc)
         self.assertTrue(es_cedula_ruc_ecuador_valido(ruc))
+
+    def test_ruc_requiere_exactamente_trece_digitos_y_terminacion_001(self):
+        self.assertFalse(es_ruc_ecuador('983001'))
+        self.assertFalse(es_ruc_ecuador('1207342716123'))
+        self.assertTrue(es_ruc_ecuador('1207342716001'))
+
+    def test_registro_matricula_acepta_documentos_de_longitud_flexible(self):
+        for documento in ('123', '12345678901', '123456789012345'):
+            with self.subTest(documento=documento):
+                form = EstudianteForm(
+                    self._estudiante_data(cedula=documento),
+                    documento_flexible=True,
+                )
+
+                self.assertTrue(form.is_valid(), form.errors)
+                self.assertEqual(form.cleaned_data['cedula'], documento)
+                self.assertTrue(
+                    es_cedula_ruc_ecuador_valido(
+                        documento,
+                        permitir_longitud_flexible=True,
+                    )
+                )
+
+    def test_registro_matricula_flexible_sigue_rechazando_letras(self):
+        form = EstudianteForm(
+            self._estudiante_data(cedula='123ABC001'),
+            documento_flexible=True,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('únicamente números', form.errors['cedula'][0])
+
+    def test_widget_flexible_quita_patron_de_longitud(self):
+        form = EstudianteForm(documento_flexible=True)
+        attrs = form.fields['cedula'].widget.attrs
+
+        self.assertNotIn('pattern', attrs)
+        self.assertEqual(attrs['maxlength'], '20')
+        self.assertIn('exactamente 13 dígitos', attrs['title'])
 
     def test_cedula_pegada_con_separadores_se_normaliza(self):
         form = EstudianteForm(self._estudiante_data(cedula='010-203-0405'))

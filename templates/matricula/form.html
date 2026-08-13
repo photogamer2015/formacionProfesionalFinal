@@ -1828,6 +1828,23 @@
             if (!documento) {
                 return { valido: false, vacio: true, tipo: '', mensaje: '' };
             }
+            if (ES_REGISTRO_NUEVO) {
+                if (!/^\d+$/.test(documento)) {
+                    return {
+                        valido: false,
+                        tipo: '',
+                        mensaje: 'La cédula o RUC debe contener únicamente números.',
+                    };
+                }
+                const esRuc = documento.length === 13 && documento.endsWith('001');
+                return {
+                    valido: true,
+                    tipo: esRuc ? 'ruc' : 'cedula',
+                    mensaje: esRuc
+                        ? 'RUC detectado: 13 dígitos terminados en 001.'
+                        : 'Cédula aceptada.',
+                };
+            }
             if (documento.length < 10) {
                 return {
                     valido: false,
