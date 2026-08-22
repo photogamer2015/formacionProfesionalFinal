@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+  <body style="margin:0; padding:0; background:#f3f6fb; font-family:Arial, Helvetica, sans-serif; color:#172033;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb; padding:30px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px; background:#ffffff; border:1px solid #e2e8f2; border-radius:18px; overflow:hidden; box-shadow:0 8px 28px rgba(27,42,78,.08);">
+            <tr>
+              <td style="padding:30px 34px; background:#1b2a4e;">
+                <p style="margin:0 0 7px; color:#ffb74d; font-size:13px; font-weight:700; letter-spacing:.7px; text-transform:uppercase;">Formación Profesional EC</p>
+                <h1 style="margin:0; color:#ffffff; font-size:27px; line-height:1.25;">¡Tu matrícula fue registrada!</h1>
+                <p style="margin:10px 0 0; color:#dce5f5; font-size:15px; line-height:1.5;">Confirmación oficial de inscripción</p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:30px 34px 12px;">
+                <p style="margin:0 0 12px; font-size:17px; line-height:1.6;">Hola <strong>{{ nombre_estudiante }}</strong>,</p>
+                <p style="margin:0; color:#526174; font-size:15px; line-height:1.7;">Tu matrícula fue registrada correctamente. Guarda este correo como respaldo y revisa el resumen de tu inscripción.</p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:18px 34px 0;">
+                <h2 style="margin:0 0 12px; color:#1b2a4e; font-size:17px;">Datos del estudiante</h2>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5eaf2; border-radius:12px; overflow:hidden;">
+                  <tr>
+                    <td width="50%" style="padding:14px 16px; background:#f8fafc; border-bottom:1px solid #e5eaf2; color:#667085; font-size:12px;">Cédula/RUC<br><strong style="display:block; margin-top:4px; color:#172033; font-size:14px;">{{ cedula }}</strong></td>
+                    <td width="50%" style="padding:14px 16px; background:#f8fafc; border-left:1px solid #e5eaf2; border-bottom:1px solid #e5eaf2; color:#667085; font-size:12px;">Edad<br><strong style="display:block; margin-top:4px; color:#172033; font-size:14px;">{{ edad|default:"No registrada" }}</strong></td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px; border-bottom:1px solid #e5eaf2; color:#667085; font-size:12px;">Correo<br><strong style="display:block; margin-top:4px; color:#172033; font-size:14px; word-break:break-word;">{{ correo }}</strong></td>
+                    <td style="padding:14px 16px; border-left:1px solid #e5eaf2; border-bottom:1px solid #e5eaf2; color:#667085; font-size:12px;">Celular<br><strong style="display:block; margin-top:4px; color:#172033; font-size:14px;">{{ celular }}</strong></td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px; border-bottom:1px solid #e5eaf2; color:#667085; font-size:12px;">Ciudad<br><strong style="display:block; margin-top:4px; color:#172033; font-size:14px;">{{ ciudad }}</strong></td>
+                    <td style="padding:14px 16px; border-left:1px solid #e5eaf2; border-bottom:1px solid #e5eaf2; color:#667085; font-size:12px;">Nivel de formación<br><strong style="display:block; margin-top:4px; color:#172033; font-size:14px;">{{ nivel_formacion }}</strong></td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding:14px 16px; color:#667085; font-size:12px;">Título profesional<br><strong style="display:block; margin-top:4px; color:#172033; font-size:14px;">{{ titulo_profesional }}</strong></td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:24px 34px 0;">
+                <h2 style="margin:0 0 12px; color:#1b2a4e; font-size:17px;">Información de la matrícula</h2>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc; border:1px solid #e5eaf2; border-radius:12px;">
+                  <tr>
+                    <td style="padding:14px 16px; color:#667085; font-size:13px;">Fecha de matrícula</td>
+                    <td align="right" style="padding:14px 16px; color:#172033; font-size:14px; font-weight:700;">{{ fecha_matricula|date:"d/m/Y" }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#667085; font-size:13px;">Estado</td>
+                    <td align="right" style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#16803c; font-size:14px; font-weight:700;">{{ estado_matricula }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#667085; font-size:13px;">Tipo de inscripción</td>
+                    <td align="right" style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#172033; font-size:14px; font-weight:700;">{{ tipo_matricula }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#667085; font-size:13px;">Modalidad</td>
+                    <td align="right" style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#172033; font-size:14px; font-weight:700;">{{ modalidad }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#667085; font-size:13px;">Talla de camiseta</td>
+                    <td align="right" style="padding:14px 16px; border-top:1px solid #e5eaf2; color:#172033; font-size:14px; font-weight:700;">{{ talla_camiseta }}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:24px 34px 0;">
+                <h2 style="margin:0 0 12px; color:#1b2a4e; font-size:17px;">Curso y jornada</h2>
+                <div style="padding:20px; background:#eef4ff; border:1px solid #d8e4fa; border-radius:12px;">
+                  <p style="margin:0 0 5px; color:#60708a; font-size:12px; text-transform:uppercase; letter-spacing:.4px;">Curso</p>
+                  <p style="margin:0 0 17px; color:#1a237e; font-size:20px; line-height:1.35; font-weight:800;">{{ curso_nombre }}</p>
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                    <tr><td style="padding:6px 0; color:#526174; font-size:14px;"><strong>Categoría:</strong> {{ categoria_curso }}</td></tr>
+                    <tr><td style="padding:6px 0; color:#526174; font-size:14px;"><strong>Jornada:</strong> {{ jornada_dias }}</td></tr>
+                    <tr><td style="padding:6px 0; color:#526174; font-size:14px;"><strong>Fecha de inicio:</strong> {% if fecha_inicio %}{{ fecha_inicio|date:"d/m/Y" }}{% else %}No especificada{% endif %}</td></tr>
+                    <tr><td style="padding:6px 0; color:#526174; font-size:14px;"><strong>Horario:</strong> {{ horario }}</td></tr>
+                    <tr><td style="padding:6px 0; color:#526174; font-size:14px;"><strong>Sede/Plataforma:</strong> {{ sede }}</td></tr>
+                  </table>
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:24px 34px 0;">
+                <h2 style="margin:0 0 12px; color:#1b2a4e; font-size:17px;">Resumen financiero</h2>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5eaf2; border-radius:12px; overflow:hidden;">
+                  <tr><td style="padding:12px 16px; color:#667085; font-size:13px;">Valor del curso</td><td align="right" style="padding:12px 16px; font-size:14px; font-weight:700;">${{ valor_curso|floatformat:2 }}</td></tr>
+                  <tr><td style="padding:12px 16px; border-top:1px solid #e5eaf2; color:#667085; font-size:13px;">Descuento</td><td align="right" style="padding:12px 16px; border-top:1px solid #e5eaf2; font-size:14px; font-weight:700;">${{ descuento|floatformat:2 }}</td></tr>
+                  <tr><td style="padding:12px 16px; border-top:1px solid #e5eaf2; color:#667085; font-size:13px;">Valor final</td><td align="right" style="padding:12px 16px; border-top:1px solid #e5eaf2; color:#1a237e; font-size:14px; font-weight:800;">${{ valor_neto|floatformat:2 }}</td></tr>
+                  <tr><td style="padding:12px 16px; border-top:1px solid #e5eaf2; color:#667085; font-size:13px;">Pago registrado</td><td align="right" style="padding:12px 16px; border-top:1px solid #e5eaf2; color:#16803c; font-size:14px; font-weight:800;">${{ valor_pagado|floatformat:2 }}</td></tr>
+                  <tr><td style="padding:14px 16px; border-top:1px solid #efdca4; background:#fff9e9; color:#805b13; font-size:14px; font-weight:700;">Saldo pendiente</td><td align="right" style="padding:14px 16px; border-top:1px solid #efdca4; background:#fff9e9; color:#e45103; font-size:18px; font-weight:800;">${{ saldo|floatformat:2 }}</td></tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:24px 34px 0;">
+                <p style="margin:0; padding:16px 18px; background:#f8fafc; border-left:4px solid #1a237e; color:#526174; font-size:14px; line-height:1.65;">Por favor, revisa que los datos sean correctos. Si encuentras alguna novedad, responde a este correo para que podamos ayudarte.</p>
+              </td>
+            </tr>
+
+            {% if formulario %}
+            <tr>
+              <td style="padding:26px 34px 32px;">
+                <div style="padding:24px; background:#fff6e8; border:1px solid #f4d39e; border-radius:14px; text-align:center;">
+                  <p style="margin:0 0 7px; color:#9a5a00; font-size:13px; font-weight:800; letter-spacing:.5px; text-transform:uppercase;">Último paso</p>
+                  <h2 style="margin:0 0 10px; color:#1b2a4e; font-size:20px;">Completa tu inscripción</h2>
+                  <p style="margin:0 auto 18px; max-width:520px; color:#625a4e; font-size:14px; line-height:1.6;">Este formulario corresponde específicamente a <strong>{{ formulario.nombre }}</strong>. Ingresa y completa la información solicitada.</p>
+                  <a href="{{ formulario.url }}" target="_blank" style="display:inline-block; padding:14px 24px; background:#e45103; color:#ffffff; border-radius:9px; font-size:15px; line-height:1; font-weight:800; text-decoration:none;">Completar formulario de inscripción</a>
+                  <p style="margin:14px 0 0; color:#7b7060; font-size:11px; line-height:1.5; word-break:break-all;">{{ formulario.url }}</p>
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+
+            <tr>
+              <td style="padding:19px 34px; background:#1b2a4e; color:#dce5f5; font-size:12px; line-height:1.55; text-align:center;">
+                Formación Profesional EC · Confirmación automática de matrícula<br>
+                Conserva este mensaje como respaldo de tu inscripción.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

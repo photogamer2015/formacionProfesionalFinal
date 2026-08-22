@@ -6,6 +6,7 @@
     var updateFrame = 0;
     var paginationSequence = 0;
     var paginationStates = new WeakMap();
+    var navigationStates = new WeakMap();
 
     function tableLabel(table, index) {
         var explicitLabel = table.getAttribute("aria-label");
@@ -204,6 +205,291 @@
         renderTablePagination(table, false);
     }
 
+    function normalizeTableText(value) {
+        var text = String(value || "").toLowerCase().trim();
+        if (text.normalize) {
+            text = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+        return text.replace(/\s+/g, " ");
+    }
+
+    function tableHeaderCells(table) {
+        if (!table.tHead || !table.tHead.rows.length) return [];
+
+        return Array.prototype.reduce.call(table.tHead.rows, function (best, row) {
+            var cells = Array.prototype.slice.call(row.cells || []);
+            return cells.length > best.length ? cells : best;
+        }, []);
+    }
+
+    function identityColumnIndex(headers) {
+        var inlineStickyIndex = headers.findIndex(function (header) {
+            return /position\s*:\s*sticky/i.test(header.getAttribute("style") || "");
+        });
+        if (inlineStickyIndex >= 0) return inlineStickyIndex;
+
+        var normalizedHeaders = headers.map(function (header) {
+            return normalizeTableText(header.textContent);
+        });
+        var identityPatterns = [
+            /estudiante|alumno|apellidos? y nombres?|persona|cliente|involucrado/,
+            /usuario|asesor|vendedora|registrador/,
+            /^nombre\b|\bnombres\b/,
+            /^curso\b|curso\s*[\/·]/,
+            /concepto|descripcion|detalle|actividad realizada|sede/
+        ];
+
+        for (var patternIndex = 0; patternIndex < identityPatterns.length; patternIndex += 1) {
+            var matchIndex = normalizedHeaders.findIndex(function (headerText) {
+                return identityPatterns[patternIndex].test(headerText);
+            });
+            if (matchIndex >= 0) return matchIndex;
+        }
+
+        var ignoredHeader = /^(#|acciones?|accion|comp\.?|comprob\.?|estado|saldo|pagado|pago|valor|monto|factura|asistencia)$/;
+        return normalizedHeaders.findIndex(function (headerText) {
+            return headerText && !ignoredHeader.test(headerText);
+        });
+    }
+
+    function tableContextDescriptors(headers, identityIndex) {
+        var descriptorRules = [
+            { pattern: /cedula|ruc|documento|identificacion/, label: "C.I./RUC" },
+            { pattern: /^curso\b|curso\s*[\/·(]/, label: "Curso" },
+            { pattern: /celular|telefono|contacto/, label: "Cel." },
+            { pattern: /modalidad/, label: "Modalidad" },
+            { pattern: /jornada/, label: "Jornada" },
+            { pattern: /^fecha\b|fecha /, label: "Fecha" },
+            { pattern: /sede|ciudad/, label: "Sede" }
+        ];
+        var descriptors = [];
+
+        descriptorRules.some(function (rule) {
+            headers.forEach(function (header, index) {
+                if (descriptors.length >= 2 || index === identityIndex) return;
+                var headerText = normalizeTableText(header.textContent);
+                if (!rule.pattern.test(headerText)) return;
+                if (descriptors.some(function (descriptor) {
+                    return descriptor.index === index;
+                })) return;
+                descriptors.push({ index: index, label: rule.label });
+            });
+            return descriptors.length >= 2;
+        });
+
+        return descriptors.slice(0, 2);
+    }
+
+    function compactCellText(cell) {
+        var value = String(cell ? cell.textContent : "").replace(/\s+/g, " ").trim();
+        if (!value || value === "—" || value === "-") return "";
+        return value.length > 58 ? value.slice(0, 55).trim() + "…" : value;
+    }
+
+    function createIdentityContext(row, identityCell, descriptors) {
+        if (identityCell.querySelector(".fp-table-identity-context")) return;
+
+        var identityText = normalizeTableText(identityCell.textContent);
+        var details = [];
+        descriptors.forEach(function (descriptor) {
+            var value = compactCellText(row.cells[descriptor.index]);
+            if (!value || identityText.indexOf(normalizeTableText(value)) >= 0) return;
+            details.push({ label: descriptor.label, value: value });
+        });
+        if (!details.length) return;
+
+        var context = document.createElement("div");
+        context.className = "fp-table-identity-context";
+        context.setAttribute("aria-hidden", "true");
+        details.forEach(function (detail) {
+            var item = document.createElement("span");
+            item.className = "fp-table-identity-context__item";
+
+            var label = document.createElement("strong");
+            label.textContent = detail.label + ":";
+            item.appendChild(label);
+            item.appendChild(document.createTextNode(" " + detail.value));
+            context.appendChild(item);
+        });
+        identityCell.appendChild(context);
+    }
+
+    function prepareTableIdentity(table) {
+        if (!table.tHead || !table.tBodies.length) return;
+        if (table.getAttribute("role") === "presentation") return;
+        if (table.dataset.tableContext === "off" || table.dataset.tableContext === "custom") return;
+
+        var headers = tableHeaderCells(table);
+        if (!headers.length) return;
+
+        var storedIndex = table.dataset.tableIdentityColumn;
+        var identityIndex = storedIndex === undefined
+            ? identityColumnIndex(headers)
+            : Number(storedIndex);
+        if (identityIndex < 0 || identityIndex >= headers.length) return;
+
+        table.dataset.tableIdentityColumn = String(identityIndex);
+        table.classList.add("fp-table-has-identity");
+        headers[identityIndex].classList.add("fp-table-identity-column");
+
+        var descriptors = tableContextDescriptors(headers, identityIndex);
+        tableBodyRows(table).forEach(function (row) {
+            var identityCell = row.cells[identityIndex];
+            if (!identityCell) return;
+            identityCell.classList.add("fp-table-identity-column");
+            createIdentityContext(row, identityCell, descriptors);
+        });
+    }
+
+    function prefersReducedMotion() {
+        return Boolean(
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        );
+    }
+
+    function createTableNavigator(table, shell) {
+        if (navigationStates.has(table)) return navigationStates.get(table);
+
+        var navigator = document.createElement("section");
+        navigator.className = "fp-table-navigator";
+        navigator.setAttribute("aria-label", "Navegación de " + tableLabel(table, 0));
+
+        var toolbar = document.createElement("div");
+        toolbar.className = "fp-table-navigator__toolbar";
+
+        var context = document.createElement("div");
+        context.className = "fp-table-navigator__context";
+        context.innerHTML =
+            '<span class="fp-table-navigator__context-icon" aria-hidden="true">↔</span>' +
+            '<span><strong>Explora la tabla</strong>' +
+            '<small>Desliza la barra o usa el botón para recorrer las columnas.</small></span>';
+
+        var jumpEdge = document.createElement("button");
+        jumpEdge.type = "button";
+        jumpEdge.className = "fp-table-navigator__jump";
+        jumpEdge.setAttribute("aria-label", "Ir al final de la tabla horizontalmente");
+
+        var jumpLabel = document.createElement("span");
+        jumpLabel.className = "fp-table-navigator__jump-label";
+        jumpLabel.textContent = "Ir al final de la tabla";
+
+        var jumpArrow = document.createElement("span");
+        jumpArrow.className = "fp-table-navigator__jump-arrow";
+        jumpArrow.setAttribute("aria-hidden", "true");
+        jumpArrow.textContent = "→";
+
+        jumpEdge.appendChild(jumpLabel);
+        jumpEdge.appendChild(jumpArrow);
+
+        toolbar.appendChild(context);
+        toolbar.appendChild(jumpEdge);
+
+        var topScroll = document.createElement("input");
+        topScroll.type = "range";
+        topScroll.className = "fp-table-navigator__scroll";
+        topScroll.min = "0";
+        topScroll.max = "0";
+        topScroll.step = "1";
+        topScroll.value = "0";
+        topScroll.setAttribute(
+            "aria-label",
+            "Barra de desplazamiento horizontal superior de " + tableLabel(table, 0)
+        );
+
+        navigator.appendChild(toolbar);
+        navigator.appendChild(topScroll);
+        shell.parentNode.insertBefore(navigator, shell);
+
+        var state = {
+            navigator: navigator,
+            shell: shell,
+            topScroll: topScroll,
+            jumpEdge: jumpEdge,
+            jumpLabel: jumpLabel,
+            jumpArrow: jumpArrow,
+            syncing: false
+        };
+        navigationStates.set(table, state);
+
+        topScroll.addEventListener("input", function () {
+            if (state.syncing) return;
+            state.syncing = true;
+            shell.scrollLeft = Number(topScroll.value);
+            state.syncing = false;
+            updateTableNavigator(table);
+        });
+
+        shell.addEventListener("scroll", function () {
+            if (!state.syncing) {
+                state.syncing = true;
+                topScroll.value = String(Math.round(shell.scrollLeft));
+                state.syncing = false;
+            }
+            updateTableNavigator(table);
+        }, { passive: true });
+
+        jumpEdge.addEventListener("click", function () {
+            var maximumScroll = Math.max(0, shell.scrollWidth - shell.clientWidth);
+            var isAtEnd = maximumScroll - shell.scrollLeft <= 4;
+            var destination = isAtEnd ? 0 : maximumScroll;
+
+            if (shell.scrollTo) {
+                shell.scrollTo({
+                    left: destination,
+                    behavior: prefersReducedMotion() ? "auto" : "smooth"
+                });
+            } else {
+                shell.scrollLeft = destination;
+            }
+        });
+
+        return state;
+    }
+
+    function updateTableNavigator(table) {
+        var state = navigationStates.get(table);
+        if (!state) return;
+
+        var shell = state.shell;
+        var overflowing = shell.scrollWidth > shell.clientWidth + 1;
+        var maximumScroll = Math.max(0, shell.scrollWidth - shell.clientWidth);
+        var scrollPercentage = maximumScroll
+            ? Math.round((shell.scrollLeft / maximumScroll) * 100)
+            : 0;
+        var isAtEnd = overflowing && maximumScroll - shell.scrollLeft <= 4;
+
+        state.navigator.classList.toggle("is-overflowing", overflowing);
+        state.navigator.hidden = !overflowing;
+        state.topScroll.hidden = !overflowing;
+        state.topScroll.max = String(Math.ceil(maximumScroll));
+        state.topScroll.value = String(Math.round(shell.scrollLeft));
+        state.topScroll.setAttribute(
+            "aria-valuetext",
+            scrollPercentage + "% del recorrido horizontal"
+        );
+        state.jumpLabel.textContent = isAtEnd
+            ? "Ir al inicio de la tabla"
+            : "Ir al final de la tabla";
+        state.jumpArrow.textContent = isAtEnd ? "←" : "→";
+        state.jumpEdge.setAttribute(
+            "aria-label",
+            isAtEnd
+                ? "Ir al inicio de la tabla horizontalmente"
+                : "Ir al final de la tabla horizontalmente"
+        );
+
+        shell.classList.toggle("is-scrolled-x", shell.scrollLeft > 4);
+        shell.classList.toggle("is-scrolled-end", isAtEnd);
+    }
+
+    function prepareTableNavigator(table, shell) {
+        if (table.dataset.tableNavigation === "off") return;
+        if (!table.tHead || !table.tBodies.length) return;
+        createTableNavigator(table, shell);
+        updateTableNavigator(table);
+    }
+
     function refreshTablePaginations(root, resetPage) {
         var scope = root && root.querySelectorAll ? root : document;
         var tables = [];
@@ -233,7 +519,7 @@
             if (table.dataset.responsivePrepared === "true") return;
 
             var shell = table.closest(
-                ".table-wrap, .responsive-table-shell, .dashboard-modal-body, [style*='overflow-x:auto'], [style*='overflow-x: auto']"
+                ".table-wrap, .responsive-table-shell, [style*='overflow-x:auto'], [style*='overflow-x: auto']"
             );
 
             if (!shell) {
@@ -252,6 +538,8 @@
             table.dataset.responsivePrepared = "true";
             if (resizeObserver) resizeObserver.observe(shell);
             prepareTablePagination(table);
+            prepareTableIdentity(table);
+            prepareTableNavigator(table, shell);
         });
 
         scheduleResponsiveTableUpdate();
@@ -274,6 +562,11 @@
                 shell.removeAttribute("role");
                 shell.removeAttribute("aria-label");
             }
+
+            var navigableTable = shell.querySelector(
+                'table:not([data-table-navigation="off"])'
+            );
+            if (navigableTable) updateTableNavigator(navigableTable);
         });
     }
 
@@ -297,8 +590,11 @@
                 var changedTable = mutation.target.closest
                     ? mutation.target.closest("table")
                     : null;
-                if (changedTable && paginationStates.has(changedTable)) {
-                    renderTablePagination(changedTable, false);
+                if (changedTable) {
+                    if (paginationStates.has(changedTable)) {
+                        renderTablePagination(changedTable, false);
+                    }
+                    prepareTableIdentity(changedTable);
                 }
             });
         });

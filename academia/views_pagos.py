@@ -5342,7 +5342,9 @@ def _calendario_alertas_pago(matricula):
     }
 
 
-def _calcular_alertas_pago(usuario_actual=None):
+def _calcular_alertas_pago(
+    usuario_actual=None, *, fecha_actual=None, excluir_revisadas=True,
+):
     """
     Devuelve la lista de alertas activas: matrículas tipo "Reserva/Abono" o
     "Reserva + Módulo 1" con saldo pendiente cuya fecha de aviso ya llegó
@@ -5356,7 +5358,7 @@ def _calcular_alertas_pago(usuario_actual=None):
     from .models import AlertaPagoRevisada
     from datetime import timedelta
 
-    hoy = date.today()
+    hoy = fecha_actual or date.today()
 
     # Online entra al panel un día antes; presencial conserva el día exacto.
     qs = Matricula.objects.filter(
@@ -5377,10 +5379,12 @@ def _calcular_alertas_pago(usuario_actual=None):
     )
 
     # Set de (matricula_id, modulo) ya revisadas hoy → para excluir
-    revisadas_hoy = set(
-        AlertaPagoRevisada.objects.filter(fecha=hoy)
-        .values_list('matricula_id', 'numero_modulo')
-    )
+    revisadas_hoy = set()
+    if excluir_revisadas:
+        revisadas_hoy = set(
+            AlertaPagoRevisada.objects.filter(fecha=hoy)
+            .values_list('matricula_id', 'numero_modulo')
+        )
 
     alertas = []
     for m in qs:

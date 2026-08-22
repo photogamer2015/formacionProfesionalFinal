@@ -46,8 +46,8 @@ class GlobalTablePaginationTests(SimpleTestCase):
     def test_base_carga_paginacion_global_con_version_actual(self):
         base = self._read_project_file('templates/base.html')
 
-        self.assertIn("responsive.css' %}?v=20260803-2", base)
-        self.assertIn("responsive.js' %}?v=20260803-2", base)
+        self.assertIn("responsive.css' %}?v=20260822-3", base)
+        self.assertIn("responsive.js' %}?v=20260822-3", base)
 
     def test_paginacion_global_usa_diez_registros_y_controles_accesibles(self):
         script = self._read_project_file('static/responsive.js')
@@ -65,7 +65,49 @@ class GlobalTablePaginationTests(SimpleTestCase):
         self.assertIn('body.dark-mode .fp-table-pagination', styles)
         self.assertIn('@media screen and (max-width: 760px)', styles)
         self.assertIn('display: table-row !important;', styles)
-        self.assertIn('.fp-table-pagination {\n        display: none !important;', styles)
+        self.assertIn(
+            '.fp-table-pagination,\n    .fp-table-navigator {\n        display: none !important;',
+            styles,
+        )
+
+    def test_tablas_anchas_tienen_navegacion_horizontal_global(self):
+        template = self._read_project_file('templates/matricula/lista.html')
+        script = self._read_project_file('static/responsive.js')
+        styles = self._read_project_file('static/responsive.css')
+
+        self.assertIn('data-table-navigation="true"', template)
+        self.assertIn('class="matricula-col-student"', template)
+        self.assertIn('class="matricula-phone-link"', template)
+        self.assertIn('C.I. {{ m.estudiante.cedula }} · {{ m.curso.nombre }}', template)
+        self.assertIn('Ir al final de la tabla', script)
+        self.assertIn('Ir al inicio de la tabla', script)
+        self.assertIn('if (table.dataset.tableNavigation === "off") return;', script)
+        self.assertIn('state.navigator.hidden = !overflowing;', script)
+        self.assertIn('left: destination,', script)
+        self.assertIn('shell.scrollLeft = Number(topScroll.value);', script)
+        self.assertIn('topScroll.value = String(Math.round(shell.scrollLeft));', script)
+        self.assertIn('shell.classList.toggle("is-scrolled-x"', script)
+        self.assertNotIn('target.scrollIntoView({', script)
+        self.assertIn('.fp-table-navigator__scroll', styles)
+        self.assertIn('.fp-table-navigator__jump', styles)
+        self.assertIn('.fp-table-navigator[hidden]', styles)
+
+    def test_tablas_conservan_identidad_y_datos_de_contexto_al_desplazarse(self):
+        template = self._read_project_file('templates/matricula/lista.html')
+        script = self._read_project_file('static/responsive.js')
+        styles = self._read_project_file('static/responsive.css')
+
+        self.assertIn('data-table-context="custom"', template)
+        self.assertIn('function prepareTableIdentity(table)', script)
+        self.assertIn('function identityColumnIndex(headers)', script)
+        self.assertIn('C.I./RUC', script)
+        self.assertIn('prepareTableIdentity(changedTable);', script)
+        self.assertIn('.fp-table-identity-column', styles)
+        self.assertIn(
+            '.responsive-table-shell.is-scrolled-x .fp-table-identity-context',
+            styles,
+        )
+        self.assertIn('position: static !important;', styles)
 
     def test_alertas_del_panel_paginan_todos_los_casos_y_conservan_filtros(self):
         template = self._read_project_file('templates/bienvenida.html')

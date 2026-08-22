@@ -1,0 +1,18 @@
+Hola {{ nombre_estudiante }},
+
+{% if recordatorio_atrasado %}Tu matrícula fue registrada después de la fecha prevista para este pago. Por eso te enviamos ahora este recordatorio de pago pendiente.{% else %}Esperamos que estés muy bien. Te recordamos cordialmente que tienes un pago próximo correspondiente a tu curso.{% endif %}
+
+Curso: {{ curso_nombre }}
+Modalidad: {{ modalidad }}
+Pago correspondiente: {{ pago_correspondiente }}
+Fecha correspondiente al pago: {{ fecha_pago|date:"d/m/Y" }}
+
+VALOR PENDIENTE DE ESTE PAGO: ${{ monto|floatformat:2 }}
+Saldo total pendiente del curso: ${{ saldo_total|floatformat:2 }}
+
+Si ya realizaste el pago, por favor ignora este mensaje. Si necesitas ayuda, responde a este correo y con gusto te atenderemos.
+
+Gracias por ser parte de Formación Profesional EC.
+
+Atentamente,
+Formación Profesional EC

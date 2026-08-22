@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import timedelta
 from decimal import Decimal
@@ -36,6 +37,9 @@ from .permisos import (
     puede_eliminar_jornadas,
 )
 from .busqueda import filtrar_queryset_busqueda, normalizar_texto_busqueda
+
+
+logger = logging.getLogger(__name__)
 
 
 def _normalizar_texto_busqueda(valor):
@@ -506,6 +510,27 @@ def _avisos_vigentes_seguro():
         return []
 
 
+def _programar_confirmacion_matricula(matricula):
+    """Envía la confirmación solo después de confirmar la transacción.
+
+    El callback trabaja por ID y está aislado de la vista: un problema de
+    correo nunca revierte ni interrumpe el registro de la matrícula.
+    """
+    matricula_id = matricula.pk
+
+    def _enviar():
+        try:
+            from .correos_matricula import enviar_confirmacion_matricula
+            enviar_confirmacion_matricula(matricula_id)
+        except Exception:
+            logger.exception(
+                'No se pudo procesar la confirmación de la matrícula %s.',
+                matricula_id,
+            )
+
+    transaction.on_commit(_enviar, robust=True)
+
+
 @login_required
 def bienvenida(request):
     stats = {
@@ -535,6 +560,21 @@ def bienvenida(request):
                 cursos_con_alertas.values(),
                 key=lambda item: item['nombre'].casefold(),
             )
+
+            # El correo usa exactamente las alertas visibles en este panel.
+            # La bitácora idempotente evita duplicados si varias personas
+            # abren Inicio durante el mismo día. Cualquier problema de SMTP
+            # queda aislado: el dashboard y la gestión de pagos siguen vivos.
+            try:
+                from .correos_pago import enviar_recordatorios_pago
+                enviar_recordatorios_pago(
+                    alertas_pago,
+                    fecha_envio=timezone.localdate(),
+                )
+            except Exception:
+                logger.exception(
+                    'No se pudieron procesar los recordatorios de pago.'
+                )
         except Exception:
             # Si algo falla en el cálculo, no rompemos el dashboard.
             alertas_pago = []
@@ -791,6 +831,7 @@ def matricula_registrar(request, modalidad):
                         matricula.registrado_por = request.user
                     matricula.save()
                     _registrar_pago_inicial(matricula, request.user, mat_form)
+                    _programar_confirmacion_matricula(matricula)
                     messages.success(
                         request,
                         f'Matrícula registrada para '
@@ -816,6 +857,7 @@ def matricula_registrar(request, modalidad):
                         matricula.registrado_por = request.user
                     matricula.save()
                     _registrar_pago_inicial(matricula, request.user, mat_form)
+                    _programar_confirmacion_matricula(matricula)
                     messages.success(
                         request,
                         f'Matrícula registrada para '

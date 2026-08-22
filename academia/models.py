@@ -1621,6 +1621,102 @@ class AlertaPagoRevisada(models.Model):
         return f'Alerta Mód.{self.numero_modulo} — {self.matricula} ({self.fecha})'
 
 
+class RecordatorioPagoCorreo(models.Model):
+    """Bitácora idempotente de los recordatorios de pago enviados por correo.
+
+    La combinación matrícula + obligación + fecha de alerta identifica un
+    único aviso. Así, aunque varias personas abran el panel de inicio o el
+    comando programado se ejecute más de una vez, el estudiante no recibe el
+    mismo recordatorio dos veces.
+    """
+
+    ESTADO_PROCESANDO = 'procesando'
+    ESTADO_ENVIADO = 'enviado'
+    ESTADO_FALLIDO = 'fallido'
+    ESTADOS = [
+        (ESTADO_PROCESANDO, 'Procesando'),
+        (ESTADO_ENVIADO, 'Enviado'),
+        (ESTADO_FALLIDO, 'Fallido'),
+    ]
+
+    matricula = models.ForeignKey(
+        'Matricula', on_delete=models.CASCADE,
+        related_name='recordatorios_pago_correo',
+    )
+    numero_modulo = models.PositiveIntegerField(
+        help_text='Número de la obligación o módulo recordado.'
+    )
+    fecha_alerta = models.DateField(
+        help_text='Fecha en la que correspondía enviar el recordatorio.'
+    )
+    fecha_pago = models.DateField(
+        help_text='Fecha informada al estudiante para realizar el pago.'
+    )
+    destinatario = models.EmailField()
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    estado = models.CharField(
+        max_length=15, choices=ESTADOS, default=ESTADO_PROCESANDO,
+    )
+    intentos = models.PositiveIntegerField(default=1)
+    ultimo_error = models.TextField(blank=True)
+    enviado_en = models.DateTimeField(null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Recordatorio de pago por correo'
+        verbose_name_plural = 'Recordatorios de pago por correo'
+        constraints = [
+            models.UniqueConstraint(
+                fields=('matricula', 'numero_modulo', 'fecha_alerta'),
+                name='recordatorio_pago_correo_unico',
+            ),
+        ]
+        ordering = ['-fecha_alerta', '-creado']
+
+    def __str__(self):
+        return (
+            f'Recordatorio Mód.{self.numero_modulo} — '
+            f'{self.matricula} ({self.fecha_alerta})'
+        )
+
+
+class ConfirmacionMatriculaCorreo(models.Model):
+    """Bitácora de la confirmación enviada al registrar una matrícula."""
+
+    ESTADO_PROCESANDO = 'procesando'
+    ESTADO_ENVIADO = 'enviado'
+    ESTADO_FALLIDO = 'fallido'
+    ESTADOS = [
+        (ESTADO_PROCESANDO, 'Procesando'),
+        (ESTADO_ENVIADO, 'Enviado'),
+        (ESTADO_FALLIDO, 'Fallido'),
+    ]
+
+    matricula = models.OneToOneField(
+        'Matricula', on_delete=models.CASCADE,
+        related_name='confirmacion_matricula_correo',
+    )
+    destinatario = models.EmailField()
+    formulario_url = models.URLField(max_length=500, blank=True)
+    estado = models.CharField(
+        max_length=15, choices=ESTADOS, default=ESTADO_PROCESANDO,
+    )
+    intentos = models.PositiveIntegerField(default=1)
+    ultimo_error = models.TextField(blank=True)
+    enviado_en = models.DateTimeField(null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Confirmación de matrícula por correo'
+        verbose_name_plural = 'Confirmaciones de matrícula por correo'
+        ordering = ['-creado']
+
+    def __str__(self):
+        return f'Confirmación — {self.matricula} ({self.estado})'
+
+
 # ─────────────────────────────────────────────────────────
 # Adicional: Certificados, Examen Supletorio, Camisas extra
 # ─────────────────────────────────────────────────────────

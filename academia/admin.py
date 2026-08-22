@@ -5,7 +5,7 @@ from .models import (
     AssistantQueryLog, CierreCurso, MatriculaArchivada, AbonoArchivado,
     EstudianteArchivado, AdicionalArchivado, CierreAdministrativo, Sede,
     ActividadUsuario, AmistadUsuario, Aviso, MeGustaPerfil, PerfilUsuario,
-    Recordatorio,
+    ConfirmacionMatriculaCorreo, Recordatorio, RecordatorioPagoCorreo,
 )
 
 
@@ -56,6 +56,54 @@ class RecordatorioAdmin(admin.ModelAdmin):
     list_filter = ('prioridad', 'leido')
     search_fields = ('titulo', 'contenido', 'creado_por__username', 'destinatario__username')
     date_hierarchy = 'fecha'
+
+
+@admin.register(RecordatorioPagoCorreo)
+class RecordatorioPagoCorreoAdmin(admin.ModelAdmin):
+    list_display = (
+        'fecha_alerta', 'matricula', 'numero_modulo', 'destinatario',
+        'monto', 'estado', 'intentos', 'enviado_en',
+    )
+    list_filter = ('estado', 'fecha_alerta', 'fecha_pago')
+    search_fields = (
+        'destinatario', 'matricula__estudiante__nombres',
+        'matricula__estudiante__cedula', 'matricula__curso__nombre',
+    )
+    readonly_fields = (
+        'matricula', 'numero_modulo', 'fecha_alerta', 'fecha_pago',
+        'destinatario', 'monto', 'estado', 'intentos', 'ultimo_error',
+        'enviado_en', 'creado', 'actualizado',
+    )
+    date_hierarchy = 'fecha_alerta'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ConfirmacionMatriculaCorreo)
+class ConfirmacionMatriculaCorreoAdmin(admin.ModelAdmin):
+    list_display = (
+        'creado', 'matricula', 'destinatario', 'estado', 'intentos',
+        'enviado_en',
+    )
+    list_filter = ('estado', 'creado')
+    search_fields = (
+        'destinatario', 'matricula__estudiante__nombres',
+        'matricula__estudiante__cedula', 'matricula__curso__nombre',
+    )
+    readonly_fields = (
+        'matricula', 'destinatario', 'formulario_url', 'estado', 'intentos',
+        'ultimo_error', 'enviado_en', 'creado', 'actualizado',
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(PerfilUsuario)

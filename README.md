@@ -170,6 +170,34 @@ DB_PORT=3306
 > ⚠️ El archivo `.env` real **nunca** debe subirse al repositorio. Ya
 > está en `.gitignore`.
 
+### Recordatorios de pago por correo
+
+Los recordatorios usan la misma cuenta SMTP configurada para los códigos de
+acceso. Agrega también:
+
+```env
+PAYMENT_REMINDER_EMAIL_ENABLED=True
+```
+
+El correo sigue la lógica de alertas del panel de inicio e incluye estudiante,
+curso, fecha y valor de la cuota correspondiente. Cada aviso queda registrado
+para no duplicarse; en los cursos online se respeta el día de anticipación
+definido por el calendario del panel.
+
+El panel intenta procesar los avisos al abrirse. Para que el envío no dependa
+de que alguien entre al sistema, programa en producción este comando una vez
+al día:
+
+```bash
+python manage.py enviar_recordatorios_pago
+```
+
+Puedes revisar cuántos correos corresponderían sin enviar nada:
+
+```bash
+python manage.py enviar_recordatorios_pago --simular
+```
+
 Para producción con MySQL: instala el driver y rellena las variables.
 
 ```bash

@@ -96,6 +96,29 @@ En producción va detrás de Nginx o del balanceador (ALB). Si el balanceador
 termina el SSL, la app ya está preparada (usa `X-Forwarded-Proto` para no
 entrar en bucle de redirección HTTPS).
 
+## 7. Recordatorios diarios de pago por correo
+
+Configura en `.env` la cuenta SMTP indicada en `.env.example` y deja activo:
+
+```ini
+PAYMENT_REMINDER_EMAIL_ENABLED=True
+```
+
+El panel de inicio procesa los recordatorios al abrirse. Como respaldo
+independiente, programa en cron una ejecución diaria (ajusta la ruta real del
+proyecto):
+
+```cron
+0 8 * * * cd /ruta/formacion-tecnica-profesional && ./venv/bin/python manage.py enviar_recordatorios_pago >> /var/log/formacion-recordatorios.log 2>&1
+```
+
+El comando es idempotente: si se ejecuta más de una vez, la bitácora evita que
+el mismo estudiante reciba duplicado el mismo día. Puedes validarlo sin enviar:
+
+```bash
+python manage.py enviar_recordatorios_pago --simular
+```
+
 ---
 
 ## Después de entrar

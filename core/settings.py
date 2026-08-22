@@ -3,6 +3,7 @@ Django settings for core project.
 """
 from pathlib import Path
 import environ
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -120,6 +121,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/bienvenida/'
+
+# Los recordatorios usan la misma cuenta SMTP que los códigos de acceso.
+# En producción quedan activos por defecto; en desarrollo se habilitan de
+# forma explícita para evitar correos reales durante pruebas locales.
+PAYMENT_REMINDER_EMAIL_ENABLED = env.bool(
+    'PAYMENT_REMINDER_EMAIL_ENABLED', default=not DEBUG,
+) and 'test' not in sys.argv
+PAYMENT_REMINDER_EMAIL_TIMEOUT = env.int(
+    'PAYMENT_REMINDER_EMAIL_TIMEOUT', default=15,
+)
+ENROLLMENT_CONFIRMATION_EMAIL_ENABLED = env.bool(
+    'ENROLLMENT_CONFIRMATION_EMAIL_ENABLED',
+    default=PAYMENT_REMINDER_EMAIL_ENABLED,
+) and 'test' not in sys.argv
 
 
 # ======== CONFIGURACIÓN DE SESIÓN ========

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+  <body style="margin:0; padding:0; background:#f4f7fb; font-family:Arial, Helvetica, sans-serif; color:#172033;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb; padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px; background:#ffffff; border:1px solid #e3e8f2; border-radius:16px; overflow:hidden;">
+            <tr>
+              <td style="padding:26px 30px; background:#1b2a4e;">
+                <p style="margin:0 0 6px; color:#ffb74d; font-size:13px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;">Formación Profesional EC</p>
+                <h1 style="margin:0; color:#ffffff; font-size:25px; line-height:1.3;">Recordatorio amable de pago</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px;">
+                <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">Hola <strong>{{ nombre_estudiante }}</strong>,</p>
+                <p style="margin:0 0 24px; color:#4a5568; font-size:15px; line-height:1.65;">{% if recordatorio_atrasado %}Tu matrícula fue registrada después de la fecha prevista para este pago. Por eso te enviamos ahora este recordatorio de pago pendiente.{% else %}Esperamos que estés muy bien. Te recordamos cordialmente que tienes un pago próximo correspondiente a tu curso.{% endif %}</p>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc; border:1px solid #e6ebf3; border-radius:12px;">
+                  <tr>
+                    <td style="padding:19px 20px 8px; color:#667085; font-size:13px;">Curso</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 20px 15px; color:#1b2a4e; font-size:18px; font-weight:700;">{{ curso_nombre }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 20px; border-top:1px solid #e6ebf3; color:#4a5568; font-size:14px;"><strong>Modalidad:</strong> {{ modalidad }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 20px; border-top:1px solid #e6ebf3; color:#4a5568; font-size:14px;"><strong>Pago correspondiente:</strong> {{ pago_correspondiente }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:13px 20px; border-top:1px solid #e6ebf3; color:#4a5568; font-size:14px;"><strong>Fecha correspondiente al pago:</strong> {{ fecha_pago|date:"d/m/Y" }}</td>
+                  </tr>
+                </table>
+
+                <div style="margin:24px 0; padding:22px; background:#fff8e7; border:1px solid #f5d892; border-radius:12px; text-align:center;">
+                  <p style="margin:0 0 7px; color:#8a5b00; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.4px;">Valor pendiente de este pago</p>
+                  <p style="margin:0; color:#e45103; font-size:34px; line-height:1.2; font-weight:800;">${{ monto|floatformat:2 }}</p>
+                  <p style="margin:9px 0 0; color:#78643c; font-size:13px;">Saldo total pendiente del curso: ${{ saldo_total|floatformat:2 }}</p>
+                </div>
+
+                <p style="margin:0; color:#4a5568; font-size:14px; line-height:1.65;">Si ya realizaste el pago, por favor ignora este mensaje. Si necesitas ayuda, responde a este correo y con gusto te atenderemos.</p>
+                <p style="margin:20px 0 0; color:#1b2a4e; font-size:15px; line-height:1.6;">Gracias por ser parte de Formación Profesional EC.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 30px; background:#f8fafc; border-top:1px solid #e8edf5; color:#718096; font-size:12px; line-height:1.55; text-align:center;">
+                Este es un recordatorio automático sobre tu plan de pagos.<br>
+                Formación Profesional EC
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

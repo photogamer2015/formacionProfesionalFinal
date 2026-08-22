@@ -1,0 +1,49 @@
+CONFIRMACIÓN DE MATRÍCULA
+Formación Profesional EC
+
+Hola {{ nombre_estudiante }},
+
+Tu matrícula fue registrada correctamente. A continuación encontrarás el resumen de la información ingresada.
+
+DATOS DEL ESTUDIANTE
+Cédula/RUC: {{ cedula }}
+Nombres y apellidos: {{ nombre_estudiante }}
+Edad: {{ edad|default:"No registrada" }}
+Correo: {{ correo }}
+Celular: {{ celular }}
+Ciudad: {{ ciudad }}
+Nivel de formación: {{ nivel_formacion }}
+Título profesional: {{ titulo_profesional }}
+
+INFORMACIÓN DE LA MATRÍCULA
+Fecha de matrícula: {{ fecha_matricula|date:"d/m/Y" }}
+Estado: {{ estado_matricula }}
+Tipo de inscripción: {{ tipo_matricula }}
+Modalidad: {{ modalidad }}
+Talla de camiseta: {{ talla_camiseta }}
+
+CURSO Y JORNADA
+Curso: {{ curso_nombre }}
+Categoría: {{ categoria_curso }}
+Jornada: {{ jornada_dias }}
+Fecha de inicio: {% if fecha_inicio %}{{ fecha_inicio|date:"d/m/Y" }}{% else %}No especificada{% endif %}
+Horario: {{ horario }}
+Sede/Plataforma: {{ sede }}
+
+RESUMEN FINANCIERO
+Valor del curso: ${{ valor_curso|floatformat:2 }}
+Descuento: ${{ descuento|floatformat:2 }}
+Valor final: ${{ valor_neto|floatformat:2 }}
+Pago registrado: ${{ valor_pagado|floatformat:2 }}
+Saldo pendiente: ${{ saldo|floatformat:2 }}
+
+Por favor, revisa que los datos sean correctos. Si encuentras alguna novedad, responde a este correo para que podamos ayudarte.
+
+{% if formulario %}PARA COMPLETAR TU INSCRIPCIÓN
+Este formulario corresponde específicamente a {{ formulario.nombre }}.
+Ingresa en el siguiente enlace y completa la información solicitada:
+{{ formulario.url }}
+{% endif %}
+
+Atentamente,
+Formación Profesional EC

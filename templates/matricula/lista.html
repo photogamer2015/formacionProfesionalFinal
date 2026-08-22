@@ -297,6 +297,98 @@
         color: #dfe8ff;
         background: rgba(126,167,255,.16);
     }
+    .matricula-list-table .matricula-col-student {
+        position: sticky;
+        left: 0;
+        z-index: 3;
+        min-width: 230px;
+        max-width: 270px;
+        background: var(--fp-surface);
+        box-shadow: 9px 0 14px -14px rgba(27,42,78,.9);
+    }
+    .matricula-list-table thead .matricula-col-student {
+        z-index: 6;
+        color: #ffffff;
+        background: var(--fp-navy);
+    }
+    .matricula-list-table tbody tr:hover .matricula-col-student {
+        background: #f8f9fc;
+    }
+    .matricula-student-name {
+        overflow: hidden;
+        color: var(--fp-ink);
+        font-weight: 700;
+        text-overflow: ellipsis;
+    }
+    .matricula-student-email {
+        max-width: 240px;
+        overflow: hidden;
+        margin-top: 2px;
+        color: var(--fp-muted);
+        font-size: 11px;
+        text-overflow: ellipsis;
+    }
+    .matricula-student-scroll-context {
+        display: none;
+        max-width: 240px;
+        overflow: hidden;
+        margin-top: 6px;
+        padding: 4px 7px;
+        color: #23457a;
+        background: #edf4ff;
+        border-radius: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.3;
+        text-overflow: ellipsis;
+    }
+    .matricula-table-wrap.is-scrolled-x .matricula-student-scroll-context {
+        display: block;
+    }
+    .matricula-col-phone {
+        min-width: 150px;
+    }
+    .matricula-phone-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 36px;
+        padding: 6px 9px;
+        color: var(--fp-navy);
+        background: #f1f6ff;
+        border: 1px solid #dce8f8;
+        border-radius: 9px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+    .matricula-phone-link:hover {
+        color: #ffffff;
+        background: var(--fp-navy);
+        border-color: var(--fp-navy);
+    }
+    .matricula-phone-empty {
+        color: var(--fp-muted);
+    }
+    body.dark-mode .matricula-list-table .matricula-col-student {
+        background: var(--fp-dark-surface);
+        box-shadow: 9px 0 16px -12px rgba(0,0,0,.95);
+    }
+    body.dark-mode .matricula-list-table thead .matricula-col-student {
+        color: #ffffff;
+        background: var(--fp-navy);
+    }
+    body.dark-mode .matricula-list-table tbody tr:hover .matricula-col-student {
+        background: #1a2434;
+    }
+    body.dark-mode .matricula-student-scroll-context {
+        color: #dce8ff;
+        background: #20304a;
+    }
+    body.dark-mode .matricula-phone-link {
+        color: #dce8ff;
+        background: #18263a;
+        border-color: #2d4261;
+    }
     @media (max-width: 760px) {
         .matricula-date-range {
             flex: 1 1 240px;
@@ -349,6 +441,22 @@
         }
         .date-range-floating-actions .btn {
             flex: 1;
+        }
+        .matricula-list-table .matricula-col-student {
+            min-width: min(58vw, 210px);
+            max-width: min(58vw, 210px);
+            white-space: normal;
+        }
+        .matricula-student-email,
+        .matricula-student-scroll-context {
+            max-width: 100%;
+        }
+        .matricula-col-phone {
+            min-width: 168px;
+        }
+        .matricula-phone-link {
+            min-height: 44px;
+            padding: 9px 11px;
         }
     }
 </style>
@@ -530,14 +638,15 @@
     </div>
 </div>
 
-<div class="table-wrap">
+<div class="table-wrap matricula-table-wrap">
     {% if matriculas %}
-    <table>
+    <table class="matricula-list-table" data-table-navigation="true" data-table-context="custom"
+        aria-label="Lista de estudiantes matriculados">
         <thead>
             <tr>
-                <th>Cédula</th>
-                <th>Estudiante</th>
-                <th>Celular</th>
+                <th class="matricula-col-id">Cédula</th>
+                <th class="matricula-col-student">Estudiante</th>
+                <th class="matricula-col-phone">Celular</th>
                 <th>Curso</th>
                 <th>Modalidad</th>
                 <th>Tipo matrícula</th>
@@ -561,14 +670,30 @@
         <tbody>
             {% for m in matriculas %}
             <tr>
-                <td><strong>{{ m.estudiante.cedula }}</strong></td>
-                <td>
-                    {{ m.estudiante.nombres }}
+                <td class="matricula-col-id"><strong>{{ m.estudiante.cedula }}</strong></td>
+                <td class="matricula-col-student">
+                    <div class="matricula-student-name">{{ m.estudiante.nombres }}</div>
                     {% if m.estudiante.correo %}
-                    <div style="font-size:11px; color:#666;">{{ m.estudiante.correo }}</div>
+                    <div class="matricula-student-email" title="{{ m.estudiante.correo }}">
+                        {{ m.estudiante.correo }}
+                    </div>
+                    {% endif %}
+                    <div class="matricula-student-scroll-context" aria-hidden="true"
+                        title="Cédula {{ m.estudiante.cedula }} · {{ m.curso.nombre }}">
+                        C.I. {{ m.estudiante.cedula }} · {{ m.curso.nombre }}
+                    </div>
+                </td>
+                <td class="matricula-col-phone">
+                    {% if m.estudiante.celular %}
+                    <a class="matricula-phone-link" href="tel:{{ m.estudiante.celular }}"
+                        aria-label="Llamar a {{ m.estudiante.nombres }} al {{ m.estudiante.celular }}">
+                        <span aria-hidden="true">📱</span>
+                        <span>{{ m.estudiante.celular }}</span>
+                    </a>
+                    {% else %}
+                    <span class="matricula-phone-empty">—</span>
                     {% endif %}
                 </td>
-                <td>{{ m.estudiante.celular|default:'—' }}</td>
                 <td>{{ m.curso.nombre }}</td>
                 <td>
                     <span class="badge badge-{{ m.modalidad }}" style="font-size:10px;">
