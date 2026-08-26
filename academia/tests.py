@@ -197,6 +197,7 @@ class ActividadUsuarioTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(ActividadUsuario.objects.filter(usuario=self.asesor).exists())
 
+
     def test_registro_diario_filtra_usuario_y_muestra_mensaje_vacio(self):
         self.client.force_login(self.admin)
         fecha_sin_actividad = timezone.localdate() + timedelta(days=5)
@@ -270,6 +271,39 @@ class ActividadUsuarioTests(TestCase):
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF'))
         self.assertIn('registro-actividad-', response['Content-Disposition'])
+
+
+class InicioRankingVendedorasTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username='admin_ranking_inicio',
+            password='clave12345',
+        )
+        self.asesor = User.objects.create_user(
+            username='asesor_ranking_inicio',
+            password='clave12345',
+        )
+        grupo = Group.objects.create(name='Asesores')
+        self.asesor.groups.add(grupo)
+
+    def test_admin_ve_ranking_de_vendedoras_al_inicio(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse('academia:bienvenida'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ranking de Vendedoras')
+        self.assertContains(response, reverse('academia:comprobante_totales'))
+        self.assertContains(response, 'card-ranking')
+
+    def test_asesor_no_ve_ranking_de_vendedoras_en_inicio(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:bienvenida'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Ranking de Vendedoras')
+        self.assertNotContains(response, reverse('academia:comprobante_totales'))
 
 
 class LoginCaptchaTests(TestCase):

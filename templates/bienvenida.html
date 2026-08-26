@@ -355,6 +355,7 @@
 	    .card-archivo { --card-accent: #6d5dfc; --card-accent-soft: rgba(109,93,252,.10); --card-accent-glow: rgba(109,93,252,.16); }
 	    .card-adicional,
 	    .card-avisos { --card-accent: var(--orange); --card-accent-soft: rgba(228,81,3,.12); --card-accent-glow: rgba(228,81,3,.18); }
+	    .card-ranking { --card-accent: #b88a00; --card-accent-soft: rgba(184,138,0,.13); --card-accent-glow: rgba(184,138,0,.20); }
 	    .card-admin { --card-accent: #c2440b; --card-accent-soft: rgba(194,68,11,.12); --card-accent-glow: rgba(194,68,11,.18); }
 	    .card-recordatorio { --card-accent: #4f8ef7; --card-accent-soft: rgba(79,142,247,.12); --card-accent-glow: rgba(79,142,247,.18); }
 	    .card-ayuda { --card-accent: #c62828; --card-accent-soft: rgba(198,40,40,.10); --card-accent-glow: rgba(198,40,40,.16); }
@@ -1411,6 +1412,22 @@ function filterGmCards() {
 
 <section class="dashboard-shell" aria-label="Accesos principales">
 <div class="dashboard-grid">
+
+    {% if es_admin %}
+    <a href="{% url 'academia:comprobante_totales' %}" class="card-box card-ranking" style="animation-delay:.04s;">
+        <div class="card-header">
+            <div class="card-title">Ranking de Vendedoras</div>
+            <div class="card-icon-wrap">🏆</div>
+        </div>
+        <div class="card-desc">
+            Ventas por asesora, monto total y desempeño del equipo.
+        </div>
+        <div class="card-footer">
+            <span class="status-admin">🔒 Admin</span>
+            <span class="card-cta">Ingresar →</span>
+        </div>
+    </a>
+    {% endif %}
 
     {% if puede_gestionar_matriculas %}
     <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}" class="card-box card-matriculas" style="animation-delay:.05s;">
