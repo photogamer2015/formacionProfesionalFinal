@@ -2091,6 +2091,15 @@ class CamposNumericosMatriculaTests(TestCase):
         self.assertEqual(form.cleaned_data['cedula'], '0102030405')
         self.assertEqual(form.cleaned_data['celular'], '0991234567')
 
+    def test_factura_si_no_exige_correo_del_estudiante(self):
+        form = EstudianteForm(
+            self._estudiante_data(correo='', ciudad='Guayaquil'),
+            factura_si=True,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['correo'], '')
+
     def test_cedula_ruc_rechaza_letras_y_signos(self):
         form = EstudianteForm(
             self._estudiante_data(cedula='01020A040-5')
@@ -2299,6 +2308,20 @@ class PagoInicialMatriculaTests(TestCase):
         data.update(overrides)
         return data
 
+    def _estudiante_post_data(self, **overrides):
+        data = {
+            'est-cedula': self.estudiante.cedula,
+            'est-nombres': self.estudiante.nombres,
+            'est-edad': '',
+            'est-correo': '',
+            'est-celular': '0991234567',
+            'est-nivel_formacion': '',
+            'est-titulo_profesional': '',
+            'est-ciudad': 'Guayaquil',
+        }
+        data.update(overrides)
+        return data
+
     def test_matricula_metodo_pago_muestra_seleccione_primero(self):
         form = MatriculaForm(prefix='mat')
 
@@ -2400,6 +2423,49 @@ class PagoInicialMatriculaTests(TestCase):
 
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data['fact_cedula'], '0102030405')
+
+    def test_matricula_factura_si_no_exige_correo_de_factura(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-factura_realizada': 'si',
+                    'mat-fact_nombres': 'Cliente Factura',
+                    'mat-fact_cedula': '0102030405',
+                    'mat-fact_correo': '',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['fact_correo'], '')
+
+    def test_registro_con_estudiante_existente_actualiza_correo_para_confirmacion(self):
+        asesor = User.objects.create_superuser(username='admin_matricula_view')
+        self.client.force_login(asesor)
+
+        response = self.client.post(
+            reverse(
+                'academia:matricula_registrar',
+                kwargs={'modalidad': 'presencial'},
+            ),
+            {
+                **self._estudiante_post_data(
+                    **{'est-correo': 'nuevo.estudiante@example.com'}
+                ),
+                **self._matricula_form_data(),
+                'vendedora_id': str(asesor.pk),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.estudiante.refresh_from_db()
+        self.assertEqual(
+            self.estudiante.correo,
+            'nuevo.estudiante@example.com',
+        )
+        matricula = Matricula.objects.get(estudiante=self.estudiante)
+        self.assertEqual(matricula.vendedora, asesor)
 
     def test_matricula_mixta_rechaza_metodos_vacios(self):
         form = MatriculaForm(
@@ -6417,6 +6483,99 @@ class PagosFiltroRecuperacionTests(TestCase):
         self.assertContains(response, 'value="Recuperacion" selected')
         self.assertContains(response, '✱ Recuperación')
         self.assertNotContains(response, 'Estudiante Pago Normal')
+
+
+class JornadaOrdenYFiltroTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_superuser(
+            username='admin_orden_jornadas',
+            email='orden@example.com',
+            password='clave-segura',
+        )
+        self.client.force_login(self.usuario)
+        self.curso = Curso.objects.create(
+            nombre='Curso Orden Jornadas',
+            ofrece_presencial=True,
+            valor_presencial=Decimal('90.00'),
+        )
+        self.julio = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='mar_jue',
+            fecha_inicio=date(2026, 7, 19),
+            activo=True,
+        )
+        self.agosto = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='domingos_intensivos',
+            fecha_inicio=date(2026, 8, 30),
+            activo=False,
+        )
+        self.septiembre_primera = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 9, 12),
+            activo=True,
+        )
+        self.septiembre_nueva = JornadaCurso.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            descripcion='otros',
+            descripcion_otros='Jornada nueva',
+            fecha_inicio=date(2026, 9, 12),
+            activo=True,
+        )
+        self.url = reverse(
+            'academia:curso_jornadas', args=[self.curso.pk],
+        )
+
+    def test_general_ordena_fecha_mas_nueva_primero_y_desempata_por_registro(self):
+        response = self.client.get(self.url, {'modalidad': 'presencial'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [j.pk for j in response.context['jornadas_presencial']],
+            [
+                self.septiembre_nueva.pk,
+                self.septiembre_primera.pk,
+                self.agosto.pk,
+                self.julio.pk,
+            ],
+        )
+        self.assertEqual(response.context['estado_jornadas'], 'general')
+        self.assertEqual(response.context['resumen_jornadas']['general'], 4)
+
+    def test_filtros_separan_activas_e_inactivas_sin_perder_el_orden(self):
+        activas = self.client.get(
+            self.url, {'modalidad': 'presencial', 'estado': 'activa'},
+        )
+        inactivas = self.client.get(
+            self.url, {'modalidad': 'presencial', 'estado': 'inactiva'},
+        )
+
+        self.assertEqual(
+            [j.pk for j in activas.context['jornadas_presencial']],
+            [self.septiembre_nueva.pk, self.septiembre_primera.pk, self.julio.pk],
+        )
+        self.assertEqual(
+            [j.pk for j in inactivas.context['jornadas_presencial']],
+            [self.agosto.pk],
+        )
+        self.assertEqual(activas.context['resumen_jornadas']['activas'], 3)
+        self.assertEqual(inactivas.context['resumen_jornadas']['inactivas'], 1)
+        self.assertContains(activas, 'aria-label="Filtrar jornadas por estado"')
+        self.assertContains(activas, 'Activas <span>3</span>')
+        self.assertContains(inactivas, 'Inactivas <span>1</span>')
+
+    def test_filtro_invalido_vuelve_a_general(self):
+        response = self.client.get(
+            self.url, {'modalidad': 'presencial', 'estado': 'desconocido'},
+        )
+
+        self.assertEqual(response.context['estado_jornadas'], 'general')
+        self.assertEqual(len(response.context['jornadas_presencial']), 4)
 
 
 class JornadaFeriadoTests(TestCase):

@@ -50,6 +50,7 @@
         <h3 style="color:#1a237e; margin-bottom:12px; font-size:17px;">+ Nueva jornada</h3>
         <form method="post" style="display:flex; flex-direction:column; gap:12px;">
             {% csrf_token %}
+            <input type="hidden" name="estado_jornadas" value="{{ estado_jornadas }}">
             <div>
                 <label class="form-label">Modalidad *</label>
                 {{ form.modalidad }}
@@ -95,6 +96,25 @@
 
     {# ── Panel derecho: Listado de jornadas ─────────────── #}
     <div>
+        <nav class="jornada-filtros" aria-label="Filtrar jornadas por estado">
+            <span class="jornada-filtros__label">Mostrar:</span>
+            <a href="?modalidad={{ modalidad_activa }}&estado=general"
+               class="jornada-filtros__opcion{% if estado_jornadas == 'general' %} is-active{% endif %}"
+               {% if estado_jornadas == 'general' %}aria-current="true"{% endif %}>
+                General <span>{{ resumen_jornadas.general }}</span>
+            </a>
+            <a href="?modalidad={{ modalidad_activa }}&estado=activa"
+               class="jornada-filtros__opcion{% if estado_jornadas == 'activa' %} is-active{% endif %}"
+               {% if estado_jornadas == 'activa' %}aria-current="true"{% endif %}>
+                Activas <span>{{ resumen_jornadas.activas }}</span>
+            </a>
+            <a href="?modalidad={{ modalidad_activa }}&estado=inactiva"
+               class="jornada-filtros__opcion{% if estado_jornadas == 'inactiva' %} is-active{% endif %}"
+               {% if estado_jornadas == 'inactiva' %}aria-current="true"{% endif %}>
+                Inactivas <span>{{ resumen_jornadas.inactivas }}</span>
+            </a>
+        </nav>
+
         {% if modalidad_activa == 'presencial' %}
         {# ── Jornadas presenciales ─────────────────────── #}
         <div style="margin-bottom:20px;">
@@ -158,6 +178,7 @@
                                       class="feriado-form">
                                     {% csrf_token %}
                                     <input type="hidden" name="modalidad_activa" value="presencial">
+                                    <input type="hidden" name="estado_jornadas" value="{{ estado_jornadas }}">
                                     <label class="feriado-control"
                                            title="Trasladar esta jornada al mismo día de la semana siguiente">
                                         <input type="checkbox"
@@ -205,6 +226,7 @@
                                     <form method="post" action="{% url 'academia:jornada_eliminar' curso.pk j.pk %}"
                                         onsubmit="return false;">
                                         {% csrf_token %}
+                                        <input type="hidden" name="estado_jornadas" value="{{ estado_jornadas }}">
                                         <button type="button" class="btn btn-danger btn-sm"
                                             onclick="confirmarAccion(this.closest('form'), '¿Eliminar esta jornada? Si tiene matrículas, se marcará como inactiva.', 'danger')">Eliminar</button>
                                     </form>
@@ -218,7 +240,11 @@
                 </table>
                 {% else %}
                 <div class="empty-state" style="padding:20px;">
-                    <p style="font-size:13px; color:#888;">Sin jornadas presenciales aún.</p>
+                    <p style="font-size:13px; color:#888;">
+                        {% if estado_jornadas == 'activa' %}No hay jornadas presenciales activas.
+                        {% elif estado_jornadas == 'inactiva' %}No hay jornadas presenciales inactivas.
+                        {% else %}Sin jornadas presenciales aún.{% endif %}
+                    </p>
                 </div>
                 {% endif %}
             </div>
@@ -288,6 +314,7 @@
                                       class="feriado-form">
                                     {% csrf_token %}
                                     <input type="hidden" name="modalidad_activa" value="online">
+                                    <input type="hidden" name="estado_jornadas" value="{{ estado_jornadas }}">
                                     <label class="feriado-control"
                                            title="Trasladar esta jornada al mismo día de la semana siguiente">
                                         <input type="checkbox"
@@ -335,6 +362,7 @@
                                     <form method="post" action="{% url 'academia:jornada_eliminar' curso.pk j.pk %}"
                                         onsubmit="return false;">
                                         {% csrf_token %}
+                                        <input type="hidden" name="estado_jornadas" value="{{ estado_jornadas }}">
                                         <button type="button" class="btn btn-danger btn-sm"
                                             onclick="confirmarAccion(this.closest('form'), '¿Eliminar esta jornada? Si tiene matrículas, se marcará como inactiva.', 'danger')">Eliminar</button>
                                     </form>
@@ -348,7 +376,11 @@
                 </table>
                 {% else %}
                 <div class="empty-state" style="padding:20px;">
-                    <p style="font-size:13px; color:#888;">Sin jornadas online aún.</p>
+                    <p style="font-size:13px; color:#888;">
+                        {% if estado_jornadas == 'activa' %}No hay jornadas online activas.
+                        {% elif estado_jornadas == 'inactiva' %}No hay jornadas online inactivas.
+                        {% else %}Sin jornadas online aún.{% endif %}
+                    </p>
                 </div>
                 {% endif %}
             </div>
@@ -384,6 +416,7 @@
         <form id="form-editar-jornada" method="post" style="display:flex; flex-direction:column; gap:14px;">
             {% csrf_token %}
             <input type="hidden" name="modalidad_activa" id="edit-modalidad-activa">
+            <input type="hidden" name="estado_jornadas" value="{{ estado_jornadas }}">
 
             <div>
                 <label class="form-label">Modalidad *</label>
@@ -441,6 +474,94 @@
 </div>
 
 <style>
+    .jornada-filtros {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+        margin: 0 0 14px;
+        padding: 8px;
+        width: fit-content;
+        max-width: 100%;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+    }
+
+    .jornada-filtros__label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 0 4px;
+    }
+
+    .jornada-filtros__opcion {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 34px;
+        padding: 7px 11px;
+        border-radius: 9px;
+        color: #334155;
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+    }
+
+    .jornada-filtros__opcion:hover {
+        background: #eef2ff;
+        color: #1a237e;
+    }
+
+    .jornada-filtros__opcion.is-active {
+        background: #1a2b55;
+        color: #fff;
+        box-shadow: 0 3px 9px rgba(26, 43, 85, 0.2);
+    }
+
+    .jornada-filtros__opcion span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        color: #475569;
+        font-size: 10px;
+    }
+
+    .jornada-filtros__opcion.is-active span {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+    }
+
+    body.dark-mode .jornada-filtros {
+        background: #1e1e1e;
+        border-color: #383838;
+    }
+
+    body.dark-mode .jornada-filtros__label {
+        color: #aaa;
+    }
+
+    body.dark-mode .jornada-filtros__opcion {
+        color: #ddd;
+    }
+
+    body.dark-mode .jornada-filtros__opcion:hover {
+        background: #2d3653;
+        color: #fff;
+    }
+
+    body.dark-mode .jornada-filtros__opcion.is-active {
+        background: #5c6bc0;
+        color: #fff;
+    }
+
     .feriado-form {
         margin: 0;
     }

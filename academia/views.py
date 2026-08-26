@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Count, F, Prefetch, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import (
@@ -794,12 +795,6 @@ def matricula_registrar(request, modalidad):
 
     if request.method == 'POST':
         factura_si = request.POST.get('mat-factura_realizada', '') == 'si'
-        est_form = EstudianteForm(
-            request.POST,
-            prefix='est',
-            factura_si=factura_si,
-            documento_flexible=True,
-        )
         mat_form = MatriculaForm(request.POST, prefix='mat', modalidad=modalidad)
 
         vendedora_id = request.POST.get('vendedora_id', '').strip()
@@ -818,11 +813,22 @@ def matricula_registrar(request, modalidad):
         ):
             estudiante_existente = Estudiante.objects.filter(cedula=cedula).first()
 
+        est_form_kwargs = {
+            'prefix': 'est',
+            'factura_si': factura_si,
+            'documento_flexible': True,
+        }
+        if estudiante_existente:
+            est_form_kwargs['instance'] = estudiante_existente
+        est_form = EstudianteForm(request.POST, **est_form_kwargs)
+
         if not error_vendedora:
             if estudiante_existente:
-                if mat_form.is_valid():
+                if est_form.is_valid() and mat_form.is_valid():
+                    estudiante = est_form.save(commit=False)
+                    estudiante.save()
                     matricula = mat_form.save(commit=False)
-                    matricula.estudiante = estudiante_existente
+                    matricula.estudiante = estudiante
                     # La modalidad final la define la jornada elegida.
                     # save() sincroniza modalidad <- jornada.modalidad si hay jornada.
                     matricula.modalidad = matricula.jornada.modalidad if matricula.jornada else modalidad
@@ -835,7 +841,7 @@ def matricula_registrar(request, modalidad):
                     messages.success(
                         request,
                         f'Matrícula registrada para '
-                        f'{estudiante_existente.nombre_completo} '
+                        f'{estudiante.nombre_completo} '
                         f'({matricula.get_modalidad_display()}).'
                     )
                     # Redirigimos a la lista de la modalidad final
@@ -1618,13 +1624,15 @@ def curso_jornadas(request, pk):
     """Lista jornadas del curso y permite agregar nuevas en la misma pantalla."""
     curso = get_object_or_404(Curso, pk=pk)
     modalidad_activa = request.GET.get('modalidad', 'presencial')
+    estado_jornadas = _estado_jornadas_desde_request(request)
     puede_agregar = puede_agregar_jornadas(request.user)
     
     if request.method == 'POST':
         if not puede_agregar:
             messages.error(request, 'No tienes permiso para agregar jornadas.')
-            from django.urls import reverse
-            return redirect(f"{reverse('academia:curso_jornadas', args=[curso.pk])}?modalidad={modalidad_activa}")
+            return redirect(_url_curso_jornadas(
+                curso.pk, modalidad_activa, estado_jornadas,
+            ))
 
         form = JornadaCursoForm(request.POST)
         if form.is_valid():
@@ -1632,18 +1640,25 @@ def curso_jornadas(request, pk):
             jornada.curso = curso
             jornada.save()
             messages.success(request, f'Jornada {jornada.get_modalidad_display().lower()} agregada.')
-            from django.urls import reverse
-            return redirect(f"{reverse('academia:curso_jornadas', args=[curso.pk])}?modalidad={modalidad_activa}")
+            return redirect(_url_curso_jornadas(
+                curso.pk, modalidad_activa, estado_jornadas,
+            ))
     else:
         form = JornadaCursoForm(initial={'modalidad': modalidad_activa, 'activo': True})
 
     ahora = timezone.now()
 
     def preparar_jornadas(modalidad):
+        jornadas_qs = curso.jornadas.filter(modalidad=modalidad)
+        if estado_jornadas == 'activa':
+            jornadas_qs = jornadas_qs.filter(activo=True)
+        elif estado_jornadas == 'inactiva':
+            jornadas_qs = jornadas_qs.filter(activo=False)
+
         jornadas = list(
-            curso.jornadas.filter(modalidad=modalidad)
+            jornadas_qs
             .annotate(num_matriculas=Count('matriculas'))
-            .order_by('fecha_inicio')
+            .order_by('-fecha_inicio', '-pk')
         )
         for jornada in jornadas:
             dia_esperado = {
@@ -1678,6 +1693,14 @@ def curso_jornadas(request, pk):
     jornadas_pres = preparar_jornadas('presencial')
     jornadas_onl = preparar_jornadas('online')
 
+    resumen_jornadas = curso.jornadas.filter(
+        modalidad=modalidad_activa,
+    ).aggregate(
+        general=Count('pk'),
+        activas=Count('pk', filter=Q(activo=True)),
+        inactivas=Count('pk', filter=Q(activo=False)),
+    )
+
     sedes = Sede.objects.filter(activa=True).order_by('pais', 'orden', 'nombre')
 
     return render(request, 'cursos/jornadas.html', {
@@ -1686,11 +1709,34 @@ def curso_jornadas(request, pk):
         'jornadas_online': jornadas_onl,
         'form': form,
         'modalidad_activa': modalidad_activa,
+        'estado_jornadas': estado_jornadas,
+        'resumen_jornadas': resumen_jornadas,
         'sedes': sedes,
         'puede_agregar_jornada': puede_agregar,
         'puede_editar_jornada': puede_editar_jornadas(request.user),
         'puede_eliminar_jornada': puede_eliminar_jornadas(request.user),
     })
+
+
+def _estado_jornadas_desde_request(request):
+    """Obtiene un filtro de estado válido desde GET o desde un formulario POST."""
+    estado = (
+        request.GET.get('estado')
+        or request.POST.get('estado_jornadas')
+        or 'general'
+    ).strip().lower()
+    return estado if estado in {'general', 'activa', 'inactiva'} else 'general'
+
+
+def _url_curso_jornadas(curso_pk, modalidad, estado='general'):
+    """Construye el regreso al listado conservando modalidad y filtro activo."""
+    parametros = {'modalidad': modalidad}
+    if estado != 'general':
+        parametros['estado'] = estado
+    return (
+        f"{reverse('academia:curso_jornadas', args=[curso_pk])}"
+        f"?{urlencode(parametros)}"
+    )
 
 
 @admin_requerido
@@ -1752,8 +1798,11 @@ def jornada_eliminar(request, pk, jornada_pk):
     else:
         jornada.delete()
         messages.success(request, 'Jornada eliminada.')
-    from django.urls import reverse
-    return redirect(f"{reverse('academia:curso_jornadas', args=[curso.pk])}?modalidad={modalidad_jornada}")
+    return redirect(_url_curso_jornadas(
+        curso.pk,
+        modalidad_jornada,
+        _estado_jornadas_desde_request(request),
+    ))
 
 
 @permiso_jornada_requerido('academia.change_jornadacurso')
@@ -1790,9 +1839,12 @@ def jornada_editar(request, pk, jornada_pk):
                 for error in errors:
                     messages.error(request, f'{field}: {error}')
 
-    from django.urls import reverse
     modalidad_activa = request.POST.get('modalidad_activa', jornada.modalidad)
-    return redirect(f"{reverse('academia:curso_jornadas', args=[curso.pk])}?modalidad={modalidad_activa}")
+    return redirect(_url_curso_jornadas(
+        curso.pk,
+        modalidad_activa,
+        _estado_jornadas_desde_request(request),
+    ))
 
 
 @permiso_jornada_requerido('academia.change_jornadacurso')
@@ -1865,11 +1917,11 @@ def jornada_marcar_feriado(request, pk, jornada_pk):
                 f'{detalle_matriculados}',
             )
 
-    from django.urls import reverse
-    return redirect(
-        f"{reverse('academia:curso_jornadas', args=[curso.pk])}"
-        f"?modalidad={modalidad_activa}"
-    )
+    return redirect(_url_curso_jornadas(
+        curso.pk,
+        modalidad_activa,
+        _estado_jornadas_desde_request(request),
+    ))
 
 
 # ─────────────────────────────────────────────────────────

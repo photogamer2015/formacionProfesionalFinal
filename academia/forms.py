@@ -296,8 +296,8 @@ class EstudianteForm(forms.ModelForm):
     )
 
     def __init__(self, *args, **kwargs):
-        # Cuando la matrícula lleva factura con datos, correo/celular/ciudad
-        # pasan a ser OBLIGATORIOS (necesarios para emitir la factura).
+        # Cuando la matrícula lleva factura con datos, celular/ciudad pasan a
+        # ser obligatorios. El correo queda opcional y solo se usa si existe.
         self.factura_si = kwargs.pop('factura_si', False)
         # Solo el alta de matrícula permite documentos con una cantidad de
         # dígitos distinta de 10/13. Los demás usos mantienen la regla normal.
@@ -323,7 +323,6 @@ class EstudianteForm(forms.ModelForm):
         if self.factura_si:
             faltantes = []
             for campo, etiqueta in (
-                ('correo', 'Correo'),
                 ('celular', 'Celular'),
                 ('ciudad', 'Ciudad'),
             ):
@@ -877,14 +876,14 @@ class MatriculaForm(forms.ModelForm):
                         'La suma del Monto 1 y Monto 2 debe ser exactamente igual al valor pagado.'
                     )
 
-        # Si la factura está marcada como realizada, los datos de factura son obligatorios
+        # Si la factura está marcada como realizada, nombre y documento de
+        # factura son obligatorios; el correo de factura queda opcional.
         if cleaned.get('factura_realizada') == 'si':
             faltantes = []
             for fname, label in [
                 ('fact_nombres', 'Nombres'),
                 
                 ('fact_cedula', 'Cédula / RUC'),
-                ('fact_correo', 'Correo'),
             ]:
                 if not (cleaned.get(fname) or '').strip():
                     faltantes.append(label)

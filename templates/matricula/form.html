@@ -457,12 +457,12 @@
                 {{ mat_form.fact_cedula }}{{ mat_form.fact_cedula.errors }}
             </div>
             <div>
-                <label class="form-label" for="{{ mat_form.fact_correo.id_for_label }}">Correo electrónico</label>
+                <label class="form-label" for="{{ mat_form.fact_correo.id_for_label }}">Correo electrónico (opcional)</label>
                 {{ mat_form.fact_correo }}{{ mat_form.fact_correo.errors }}
             </div>
         </div>
         <small style="color:#888; font-size:11px; display:block; margin-top:6px;">
-            Estos datos solo son obligatorios cuando "Factura realizada" = Sí.
+            Nombres y número de cédula/RUC son obligatorios cuando "Factura realizada" = Sí. El correo es opcional.
         </small>
     </div>
 
@@ -2240,7 +2240,6 @@
             { name: 'fact_nombres', label: 'Nombres (factura)' },
             
             { name: 'fact_cedula', label: 'Cédula / RUC (factura)' },
-            { name: 'fact_correo', label: 'Correo (factura)' },
         ];
 
         function isFacturaSi() {
@@ -2291,11 +2290,10 @@
             toggleSubmitBtn();
         }
 
-        // ── Factura con datos: correo/celular/ciudad del estudiante pasan a
-        //    ser OBLIGATORIOS, y los datos de factura se autocompletan con
-        //    los del estudiante. ────────────────────────────────────────────
+        // ── Factura con datos: celular/ciudad del estudiante pasan a ser
+        //    obligatorios. El correo se autocompleta si existe, pero no bloquea
+        //    la matrícula. ──────────────────────────────────────────────────
         const STUDENT_REQ_FIELDS = [
-            { name: 'correo', label: 'Correo' },
             { name: 'celular', label: 'Celular' },
             { name: 'ciudad', label: 'Ciudad' },
         ];
@@ -2465,7 +2463,6 @@
             if (facturaRealizada && facturaRealizada.value === 'si') {
                 if (campoEstaVacio('fact_nombres')) agregarFaltante('Nombres de factura');
                 if (campoEstaVacio('fact_cedula')) agregarFaltante('Cédula / RUC de factura');
-                if (campoEstaVacio('fact_correo')) agregarFaltante('Correo de factura');
             }
 
             // 8. Mixto sum validation
