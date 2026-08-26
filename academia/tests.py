@@ -290,11 +290,16 @@ class InicioRankingVendedorasTests(TestCase):
         self.client.force_login(self.admin)
 
         response = self.client.get(reverse('academia:bienvenida'))
+        contenido = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Ranking de Vendedoras')
         self.assertContains(response, reverse('academia:comprobante_totales'))
         self.assertContains(response, 'card-ranking')
+        self.assertLess(
+            contenido.index('card-title">Ranking de Vendedoras'),
+            contenido.index('card-title">Ayuda'),
+        )
 
     def test_asesor_no_ve_ranking_de_vendedoras_en_inicio(self):
         self.client.force_login(self.asesor)
