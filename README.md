@@ -17,8 +17,8 @@ Stack: **Django 5.2 LTS / 6.x** · **SQLite** (por defecto) o **MySQL 8**
 ### macOS / Linux
 
 ```bash
-git clone https://github.com/<TU_USUARIO>/formacion-tecnica-profesional.git
-cd formacion-tecnica-profesional
+git clone https://github.com/photogamer2015/formacionProfesionalFinal.git
+cd formacionProfesionalFinal
 
 python3 -m venv venv
 source venv/bin/activate
@@ -47,8 +47,8 @@ crear.
 ### Windows (PowerShell)
 
 ```powershell
-git clone https://github.com/<TU_USUARIO>/formacion-tecnica-profesional.git
-cd formacion-tecnica-profesional
+git clone https://github.com/photogamer2015/formacionProfesionalFinal.git
+cd formacionProfesionalFinal
 
 python -m venv venv
 venv\Scripts\activate
@@ -160,6 +160,8 @@ para el detalle de los bugs corregidos en esta versión.
 ```env
 SECRET_KEY=...                  # Genera una con: python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 DEBUG=True                      # False en producción
+ALLOWED_HOSTS=localhost,127.0.0.1
+CSRF_TRUSTED_ORIGINS=           # https://tu-dominio.com en produccion
 DB_NAME=                        # vacío → SQLite (recomendado para empezar)
 DB_USER=
 DB_PASSWORD=
@@ -263,17 +265,30 @@ mysqldump -u DB_USER -p DB_NAME > backup-$(date +%Y%m%d).sql
 Resumen mínimo (no exhaustivo):
 
 1. `DEBUG=False` y `SECRET_KEY` aleatoria en `.env`.
-2. Agregar el dominio real a `ALLOWED_HOSTS` en `core/settings.py`.
+2. Agregar el dominio real a `ALLOWED_HOSTS` y `CSRF_TRUSTED_ORIGINS`
+   en `.env`.
 3. `python manage.py collectstatic` para juntar estáticos en
    `staticfiles/`.
 4. Servir con `gunicorn` + `nginx` (Linux) o `IIS` + `wfastcgi`
    (Windows). Para Windows ya tienes la guía paso a paso en
    `Guia_Instalacion_Windows.pdf`.
 
+En AWS/Linux puedes actualizar una instancia ya configurada con:
+
+```bash
+cd /var/www/formacionProfesionalFinal
+./scripts/update_aws.sh
+```
+
+La guía completa está en [`DESPLIEGUE_AWS.md`](./DESPLIEGUE_AWS.md).
+
 ---
 
 ## 📝 Historial de versiones
 
+- **v3.0** — Tablas de pagos compactadas, paginación configurable por tabla
+  y flujo de actualización en AWS con `scripts/update_aws.sh`.
+  → [`CHANGELOG_v3.0_tablas_aws.md`](./CHANGELOG_v3.0_tablas_aws.md)
 - **v2.5** — Correcciones de cálculos financieros: arreglado el doble
   conteo de ingresos en el panel administrativo (los comprobantes
   vinculados a matrículas ya no se suman aparte de los abonos);

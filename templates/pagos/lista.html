@@ -223,21 +223,17 @@
             padding: 6px 4px !important;
         }
 
-        /* Anchos óptimos por columna (suman 100%) — 14 columnas visibles tras ocultar Acciones */
-        table thead th:nth-child(1),  table tbody td:nth-child(1)  { width: 5.5%; }   /* Fecha */
-        table thead th:nth-child(2),  table tbody td:nth-child(2)  { width: 6.5%; }   /* Cédula */
-        table thead th:nth-child(3),  table tbody td:nth-child(3)  { width: 10%;  }   /* Estudiante */
-        table thead th:nth-child(4),  table tbody td:nth-child(4)  { width: 9%;   }   /* Curso */
-        table thead th:nth-child(5),  table tbody td:nth-child(5)  { width: 6%;   }   /* Modalidad */
-        table thead th:nth-child(6),  table tbody td:nth-child(6)  { width: 8%;   }   /* Jornada */
-        table thead th:nth-child(7),  table tbody td:nth-child(7)  { width: 5.5%; }   /* Día */
-        table thead th:nth-child(8),  table tbody td:nth-child(8)  { width: 5%;   }   /* Valor curso */
-        table thead th:nth-child(9),  table tbody td:nth-child(9)  { width: 5%;   }   /* Pagado */
-        table thead th:nth-child(10), table tbody td:nth-child(10) { width: 11%;  }   /* Tipo de pago */
-        table thead th:nth-child(11), table tbody td:nth-child(11) { width: 11%;  }   /* Método */
-        table thead th:nth-child(12), table tbody td:nth-child(12) { width: 5%;   }   /* Saldo */
-        table thead th:nth-child(13), table tbody td:nth-child(13) { width: 5.5%; }   /* Estado */
-        table thead th:nth-child(14), table tbody td:nth-child(14) { width: 7%;   }   /* Asistencia */
+        /* Anchos optimos por columna tras compactar datos repetidos. */
+        table thead th:nth-child(1),  table tbody td:nth-child(1)  { width: 18%; }   /* Estudiante */
+        table thead th:nth-child(2),  table tbody td:nth-child(2)  { width: 14%; }   /* Jornada */
+        table thead th:nth-child(3),  table tbody td:nth-child(3)  { width: 8%;  }   /* Dia */
+        table thead th:nth-child(4),  table tbody td:nth-child(4)  { width: 8%;  }   /* Valor curso */
+        table thead th:nth-child(5),  table tbody td:nth-child(5)  { width: 8%;  }   /* Pagado */
+        table thead th:nth-child(6),  table tbody td:nth-child(6)  { width: 11%; }   /* Tipo de pago */
+        table thead th:nth-child(7),  table tbody td:nth-child(7)  { width: 11%; }   /* Metodo */
+        table thead th:nth-child(8),  table tbody td:nth-child(8)  { width: 7%;  }   /* Saldo */
+        table thead th:nth-child(9),  table tbody td:nth-child(9)  { width: 8%;  }   /* Estado */
+        table thead th:nth-child(10), table tbody td:nth-child(10) { width: 7%;  }   /* Asistencia */
 
         /* Chips de pago: que no se desborden y queden legibles */
         .payment-summary { gap: 2px !important; min-width: 0 !important; }
@@ -425,6 +421,69 @@
         font-size: 11px;
         line-height: 1.3;
     }
+    .payments-table {
+        min-width: 1180px;
+    }
+    .payments-table th,
+    .payments-table td {
+        vertical-align: middle;
+    }
+    .payments-table tbody tr:nth-child(even) {
+        background: rgba(27,42,78,.018);
+    }
+    .payments-student-cell {
+        min-width: 240px;
+        white-space: normal;
+    }
+    .payments-student-name {
+        display: block;
+        color: var(--fp-ink);
+        font-size: 14px;
+        line-height: 1.25;
+        margin-bottom: 7px;
+    }
+    .payments-student-meta {
+        display: grid;
+        gap: 2px;
+        width: min(100%, 245px);
+        padding: 7px 9px;
+        border: 1px solid #d8e5f8;
+        border-radius: 7px;
+        background: #edf4ff;
+        color: #24456f;
+        font-size: 11px;
+        line-height: 1.25;
+    }
+    .payments-student-meta span {
+        display: block;
+        overflow-wrap: anywhere;
+    }
+    .payments-student-meta strong {
+        color: #17345b;
+    }
+    .payments-jornada-main {
+        margin-top: 7px;
+    }
+    .payments-money {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .payments-money strong {
+        font-size: 13px;
+    }
+    .payments-status-cell {
+        min-width: 160px;
+        white-space: normal;
+    }
+    .payments-actions-cell {
+        min-width: 150px;
+    }
+    .payments-actions-stack {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
     body.dark-mode .module-filter-active {
         background: #101827;
         border-color: var(--fp-dark-line);
@@ -437,6 +496,20 @@
     }
     body.dark-mode .payments-module-field-hint {
         color: var(--fp-dark-muted);
+    }
+    body.dark-mode .payments-table tbody tr:nth-child(even) {
+        background: rgba(255,255,255,.018);
+    }
+    body.dark-mode .payments-student-name {
+        color: var(--fp-dark-text);
+    }
+    body.dark-mode .payments-student-meta {
+        background: #162236;
+        border-color: #2d4262;
+        color: #d5e4ff;
+    }
+    body.dark-mode .payments-student-meta strong {
+        color: #bcd3ff;
     }
     .payments-filter-card {
         position: relative;
@@ -1192,14 +1265,10 @@
 </div>
 <div class="table-wrap">
     {% if matriculas %}
-    <table>
+    <table class="payments-table" aria-label="Estado financiero de matriculas" data-table-page-size="15" data-table-identity-column="0">
         <thead>
             <tr>
-                <th>Fecha</th>
-                <th>Cédula</th>
                 <th>Estudiante</th>
-                <th>Curso</th>
-                <th>Modalidad</th>
                 <th>Jornada</th>
                 <th>Día</th>
                 <th>Valor curso</th>
@@ -1215,17 +1284,20 @@
         <tbody>
             {% for m in matriculas %}
             <tr>
-                <td>{{ m.fecha_matricula|date:"d/m/Y" }}</td>
-                <td><strong>{{ m.estudiante.cedula }}</strong></td>
-                <td>{{ m.estudiante.nombres }}</td>
-                <td>{{ m.curso.nombre }}</td>
-                <td>
+                <td class="payments-student-cell">
+                    <strong class="payments-student-name">{{ m.estudiante.nombres }}</strong>
+                    <div class="payments-student-meta">
+                        <span><strong>C.I./RUC:</strong> {{ m.estudiante.cedula }}</span>
+                        <span><strong>Curso:</strong> {{ m.curso.nombre }}</span>
+                        <span><strong>Matrícula:</strong> {{ m.fecha_matricula|date:"d/m/Y" }}</span>
+                    </div>
+                </td>
+                <td class="jornada-cell">
                     <span class="badge badge-{{ m.modalidad }}">
                         {% if m.modalidad == 'online' %}🟢{% else %}🏫{% endif %}
                         {{ m.get_modalidad_display }}
                     </span>
-                </td>
-                <td class="jornada-cell">
+                    <div class="payments-jornada-main">
                     {% if m.jornada %}
                         <strong>{{ m.jornada.descripcion_legible }}</strong>
                         {% if m.jornada.hora_inicio and m.jornada.hora_fin %}
@@ -1237,6 +1309,7 @@
                     {% else %}
                         <span style="color:#999;">—</span>
                     {% endif %}
+                    </div>
                 </td>
                 <td class="jornada-cell" style="text-align:center;">
                     {% if m.jornada and m.jornada.fecha_inicio %}
@@ -1245,8 +1318,8 @@
                         <span style="color:#999;">—</span>
                     {% endif %}
                 </td>
-                <td>${{ m.valor_curso|floatformat:2 }}</td>
-                <td><strong style="color:#2e7d32;">${{ m.valor_pagado|floatformat:2 }}</strong></td>
+                <td class="payments-money">${{ m.valor_curso|floatformat:2 }}</td>
+                <td class="payments-money"><strong style="color:#2e7d32;">${{ m.valor_pagado|floatformat:2 }}</strong></td>
                 <td>
                     <div class="payment-summary payment-summary--compact">
                         {% for item in m.resumen_abonos.tipos %}
@@ -1305,8 +1378,8 @@
                         {% endif %}
                     </div>
                 </td>
-                <td><strong style="color:{% if m.saldo > 0 %}#c62828{% else %}#2e7d32{% endif %};">${{ m.saldo|floatformat:2 }}</strong></td>
-                <td>
+                <td class="payments-money"><strong style="color:{% if m.saldo > 0 %}#c62828{% else %}#2e7d32{% endif %};">${{ m.saldo|floatformat:2 }}</strong></td>
+                <td class="payments-status-cell">
                     {% if m.estado_pago == 'Retiro' %}
                         <span class="badge" style="background:#f5f5f5; color:#616161; border:1px solid #e0e0e0;">Retiro</span>
                     {% elif m.estado_pago == 'Pagado' %}
@@ -1335,9 +1408,10 @@
                 <td>
                     <span class="asistencia-line"></span>
                 </td>
-                <td class="no-print" style="white-space:nowrap;">
+                <td class="no-print payments-actions-cell">
+                    <div class="payments-actions-stack">
                     <a href="{% url 'academia:matricula_abonos' m.pk %}"
-                       class="btn btn-success btn-sm" title="Gestionar pagos">💵 Gestionar Pagos</a>
+                       class="btn btn-success btn-sm" title="Gestionar pagos">💵 Gestionar</a>
                     
                     {% if m.estudiante.celular_wa %}
                     <a href="https://web.whatsapp.com/send?phone={{ m.estudiante.celular_wa }}&amp;text=Mi+estimado%2Fa+{{ m.estudiante.nombres|urlencode }}%2C+le+saluda+Formaci%C3%B3n+Profesional+EC.+Notamos+que+no+asisti%C3%B3+a+su+clase+del+d%C3%ADa+de+hoy+del+curso+{{ m.curso.nombre|urlencode }}.+%C2%BFSucedi%C3%B3+alg%C3%BAn+inconveniente%3F+Quedamos+atentos.+%F0%9F%99%8F"
@@ -1346,6 +1420,7 @@
                        target="_blank" rel="noopener"
                        class="btn btn-sm" style="background:#25d366; color:white; padding: 5px 8px; font-size:12px; text-decoration:none; border-radius:4px;" title="Notificar inasistencia">💬</a>
                     {% endif %}
+                    </div>
                 </td>
             </tr>
             {% endfor %}

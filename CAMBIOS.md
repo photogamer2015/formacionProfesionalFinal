@@ -1,5 +1,16 @@
 # Cambios aplicados
 
+## Actualizacion v3.0 - Tablas y AWS
+
+- Tabla principal de pagos compactada: estudiante, C.I./RUC, curso y fecha de
+  matricula quedan agrupados en la primera columna.
+- La paginacion de tablas ahora puede configurarse con `data-table-page-size`.
+- Nuevo script `scripts/update_aws.sh` para actualizar AWS con un solo comando.
+- Nueva guia/plantilla de servicio: `deploy/systemd/formacion.service.example`.
+- Ver detalles en `CHANGELOG_v3.0_tablas_aws.md`.
+
+---
+
 Resumen de las 4 mejoras solicitadas. Todo probado con el cliente de test de Django.
 
 ## ⚠️ Antes de nada: aplicar la migración

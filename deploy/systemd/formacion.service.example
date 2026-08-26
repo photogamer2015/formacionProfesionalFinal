@@ -1,0 +1,15 @@
+[Unit]
+Description=Formacion Profesional EC Django app
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/var/www/formacionProfesionalFinal
+EnvironmentFile=/var/www/formacionProfesionalFinal/.env
+ExecStart=/var/www/formacionProfesionalFinal/venv/bin/gunicorn core.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 90
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

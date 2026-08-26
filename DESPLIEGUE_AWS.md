@@ -17,8 +17,8 @@ sudo apt install -y python3-dev python3-venv default-libmysqlclient-dev build-es
 ## 2. Código y entorno virtual
 
 ```bash
-git clone https://github.com/<tu-usuario>/<tu-repo>.git
-cd <tu-repo>
+git clone https://github.com/photogamer2015/formacionProfesionalFinal.git
+cd formacionProfesionalFinal
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -39,6 +39,8 @@ Valores mínimos para producción:
 DEBUG=False
 SECRET_KEY=<pega-aqui-una-clave-aleatoria>     # genérala con el comando de abajo
 ALLOWED_HOSTS=tu-dominio.com,www.tu-dominio.com  # o la IP/DNS del servidor
+CSRF_TRUSTED_ORIGINS=https://tu-dominio.com,https://www.tu-dominio.com
+SECURE_SSL_REDIRECT=True
 
 # MySQL de AWS (RDS). Si dejas DB_NAME vacío, usa SQLite (solo para pruebas).
 DB_NAME=formacion
@@ -96,7 +98,40 @@ En producción va detrás de Nginx o del balanceador (ALB). Si el balanceador
 termina el SSL, la app ya está preparada (usa `X-Forwarded-Proto` para no
 entrar en bucle de redirección HTTPS).
 
-## 7. Recordatorios diarios de pago por correo
+Para dejarlo como servicio de `systemd`:
+
+```bash
+sudo cp deploy/systemd/formacion.service.example /etc/systemd/system/formacion.service
+sudo nano /etc/systemd/system/formacion.service   # ajusta User y WorkingDirectory
+sudo systemctl daemon-reload
+sudo systemctl enable --now formacion
+sudo systemctl status formacion --no-pager
+```
+
+## 7. Actualizar la app en AWS
+
+Después de subir cambios a `main`, entra al servidor y ejecuta:
+
+```bash
+cd /var/www/formacionProfesionalFinal
+./scripts/update_aws.sh
+```
+
+El script hace `git pull --ff-only`, actualiza paquetes, ejecuta migraciones,
+recolecta estáticos y reinicia `formacion.service` si existe.
+
+Opciones útiles:
+
+```bash
+RUN_TESTS=1 ./scripts/update_aws.sh      # corre tests antes de migrar
+APP_SERVICE=mi-servicio ./scripts/update_aws.sh
+SKIP_GIT_PULL=1 ./scripts/update_aws.sh  # usa el código ya presente
+```
+
+Si el script se detiene porque hay cambios locales, haz commit/stash o revisa
+qué cambió antes de actualizar. No fuerza ni borra cambios del servidor.
+
+## 8. Recordatorios diarios de pago por correo
 
 Configura en `.env` la cuenta SMTP indicada en `.env.example` y deja activo:
 

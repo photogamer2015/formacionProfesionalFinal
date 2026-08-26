@@ -32,6 +32,13 @@ OPENAI_API_KEY = env('OPENAI_API_KEY')
 OPENAI_MODEL = env('OPENAI_MODEL')
 
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+if not DEBUG and not CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = [
+        f'https://{host}'
+        for host in ALLOWED_HOSTS
+        if host and host not in ('*', 'localhost', '127.0.0.1')
+    ]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -161,8 +168,10 @@ if not DEBUG:
     # HTTP Strict Transport Security (1 año). Activar solo si TODO el
     # sitio se sirve por HTTPS.
     SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000)
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
+        'SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True,
+    )
+    SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=True)
 
     # Evita que el navegador adivine el tipo de contenido.
     SECURE_CONTENT_TYPE_NOSNIFF = True

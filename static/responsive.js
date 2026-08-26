@@ -32,6 +32,16 @@
         return rows;
     }
 
+    function tablePageSize(table) {
+        var configured = Number(
+            table.dataset.tablePageSize || table.dataset.pageSize || TABLE_PAGE_SIZE
+        );
+        if (!Number.isFinite(configured)) return TABLE_PAGE_SIZE;
+        configured = Math.floor(configured);
+        if (configured < 1 || configured > 100) return TABLE_PAGE_SIZE;
+        return configured;
+    }
+
     function isEmptyStateRow(row) {
         if (row.dataset.paginationEmpty === "true") return true;
         if (row.cells.length !== 1 || !row.cells[0].hasAttribute("colspan")) {
@@ -113,7 +123,8 @@
 
         var pageSize = document.createElement("span");
         pageSize.className = "fp-table-pagination__size";
-        pageSize.textContent = TABLE_PAGE_SIZE + " por página";
+        pageSize.innerHTML = '<strong data-page-size>' +
+            tablePageSize(table) + '</strong> por página';
 
         pagination.appendChild(summary);
         pagination.appendChild(controls);
@@ -124,7 +135,8 @@
             currentPage: 1,
             pagination: pagination,
             previousButton: previousButton,
-            nextButton: nextButton
+            nextButton: nextButton,
+            pageSize: tablePageSize(table)
         };
         paginationStates.set(table, state);
 
@@ -160,13 +172,14 @@
             return !isFilteredRow(row);
         });
         var totalRecords = visibleRows.length;
-        var totalPages = Math.max(1, Math.ceil(totalRecords / TABLE_PAGE_SIZE));
+        state.pageSize = tablePageSize(table);
+        var totalPages = Math.max(1, Math.ceil(totalRecords / state.pageSize));
 
         if (resetPage) state.currentPage = 1;
         state.currentPage = Math.min(Math.max(state.currentPage, 1), totalPages);
 
-        var firstIndex = (state.currentPage - 1) * TABLE_PAGE_SIZE;
-        var lastIndex = Math.min(firstIndex + TABLE_PAGE_SIZE, totalRecords);
+        var firstIndex = (state.currentPage - 1) * state.pageSize;
+        var lastIndex = Math.min(firstIndex + state.pageSize, totalRecords);
         visibleRows.forEach(function (row, index) {
             row.classList.toggle(
                 "fp-table-page-hidden",
@@ -179,6 +192,7 @@
         state.pagination.querySelector("[data-page-total]").textContent = totalRecords;
         state.pagination.querySelector("[data-current-page]").textContent = state.currentPage;
         state.pagination.querySelector("[data-total-pages]").textContent = totalPages;
+        state.pagination.querySelector("[data-page-size]").textContent = state.pageSize;
 
         state.previousButton.disabled = state.currentPage <= 1;
         state.nextButton.disabled = state.currentPage >= totalPages;
