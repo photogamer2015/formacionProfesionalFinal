@@ -138,6 +138,7 @@ urlpatterns = [
     path('comprobantes/totales/', views_comprobantes.comprobante_totales, name='comprobante_totales'),
     path('comprobantes/<int:pk>/editar/', views_comprobantes.comprobante_editar, name='comprobante_editar'),
     path('comprobantes/<int:pk>/eliminar/', views_comprobantes.comprobante_eliminar, name='comprobante_eliminar'),
+    path('comprobantes/asesor/<int:vendedora_id>/ventas/', views_comprobantes.comprobante_asesor_ventas, name='comprobante_asesor_ventas'),
     path('comprobantes/asesor/<int:vendedora_id>/detalle/', views_comprobantes.comprobante_asesor_detalle, name='comprobante_asesor_detalle'),
 
     # ── Perfiles sociales ──────────────────────────────────────

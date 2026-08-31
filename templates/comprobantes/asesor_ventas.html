@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Ventas de {{ asesor.get_full_name|default:asesor.username }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'ranking_vendedoras.css' %}?v=20260831-2">
+{% endblock %}
+
+{% block content %}
+<nav class="crumb" aria-label="Ruta de navegación">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:comprobante_totales' %}{% if rango_querystring %}?{{ rango_querystring }}{% endif %}">Ranking</a> &nbsp;›&nbsp;
+    Ventas
+</nav>
+
+<div class="ranking-heading">
+    <div>
+        <h2 class="page-title">Ventas de {{ asesor.get_full_name|default:asesor.username }}</h2>
+        <p class="page-subtitle">
+            {% if mostrar_montos %}
+                Detalle de ventas registradas por esta vendedora.
+            {% else %}
+                Detalle de ventas de esta vendedora. Los valores monetarios son privados para administración.
+            {% endif %}
+        </p>
+    </div>
+    {% if not mostrar_montos %}
+    <span class="ranking-role-badge">Vista asesora · solo cantidades</span>
+    {% endif %}
+</div>
+
+<div class="card-box ranking-filter-card">
+    <form method="get" class="ranking-filter-form" id="asesor-ventas-filter-form">
+        <div class="ranking-date-picker" data-ranking-date-picker data-default-label="Fecha">
+            <label class="form-label" id="ranking-date-label">Fecha de inscripción</label>
+            <input type="hidden" name="desde" value="{{ filtros.desde }}" data-date-start>
+            <input type="hidden" name="hasta" value="{{ filtros.hasta }}" data-date-end>
+
+            <button
+                type="button"
+                class="ranking-date-trigger"
+                data-date-trigger
+                aria-haspopup="dialog"
+                aria-expanded="false"
+                aria-labelledby="ranking-date-label ranking-date-trigger-text"
+            >
+                <span aria-hidden="true">📅</span>
+                <span id="ranking-date-trigger-text" class="ranking-date-trigger-text" data-date-trigger-text>Fecha</span>
+                <span class="ranking-date-caret" aria-hidden="true">▾</span>
+            </button>
+
+            <div class="ranking-date-popover" data-date-popover role="dialog" aria-label="Seleccionar fecha" hidden>
+                <div class="ranking-date-layout">
+                    <div class="ranking-date-presets" aria-label="Rangos rápidos">
+                        <div class="ranking-date-presets-title">Fecha</div>
+                        <button type="button" class="ranking-date-preset" data-date-preset="all">Sin filtro</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="today">Hoy</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="yesterday">Ayer</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="last7">Últimos 7 días</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="last14">Últimos 14 días</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="last30">Últimos 30 días</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="thisWeek">Esta semana</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="thisMonth">Este mes</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="lastMonth">El mes pasado</button>
+                    </div>
+
+                    <div class="ranking-date-main">
+                        <div class="ranking-date-calendars">
+                            <div class="ranking-date-calendar" data-date-calendar="0"></div>
+                            <div class="ranking-date-calendar" data-date-calendar="1"></div>
+                        </div>
+                        <p class="ranking-date-hint" data-date-hint>Selecciona una fecha.</p>
+                    </div>
+                </div>
+
+                <div class="ranking-date-footer">
+                    <label class="ranking-date-range-toggle">
+                        <input type="checkbox" data-date-range-mode>
+                        <span>Ver por rango</span>
+                    </label>
+                    <div class="ranking-date-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" data-date-clear>Limpiar</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-date-cancel>Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm" data-date-accept>Aceptar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ranking-filter-actions">
+            <button type="submit" class="btn btn-primary">Filtrar</button>
+            <a href="{% url 'academia:comprobante_asesor_ventas' asesor.pk %}" class="btn btn-secondary">Limpiar</a>
+        </div>
+    </form>
+</div>
+
+<div class="ranking-summary{% if mostrar_montos %} ranking-summary-sales-page{% else %} ranking-summary-counts-only{% endif %}">
+    <div class="card-box ranking-summary-card ranking-summary-sales">
+        <div class="ranking-summary-label">TOTAL VENTAS</div>
+        <div class="ranking-summary-value">{{ total_ventas }}</div>
+        <div class="ranking-summary-breakdown">
+            <span><strong class="ranking-positive">+</strong> {{ total_activas }} activas</span>
+            <span><strong class="ranking-negative">−</strong> {{ total_retiros }} retiros</span>
+        </div>
+    </div>
+    {% if mostrar_montos %}
+    <div class="card-box ranking-summary-card ranking-summary-money">
+        <div class="ranking-summary-label">COBRADO</div>
+        <div class="ranking-summary-value">${{ total_cobrado|floatformat:2 }}</div>
+    </div>
+    <div class="card-box ranking-summary-card ranking-summary-money">
+        <div class="ranking-summary-label">POR COBRAR</div>
+        <div class="ranking-summary-value">${{ total_pendiente|floatformat:2 }}</div>
+    </div>
+    <div class="card-box ranking-summary-card ranking-summary-money">
+        <div class="ranking-summary-label">TOTAL GENERAL</div>
+        <div class="ranking-summary-value">${{ total_general|floatformat:2 }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card-box ranking-sales-list-card">
+    <div class="ranking-sales-card-head">
+        <div>
+            <h3 class="ranking-section-title">Ventas registradas</h3>
+            <p class="ranking-sales-caption">
+                {{ total_ventas }} venta{{ total_ventas|pluralize }} encontrada{{ total_ventas|pluralize }}
+            </p>
+        </div>
+        <div class="ranking-sales-head-actions">
+            <a href="{% url 'academia:comprobante_totales' %}{% if rango_querystring %}?{{ rango_querystring }}{% endif %}" class="btn btn-secondary btn-sm">Volver al ranking</a>
+            <a href="{% url 'academia:comprobante_asesor_detalle' asesor.pk %}" class="btn btn-secondary btn-sm">Ver perfil</a>
+        </div>
+    </div>
+
+    {% if ventas %}
+    <div class="table-wrap ranking-sales-table-wrap">
+        <table class="ranking-sales-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Cliente</th>
+                    <th>Celular</th>
+                    <th>Curso</th>
+                    <th>Modalidad</th>
+                    <th>Jornada</th>
+                    <th>Inicio</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th>Factura</th>
+                    {% if mostrar_montos %}
+                    <th>Pago</th>
+                    <th>Diferencia</th>
+                    <th>Total</th>
+                    <th>Comprob.</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in ventas %}
+                <tr>
+                    <td>{{ c.fecha_inscripcion|date:"d/m/Y" }}</td>
+                    <td><strong>{{ c.nombre_persona }}</strong></td>
+                    <td>{{ c.celular }}</td>
+                    <td>{{ c.curso.nombre }}</td>
+                    <td>
+                        {% if c.modalidad == 'virtual' %}
+                            <span class="badge badge-online">Virtual</span>
+                        {% else %}
+                            <span class="badge badge-presencial">Presencial</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ c.jornada }}</td>
+                    <td>{{ c.inicio_curso|date:"d/m/Y" }}</td>
+                    <td>
+                        {% if c.tipo_registro %}
+                            <span class="badge ranking-sales-type">{{ c.get_tipo_registro_display }}</span>
+                        {% else %}
+                            <span class="ranking-sales-muted">Sin tipo</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if c.matricula and c.matricula.estado == 'retiro_voluntario' %}
+                            <span class="badge ranking-sales-retired">Retiro</span>
+                        {% else %}
+                            <span class="badge badge-pagado">Activa</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if c.factura_realizada == 'si' %}
+                            <span class="badge badge-pagado">Sí</span>
+                        {% else %}
+                            <span class="badge badge-pendiente">No</span>
+                        {% endif %}
+                    </td>
+                    {% if mostrar_montos %}
+                    <td><strong class="ranking-sales-positive">${{ c.pago_abono|floatformat:2 }}</strong></td>
+                    <td>
+                        {% if c.diferencia > 0 %}
+                            <strong class="ranking-sales-negative">${{ c.diferencia|floatformat:2 }}</strong>
+                        {% else %}
+                            <span class="ranking-sales-positive">$0.00</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>${{ c.total_venta|floatformat:2 }}</strong></td>
+                    <td style="text-align:center;">
+                        {% if c.link_comprobante %}
+                            <a href="{{ c.link_comprobante }}" target="_blank" rel="noopener" title="Ver comprobante" class="ranking-sales-proof">Abrir</a>
+                        {% else %}
+                            <span class="ranking-sales-muted">-</span>
+                        {% endif %}
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state ranking-empty">
+        <p>No hay ventas de esta vendedora en el rango seleccionado.</p>
+        <a href="{% url 'academia:comprobante_totales' %}{% if rango_querystring %}?{{ rango_querystring }}{% endif %}" class="btn btn-primary">Volver al ranking</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'ranking_vendedoras.js' %}?v=20260831-2"></script>
+{% endblock %}

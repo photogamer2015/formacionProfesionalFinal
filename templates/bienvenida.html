@@ -1608,17 +1608,25 @@ function filterGmCards() {
     </a>
     {% endif %}
 
-    {% if es_admin %}
+    {% if puede_gestionar_matriculas %}
     <a href="{% url 'academia:comprobante_totales' %}" class="card-box card-ranking" style="animation-delay:.395s;">
         <div class="card-header">
-            <div class="card-title">Ranking de Vendedoras</div>
+            <div class="card-title">Ranking de Vendedoras{% if not es_admin %} (Asesora){% endif %}</div>
             <div class="card-icon-wrap">🏆</div>
         </div>
         <div class="card-desc">
-            Ventas por asesora, monto total y desempeño del equipo.
+            {% if es_admin %}
+                Ventas por asesora, monto total y desempeño del equipo.
+            {% else %}
+                Cantidad de ventas por asesora y desempeño del equipo, sin valores monetarios.
+            {% endif %}
         </div>
         <div class="card-footer">
-            <span class="status-admin">🔒 Admin</span>
+            {% if es_admin %}
+                <span class="status-admin">🔒 Admin</span>
+            {% else %}
+                <span class="status-ok">Disponible</span>
+            {% endif %}
             <span class="card-cta">Ingresar →</span>
         </div>
     </a>

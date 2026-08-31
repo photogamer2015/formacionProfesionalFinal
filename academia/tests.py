@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -285,6 +286,33 @@ class InicioRankingVendedorasTests(TestCase):
         )
         grupo = Group.objects.create(name='Asesores')
         self.asesor.groups.add(grupo)
+        self.curso = Curso.objects.create(
+            nombre='Curso para ranking por rol',
+            valor_presencial=Decimal('100.00'),
+        )
+        self._crear_comprobante(
+            self.asesor, date(2026, 8, 10), Decimal('80.00'), Decimal('20.00'),
+        )
+        self._crear_comprobante(
+            self.admin, date(2026, 8, 30), Decimal('50.00'), Decimal('0.00'),
+        )
+
+    def _crear_comprobante(self, vendedora, fecha, pago, diferencia):
+        return Comprobante.objects.create(
+            curso=self.curso,
+            modalidad='presencial',
+            fecha_inscripcion=fecha,
+            jornada='Sábados',
+            inicio_curso=date(2026, 9, 5),
+            nombre_persona=f'Estudiante {vendedora.username}',
+            celular='0999999999',
+            pago_abono=pago,
+            diferencia=diferencia,
+            vendedora=vendedora,
+            fact_nombres=f'Factura {vendedora.username}',
+            fact_cedula='1200000000',
+            fact_correo=f'{vendedora.username}@example.com',
+        )
 
     def test_admin_ve_ranking_de_vendedoras_al_inicio(self):
         self.client.force_login(self.admin)
@@ -301,14 +329,162 @@ class InicioRankingVendedorasTests(TestCase):
             contenido.index('card-title">Ayuda'),
         )
 
-    def test_asesor_no_ve_ranking_de_vendedoras_en_inicio(self):
+    def test_asesor_ve_ranking_de_vendedoras_en_inicio_sin_montos(self):
         self.client.force_login(self.asesor)
 
         response = self.client.get(reverse('academia:bienvenida'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'Ranking de Vendedoras')
-        self.assertNotContains(response, reverse('academia:comprobante_totales'))
+        self.assertContains(response, 'Ranking de Vendedoras (Asesora)')
+        self.assertContains(response, reverse('academia:comprobante_totales'))
+        self.assertContains(response, 'sin valores monetarios')
+
+    def test_asesor_puede_abrir_ranking_y_no_recibe_datos_monetarios(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:comprobante_totales'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['mostrar_montos'])
+        self.assertEqual(response.context['total_ventas'], 2)
+        self.assertIsNone(response.context['total_cobrado'])
+        self.assertIsNone(response.context['total_pendiente'])
+        self.assertIsNone(response.context['total_general'])
+        self.assertNotIn('total_general', response.context['ranking'][0])
+        self.assertContains(response, 'Ranking de Vendedoras (Asesora)')
+        self.assertContains(response, 'Vista asesora · solo cantidades')
+        self.assertContains(response, 'Ver por rango')
+        self.assertContains(response, 'data-ranking-date-picker')
+        self.assertNotContains(response, 'TOTAL GENERAL')
+        self.assertNotContains(response, 'cobrados')
+        contenido_visible = re.sub(
+            r'<(?:script|style)\b.*?</(?:script|style)>',
+            '',
+            response.content.decode(),
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        self.assertNotIn('$', contenido_visible)
+        self.assertContains(response, 'Ver ventas', count=2)
+
+    def test_admin_conserva_montos_y_usa_el_mismo_filtro_profesional(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse('academia:comprobante_totales'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['mostrar_montos'])
+        self.assertEqual(response.context['total_general'], Decimal('150.00'))
+        self.assertIn('total_general', response.context['ranking'][0])
+        self.assertContains(response, 'TOTAL GENERAL')
+        self.assertContains(response, '$')
+        self.assertContains(response, 'Ver por rango')
+        self.assertContains(response, 'data-ranking-date-picker')
+
+    def test_boton_ver_ventas_conserva_el_rango_del_ranking(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:comprobante_totales'), {
+            'desde': '2026-08-01',
+            'hasta': '2026-08-31',
+        })
+        ventas_url = reverse(
+            'academia:comprobante_asesor_ventas',
+            args=[self.admin.pk],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            f'{ventas_url}?desde=2026-08-01&amp;hasta=2026-08-31',
+            response.content.decode(),
+        )
+
+    def test_asesor_ve_ventas_de_una_persona_sin_montos(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse(
+            'academia:comprobante_asesor_ventas',
+            args=[self.admin.pk],
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['mostrar_montos'])
+        self.assertEqual(response.context['total_ventas'], 1)
+        self.assertIsNone(response.context['total_cobrado'])
+        self.assertIsNone(response.context['total_pendiente'])
+        self.assertIsNone(response.context['total_general'])
+        self.assertContains(response, 'Ventas de admin_ranking_inicio')
+        self.assertContains(response, 'Estudiante admin_ranking_inicio')
+        self.assertNotContains(response, 'Estudiante asesor_ranking_inicio')
+        self.assertNotContains(response, '<th>Pago</th>')
+        self.assertNotContains(response, '<th>Diferencia</th>')
+        self.assertNotContains(response, '<th>Total</th>')
+        contenido_visible = re.sub(
+            r'<(?:script|style)\b.*?</(?:script|style)>',
+            '',
+            response.content.decode(),
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        self.assertNotIn('$', contenido_visible)
+
+    def test_admin_ve_ventas_de_una_persona_con_montos(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse(
+            'academia:comprobante_asesor_ventas',
+            args=[self.asesor.pk],
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['mostrar_montos'])
+        self.assertEqual(response.context['total_ventas'], 1)
+        self.assertEqual(response.context['total_cobrado'], Decimal('80.00'))
+        self.assertEqual(response.context['total_pendiente'], Decimal('20.00'))
+        self.assertEqual(response.context['total_general'], Decimal('100.00'))
+        self.assertContains(response, 'Estudiante asesor_ranking_inicio')
+        self.assertNotContains(response, 'Estudiante admin_ranking_inicio')
+        self.assertContains(response, '<th>Pago</th>')
+        self.assertContains(response, '<th>Diferencia</th>')
+        self.assertContains(response, '<th>Total</th>')
+
+    def test_ventas_de_asesor_filtra_por_rango(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse(
+            'academia:comprobante_asesor_ventas',
+            args=[self.asesor.pk],
+        ), {
+            'desde': '2026-08-15',
+            'hasta': '2026-08-31',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_ventas'], 0)
+        self.assertContains(response, 'No hay ventas de esta vendedora')
+
+    def test_ranking_normaliza_un_rango_de_fechas_invertido(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:comprobante_totales'), {
+            'desde': '2026-08-31',
+            'hasta': '2026-08-01',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['filtros']['desde'], '2026-08-01')
+        self.assertEqual(response.context['filtros']['hasta'], '2026-08-31')
+
+    def test_ranking_filtra_las_ventas_por_el_rango_seleccionado(self):
+        self.client.force_login(self.asesor)
+
+        response = self.client.get(reverse('academia:comprobante_totales'), {
+            'desde': '2026-08-15',
+            'hasta': '2026-08-31',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_ventas'], 1)
+        self.assertEqual(len(response.context['ranking']), 1)
+        self.assertEqual(response.context['ranking'][0]['nombre'], self.admin.username)
 
 
 class LoginCaptchaTests(TestCase):

@@ -14,7 +14,7 @@
     <span aria-hidden="true">›</span>
     <a href="{% url 'academia:comprobante_menu' %}">Comprobantes</a>
     {% endif %}
-    {% if es_admin %}
+    {% if puede_gestionar_matriculas %}
         <span aria-hidden="true">›</span>
         <a href="{% url 'academia:comprobante_totales' %}">Ranking</a>
     {% endif %}

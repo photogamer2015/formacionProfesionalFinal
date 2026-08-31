@@ -11,6 +11,7 @@ Incluye:
 
 from collections import defaultdict
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -18,6 +19,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
 from .forms import ComprobanteForm
@@ -29,7 +31,7 @@ from .models import (
     Comprobante, Curso, Matricula, PerfilUsuario, RecuperacionPendiente,
 )
 from .permisos import (
-    admin_requerido, es_admin, es_asesor, matricula_requerida,
+    es_admin, es_asesor, matricula_requerida,
 )
 from .busqueda import filtrar_queryset_busqueda
 from .views_social import contexto_social_perfil
@@ -37,6 +39,40 @@ from .views_social import contexto_social_perfil
 
 User = get_user_model()
 MURAL_MAX_SELECCIONES = 6
+
+
+def _normalizar_rango_fechas(request):
+    desde = (request.GET.get('desde') or '').strip()
+    hasta = (request.GET.get('hasta') or '').strip()
+    desde_fecha = parse_date(desde) if desde else None
+    hasta_fecha = parse_date(hasta) if hasta else None
+
+    if desde and desde_fecha is None:
+        desde = ''
+    if hasta and hasta_fecha is None:
+        hasta = ''
+    if desde_fecha and hasta_fecha and desde_fecha > hasta_fecha:
+        desde_fecha, hasta_fecha = hasta_fecha, desde_fecha
+        desde, hasta = desde_fecha.isoformat(), hasta_fecha.isoformat()
+
+    return desde, hasta, desde_fecha, hasta_fecha
+
+
+def _aplicar_rango_fechas(qs, desde_fecha, hasta_fecha):
+    if desde_fecha:
+        qs = qs.filter(fecha_inscripcion__gte=desde_fecha)
+    if hasta_fecha:
+        qs = qs.filter(fecha_inscripcion__lte=hasta_fecha)
+    return qs
+
+
+def _rango_querystring(desde, hasta):
+    params = {}
+    if desde:
+        params['desde'] = desde
+    if hasta:
+        params['hasta'] = hasta
+    return urlencode(params)
 
 
 def _opciones_mural(opciones, seleccionadas):
@@ -268,36 +304,39 @@ def comprobante_lista(request):
 # Totales de venta — Ranking de asesoras
 # ═════════════════════════════════════════════════════════════════
 
-@admin_requerido
+@matricula_requerida
 def comprobante_totales(request):
     """
-    Ranking de vendedoras: cuántas ventas hizo cada una y por cuánto.
+    Ranking de vendedoras por número de ventas.
+
+    El administrador también ve los montos; las asesoras reciben únicamente
+    cantidades para no exponer información financiera del equipo.
     Permite filtrar por rango de fechas (opcional).
-
-    NOTA: Este ranking comparativo del equipo es exclusivo del administrador.
-    Los asesores solo pueden ver su propio perfil de ventas.
     """
-    desde = (request.GET.get('desde') or '').strip()
-    hasta = (request.GET.get('hasta') or '').strip()
+    desde, hasta, desde_fecha, hasta_fecha = _normalizar_rango_fechas(request)
+    mostrar_montos = es_admin(request.user)
 
-    qs = Comprobante.objects.all()
-    if desde:
-        qs = qs.filter(fecha_inscripcion__gte=desde)
-    if hasta:
-        qs = qs.filter(fecha_inscripcion__lte=hasta)
+    qs = _aplicar_rango_fechas(Comprobante.objects.all(), desde_fecha, hasta_fecha)
+    rango_querystring = _rango_querystring(desde, hasta)
 
     # Agrupar por vendedora
-    ranking = (
+    ranking_base = (
         qs.values('vendedora_id', 'vendedora__first_name',
                   'vendedora__last_name', 'vendedora__username')
         .annotate(
             num_ventas=Count('id'),
-            total_pago=Sum('pago_abono'),
-            total_diferencia=Sum('diferencia'),
             ventas_retiro=Count('id', filter=Q(matricula__estado='retiro_voluntario')),
         )
-        .order_by('-num_ventas', '-total_pago')
     )
+    if mostrar_montos:
+        ranking = ranking_base.annotate(
+            total_pago=Sum('pago_abono'),
+            total_diferencia=Sum('diferencia'),
+        ).order_by('-num_ventas', '-total_pago')
+    else:
+        ranking = ranking_base.order_by(
+            '-num_ventas', 'vendedora__first_name', 'vendedora__username',
+        )
 
     # Procesar para template
     ranking_list = []
@@ -306,36 +345,45 @@ def comprobante_totales(request):
             f"{row['vendedora__first_name']} {row['vendedora__last_name']}".strip()
             or row['vendedora__username']
         )
-        pago = row['total_pago'] or Decimal('0.00')
-        dif = row['total_diferencia'] or Decimal('0.00')
-        ranking_list.append({
+        item = {
             'vendedora_id': row['vendedora_id'],
             'nombre': nombre,
             'num_ventas': row['num_ventas'],
             'ventas_activas': row['num_ventas'] - row['ventas_retiro'],
             'ventas_retiro': row['ventas_retiro'],
-            'total_pago': pago,
-            'total_diferencia': dif,
-            'total_general': pago + dif,
-        })
+        }
+        if mostrar_montos:
+            pago = row['total_pago'] or Decimal('0.00')
+            diferencia = row['total_diferencia'] or Decimal('0.00')
+            item.update({
+                'total_pago': pago,
+                'total_diferencia': diferencia,
+                'total_general': pago + diferencia,
+            })
+        ranking_list.append(item)
 
     # Totales globales
     total_ventas = qs.count()
     total_retiros = qs.filter(matricula__estado='retiro_voluntario').count()
     total_activas = total_ventas - total_retiros
-    total_cobrado = qs.aggregate(s=Sum('pago_abono'))['s'] or Decimal('0.00')
-    total_pendiente = qs.aggregate(s=Sum('diferencia'))['s'] or Decimal('0.00')
-    total_general = total_cobrado + total_pendiente
+    total_cobrado = None
+    total_pendiente = None
+    total_general = None
+    if mostrar_montos:
+        total_cobrado = qs.aggregate(s=Sum('pago_abono'))['s'] or Decimal('0.00')
+        total_pendiente = qs.aggregate(s=Sum('diferencia'))['s'] or Decimal('0.00')
+        total_general = total_cobrado + total_pendiente
 
     # Ranking por curso
-    por_curso = (
-        qs.values('curso_id', 'curso__nombre')
-        .annotate(
-            num_ventas=Count('id'),
-            total_pago=Sum('pago_abono'),
-        )
-        .order_by('-num_ventas')[:10]
+    por_curso_base = qs.values('curso_id', 'curso__nombre').annotate(
+        num_ventas=Count('id'),
     )
+    if mostrar_montos:
+        por_curso = por_curso_base.annotate(
+            total_pago=Sum('pago_abono'),
+        ).order_by('-num_ventas')[:10]
+    else:
+        por_curso = por_curso_base.order_by('-num_ventas', 'curso__nombre')[:10]
 
     return render(request, 'comprobantes/totales.html', {
         'ranking': ranking_list,
@@ -346,6 +394,59 @@ def comprobante_totales(request):
         'total_cobrado': total_cobrado,
         'total_pendiente': total_pendiente,
         'total_general': total_general,
+        'mostrar_montos': mostrar_montos,
+        'rango_querystring': rango_querystring,
+        'filtros': {
+            'desde': desde,
+            'hasta': hasta,
+        },
+    })
+
+
+@matricula_requerida
+def comprobante_asesor_ventas(request, vendedora_id):
+    """
+    Lista las ventas de una vendedora concreta.
+
+    El administrador ve montos; la asesora conserva una vista solo de
+    cantidades y datos operativos de la venta.
+    """
+    asesor = get_object_or_404(User, pk=vendedora_id)
+    desde, hasta, desde_fecha, hasta_fecha = _normalizar_rango_fechas(request)
+    mostrar_montos = es_admin(request.user)
+
+    ventas = (
+        Comprobante.objects
+        .filter(vendedora_id=vendedora_id)
+        .select_related('curso', 'matricula')
+        .order_by('-fecha_inscripcion', '-id')
+    )
+    ventas = _aplicar_rango_fechas(ventas, desde_fecha, hasta_fecha)
+
+    total_ventas = ventas.count()
+    total_retiros = ventas.filter(matricula__estado='retiro_voluntario').count()
+    total_activas = total_ventas - total_retiros
+    total_cobrado = None
+    total_pendiente = None
+    total_general = None
+    if mostrar_montos:
+        total_cobrado = ventas.aggregate(s=Sum('pago_abono'))['s'] or Decimal('0.00')
+        total_pendiente = ventas.aggregate(s=Sum('diferencia'))['s'] or Decimal('0.00')
+        total_general = total_cobrado + total_pendiente
+
+    rango_querystring = _rango_querystring(desde, hasta)
+
+    return render(request, 'comprobantes/asesor_ventas.html', {
+        'asesor': asesor,
+        'ventas': ventas,
+        'total_ventas': total_ventas,
+        'total_activas': total_activas,
+        'total_retiros': total_retiros,
+        'total_cobrado': total_cobrado,
+        'total_pendiente': total_pendiente,
+        'total_general': total_general,
+        'mostrar_montos': mostrar_montos,
+        'rango_querystring': rango_querystring,
         'filtros': {
             'desde': desde,
             'hasta': hasta,

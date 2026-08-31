@@ -1,141 +1,202 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}Totales de Venta — Ranking{% endblock %}
+{% block title %}Ranking de Vendedoras{% if not mostrar_montos %} (Asesora){% endif %}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'ranking_vendedoras.css' %}?v=20260831-2">
+{% endblock %}
 
 {% block content %}
-<h2 class="page-title">🏆 Totales de Venta</h2>
-<p class="page-subtitle">
-    Ranking de asesoras por número de ventas y monto total.
-    Mira quién va liderando el equipo.
-</p>
+<nav class="crumb" aria-label="Ruta de navegación">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    Ranking de Vendedoras{% if not mostrar_montos %} (Asesora){% endif %}
+</nav>
 
-{# ─── Filtros de fechas ─── #}
-<div class="card-box" style="margin-bottom:18px; padding:16px;">
-    <form method="get" style="display:grid; grid-template-columns: 1fr 1fr auto auto; gap:10px; align-items:end;">
-        <div>
-            <label class="form-label" style="font-size:11px;">Desde</label>
-            <input type="date" name="desde" value="{{ filtros.desde }}" class="form-input">
+<div class="ranking-heading">
+    <div>
+        <h2 class="page-title">🏆 Ranking de Vendedoras{% if not mostrar_montos %} (Asesora){% endif %}</h2>
+        <p class="page-subtitle">
+            {% if mostrar_montos %}
+                Ventas por asesora, monto total y desempeño del equipo.
+            {% else %}
+                Consulta el desempeño del equipo por cantidad de ventas.
+                Los valores monetarios son privados para administración.
+            {% endif %}
+        </p>
+    </div>
+    {% if not mostrar_montos %}
+    <span class="ranking-role-badge">🛡️ Vista asesora · solo cantidades</span>
+    {% endif %}
+</div>
+
+{# ─── Filtro profesional de fecha / rango ─── #}
+<div class="card-box ranking-filter-card">
+    <form method="get" class="ranking-filter-form" id="ranking-filter-form">
+        <div class="ranking-date-picker" data-ranking-date-picker data-default-label="Fecha">
+            <label class="form-label" id="ranking-date-label">Fecha de inscripción</label>
+            <input type="hidden" name="desde" value="{{ filtros.desde }}" data-date-start>
+            <input type="hidden" name="hasta" value="{{ filtros.hasta }}" data-date-end>
+
+            <button
+                type="button"
+                class="ranking-date-trigger"
+                data-date-trigger
+                aria-haspopup="dialog"
+                aria-expanded="false"
+                aria-labelledby="ranking-date-label ranking-date-trigger-text"
+            >
+                <span aria-hidden="true">📅</span>
+                <span id="ranking-date-trigger-text" class="ranking-date-trigger-text" data-date-trigger-text>Fecha</span>
+                <span class="ranking-date-caret" aria-hidden="true">▾</span>
+            </button>
+
+            <div class="ranking-date-popover" data-date-popover role="dialog" aria-label="Seleccionar fecha" hidden>
+                <div class="ranking-date-layout">
+                    <div class="ranking-date-presets" aria-label="Rangos rápidos">
+                        <div class="ranking-date-presets-title">Fecha</div>
+                        <button type="button" class="ranking-date-preset" data-date-preset="all">Sin filtro</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="today">Hoy</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="yesterday">Ayer</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="last7">Últimos 7 días</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="last14">Últimos 14 días</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="last30">Últimos 30 días</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="thisWeek">Esta semana</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="thisMonth">Este mes</button>
+                        <button type="button" class="ranking-date-preset" data-date-preset="lastMonth">El mes pasado</button>
+                    </div>
+
+                    <div class="ranking-date-main">
+                        <div class="ranking-date-calendars">
+                            <div class="ranking-date-calendar" data-date-calendar="0"></div>
+                            <div class="ranking-date-calendar" data-date-calendar="1"></div>
+                        </div>
+                        <p class="ranking-date-hint" data-date-hint>Selecciona una fecha.</p>
+                    </div>
+                </div>
+
+                <div class="ranking-date-footer">
+                    <label class="ranking-date-range-toggle">
+                        <input type="checkbox" data-date-range-mode>
+                        <span>Ver por rango</span>
+                    </label>
+                    <div class="ranking-date-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" data-date-clear>Limpiar</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-date-cancel>Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm" data-date-accept>Aceptar</button>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div>
-            <label class="form-label" style="font-size:11px;">Hasta</label>
-            <input type="date" name="hasta" value="{{ filtros.hasta }}" class="form-input">
+
+        <div class="ranking-filter-actions">
+            <button type="submit" class="btn btn-primary">Filtrar</button>
+            <a href="{% url 'academia:comprobante_totales' %}" class="btn btn-secondary">Limpiar</a>
         </div>
-        <div><button type="submit" class="btn btn-primary btn-sm">Filtrar</button></div>
-        <div><a href="{% url 'academia:comprobante_totales' %}" class="btn btn-secondary btn-sm">Limpiar</a></div>
     </form>
 </div>
 
-
-<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:24px;">
-    <div class="card-box" style="border-top:4px solid #1a237e; padding:16px;">
-        <div style="font-size:11px; color:#888; font-weight:600; letter-spacing:0.5px;">TOTAL VENTAS</div>
-        <div style="font-size:26px; font-weight:700; color:#1a237e; margin-top:4px;">{{ total_ventas }}</div>
-        <div style="font-size:12px; color:#666; margin-top:4px; display:flex; gap:10px;">
-            <span><span style="color:#2e7d32; font-weight:bold;">+</span> {{ total_activas }}</span>
-            <span><span style="color:#c62828; font-weight:bold;">-</span> {{ total_retiros }}</span>
+<div class="ranking-summary{% if not mostrar_montos %} ranking-summary-counts-only{% endif %}">
+    <div class="card-box ranking-summary-card ranking-summary-sales">
+        <div class="ranking-summary-label">TOTAL VENTAS</div>
+        <div class="ranking-summary-value">{{ total_ventas }}</div>
+        <div class="ranking-summary-breakdown">
+            <span><strong class="ranking-positive">+</strong> {{ total_activas }} activas</span>
+            <span><strong class="ranking-negative">−</strong> {{ total_retiros }} retiros</span>
         </div>
     </div>
-    <div class="card-box" style="border-top:4px solid #FFD700; padding:16px;">
-        <div style="font-size:11px; color:#888; font-weight:600; letter-spacing:0.5px;">TOTAL GENERAL</div>
-        <div style="font-size:22px; font-weight:700; color:#1a237e; margin-top:4px;">${{ total_general|floatformat:2 }}
-        </div>
+    {% if mostrar_montos %}
+    <div class="card-box ranking-summary-card ranking-summary-money">
+        <div class="ranking-summary-label">TOTAL GENERAL</div>
+        <div class="ranking-summary-value">${{ total_general|floatformat:2 }}</div>
     </div>
+    {% endif %}
 </div>
 
-<div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
-
-    {# ─── Ranking de asesoras ─── #}
-    <div>
-        <h3 style="font-size:18px; color:#1a237e; margin-bottom:12px;">🥇 Ranking de Asesoras</h3>
+<div class="ranking-content-grid">
+    <section aria-labelledby="ranking-list-title">
+        <h3 id="ranking-list-title" class="ranking-section-title">🥇 Ranking de Asesoras</h3>
 
         {% if ranking %}
-        <div class="card-box" style="padding: 0; overflow: hidden;">
+        <div class="card-box ranking-list">
             {% for r in ranking %}
-            <div
-                style="display:flex; align-items:center; padding:16px 20px; gap:16px;
-                        {% if not forloop.last %}border-bottom:1px solid #f0f0f0;{% endif %}
-                        {% if forloop.counter == 1 %}background: linear-gradient(90deg, #fff8e1 0%, white 100%);{% endif %}">
-
-                {# Posición #}
-                <div style="
-                    width: 44px; height: 44px; border-radius: 50%;
-                    display: flex; align-items: center; justify-content: center;
-                    font-size: 18px; font-weight: 700; flex-shrink: 0;
-                    {% if forloop.counter == 1 %}background: #FFD700; color: #1a237e;
-                    {% elif forloop.counter == 2 %}background: #cfd8dc; color: #455a64;
-                    {% elif forloop.counter == 3 %}background: #ffccbc; color: #bf360c;
-                    {% else %}background: #e0e0e0; color: #666;{% endif %}">
+            <article class="ranking-row{% if forloop.counter == 1 %} ranking-row-first{% endif %}">
+                <div class="ranking-position ranking-position-{{ forloop.counter }}">
                     {% if forloop.counter == 1 %}🥇
                     {% elif forloop.counter == 2 %}🥈
                     {% elif forloop.counter == 3 %}🥉
                     {% else %}{{ forloop.counter }}{% endif %}
                 </div>
 
-                {# Datos #}
-                <div style="flex: 1; min-width: 0;">
-                    <div style="font-size:15px; font-weight:600; color:#1a237e;">
-                        {{ r.nombre }}
-                    </div>
-                    <div style="font-size:12px; color:#666; margin-top:2px;">
-                        <span style="font-weight:600;">{{ r.num_ventas }}</span> venta{{ r.num_ventas|pluralize }} &nbsp;·&nbsp;
-                        <span style="color:#2e7d32; font-weight:bold;">+</span> {{ r.ventas_activas }} &nbsp;
-                        <span style="color:#c62828; font-weight:bold;">-</span> {{ r.ventas_retiro }}
+                <div class="ranking-person">
+                    <div class="ranking-person-name">{{ r.nombre }}</div>
+                    <div class="ranking-person-stats">
+                        <strong>{{ r.num_ventas }}</strong> venta{{ r.num_ventas|pluralize }}
+                        <span aria-hidden="true">·</span>
+                        <span title="Ventas activas"><strong class="ranking-positive">+</strong> {{ r.ventas_activas }}</span>
+                        <span title="Retiros"><strong class="ranking-negative">−</strong> {{ r.ventas_retiro }}</span>
                     </div>
                 </div>
 
-                {# Total y Botón #}
-                <div style="text-align:right; flex-shrink: 0; display:flex; flex-direction:column; align-items:flex-end;">
-                    <div style="font-size:11px; color:#888;">TOTAL</div>
-                    <div style="font-size:18px; font-weight:700; color:#1a237e; margin-bottom:4px;">
-                        ${{ r.total_general|floatformat:2 }}
+                <div class="ranking-row-side">
+                    {% if mostrar_montos %}
+                    <div class="ranking-money-label">TOTAL</div>
+                    <div class="ranking-money-value">${{ r.total_general|floatformat:2 }}</div>
+                    {% else %}
+                    <div class="ranking-count-label">VENTAS</div>
+                    <div class="ranking-count-value">{{ r.num_ventas }}</div>
+                    {% endif %}
+                    <div class="ranking-row-actions">
+                        <a
+                            href="{% url 'academia:comprobante_asesor_ventas' r.vendedora_id %}{% if rango_querystring %}?{{ rango_querystring }}{% endif %}"
+                            class="btn btn-primary btn-sm ranking-detail-button ranking-sales-button"
+                        >Ver ventas</a>
+                        <a
+                            href="{% url 'academia:comprobante_asesor_detalle' r.vendedora_id %}"
+                            class="btn btn-secondary btn-sm ranking-detail-button ranking-profile-button"
+                        >Ver perfil</a>
                     </div>
-                    <a href="{% url 'academia:comprobante_asesor_detalle' r.vendedora_id %}" class="btn btn-secondary btn-sm" style="font-size:10px; padding:4px 8px;">
-                        Ver detalle
-                    </a>
                 </div>
-            </div>
+            </article>
             {% endfor %}
         </div>
         {% else %}
-        <div class="empty-state">
+        <div class="empty-state ranking-empty">
             <p>No hay ventas registradas en el rango seleccionado.</p>
-            <a href="{% url 'academia:comprobante_registrar' %}" class="btn btn-primary" style="margin-top: 12px;">
-                ＋ Registrar primera venta
-            </a>
+            <a href="{% url 'academia:comprobante_registrar' %}" class="btn btn-primary">＋ Registrar primera venta</a>
         </div>
         {% endif %}
-    </div>
+    </section>
 
-    {# ─── Top cursos ─── #}
-    <div>
-        <h3 style="font-size:18px; color:#1a237e; margin-bottom:12px;">📚 Top Cursos</h3>
+    <aside aria-labelledby="ranking-courses-title">
+        <h3 id="ranking-courses-title" class="ranking-section-title">📚 Top Cursos</h3>
 
         {% if por_curso %}
-        <div class="card-box" style="padding: 0; overflow: hidden;">
+        <div class="card-box ranking-course-list">
             {% for c in por_curso %}
-            <div style="padding:12px 16px;
-                        {% if not forloop.last %}border-bottom:1px solid #f0f0f0;{% endif %}">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                    <div
-                        style="font-size:13px; font-weight:600; color:#1a237e; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;">
-                        {{ c.curso__nombre }}
-                    </div>
-                    <span class="badge" style="background:#e8eaf6; color:#1a237e;">
-                        {{ c.num_ventas }}
-                    </span>
+            <div class="ranking-course-row">
+                <div class="ranking-course-heading">
+                    <div class="ranking-course-name">{{ c.curso__nombre }}</div>
+                    <span class="badge ranking-course-count">{{ c.num_ventas }}</span>
                 </div>
-                <div style="font-size:11px; color:#666; margin-top:4px;">
-                    ${{ c.total_pago|default:"0.00"|floatformat:2 }} cobrados
+                <div class="ranking-course-caption">
+                    {{ c.num_ventas }} venta{{ c.num_ventas|pluralize }}
+                    {% if mostrar_montos %}
+                        · ${{ c.total_pago|default:"0.00"|floatformat:2 }} cobrados
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <div class="empty-state" style="padding:20px;">
-            <p style="font-size:13px;">Sin datos por curso.</p>
+        <div class="empty-state ranking-empty-small">
+            <p>Sin datos por curso.</p>
         </div>
         {% endif %}
-    </div>
-
+    </aside>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'ranking_vendedoras.js' %}?v=20260831-2"></script>
 {% endblock %}
