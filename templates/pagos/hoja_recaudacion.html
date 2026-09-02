@@ -335,10 +335,18 @@
         .print-only { display: inline !important; }
         .hoja-tabla {
             width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
             table-layout: fixed !important;
             border-collapse: collapse !important;
             font-size: 7.4px !important;
             line-height: 1.18 !important;
+        }
+        .hoja-tabla-wrap {
+            border: 0 !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+            box-shadow: none !important;
         }
         .hoja-tabla th,
         .hoja-tabla td {
@@ -421,7 +429,8 @@
     .hoja-meta strong { color: #1a237e; }
 
     .hoja-tabla {
-        width: 100%;
+        width: max-content;
+        min-width: 1560px;
         border-collapse: collapse;
         font-size: 12px;
     }
@@ -440,6 +449,31 @@
         text-transform: uppercase;
     }
     .hoja-tabla tr:nth-child(even) td { background: #fafafa; }
+    .hoja-tabla-wrap {
+        margin-top: 2px;
+        border: 1px solid #dde3ec;
+        border-radius: 7px;
+        overflow-x: auto;
+        box-shadow: none;
+    }
+    .hoja-tabla .hoja-col-num { min-width: 44px; text-align: center; }
+    .hoja-tabla .hoja-col-estudiante {
+        min-width: 285px;
+        max-width: 330px;
+        white-space: normal;
+    }
+    .hoja-tabla .hoja-col-inicio { min-width: 128px; text-align: center; }
+    .hoja-tabla .hoja-col-modulo { min-width: 105px; text-align: center; }
+    .hoja-tabla .hoja-col-cuota { min-width: 145px; text-align: right; }
+    .hoja-tabla .hoja-col-recaudado { min-width: 122px; text-align: right; }
+    .hoja-tabla .hoja-col-forma { min-width: 155px; }
+    .hoja-tabla .hoja-col-banco { min-width: 132px; }
+    .hoja-tabla .hoja-col-asistencia { min-width: 122px; text-align: center; }
+    .hoja-tabla .hoja-col-recuperacion { min-width: 158px; }
+    .hoja-estudiante-nombre {
+        font-weight: 600;
+        color: #18233f;
+    }
     .hoja-totales {
         background: #fff8e1;
         padding: 12px 16px;
@@ -1045,54 +1079,72 @@
         <div><strong>RESPONSABLE:</strong> {{ hoja.responsable }} · <strong>ESTUDIANTES:</strong> {{ hoja.items|length }}</div>
     </div>
 
-    <table class="hoja-tabla">
+    <div class="hoja-tabla-wrap responsive-table-shell"
+         data-responsive-label="Hoja de recaudación de {{ hoja.jornada_label }}">
+    <table class="hoja-tabla" data-table-navigation="true" data-table-identity-column="1"
+           aria-label="Hoja de recaudación de {{ hoja.jornada_label }}">
         <thead>
             <tr>
-                <th style="width:30px; text-align:center;">#</th>
-                <th>Nombre del estudiante</th>
-                <th style="width:90px; text-align:center;">Inicio jornada</th>
-                <th style="width:82px; text-align:center;">Mód.</th>
-                <th class="col-cuota" style="width:100px; text-align:right;">
+                <th class="hoja-col-num" style="width:30px; text-align:center;">#</th>
+                <th class="hoja-col-estudiante fp-table-identity-column">Nombre del estudiante</th>
+                <th class="hoja-col-inicio" style="width:90px; text-align:center;">Inicio jornada</th>
+                <th class="hoja-col-modulo" style="width:82px; text-align:center;">Mód.</th>
+                <th class="col-cuota hoja-col-cuota" style="width:100px; text-align:right;">
                     <span class="screen-only">A Recaudar (Módulo)</span>
                     <span class="print-only">Saldo a recaudar</span>
                 </th>
-                <th style="width:80px; text-align:right;">Recaudado</th>
-                <th style="width:120px;">Forma de pago</th>
-                <th style="width:110px;">Banco</th>
-                <th style="width:80px; text-align:center;">Asistencia</th>
-                <th style="width:110px;">Recuperación</th>
+                <th class="hoja-col-recaudado" style="width:80px; text-align:right;">Recaudado</th>
+                <th class="hoja-col-forma" style="width:120px;">Forma de pago</th>
+                <th class="hoja-col-banco" style="width:110px;">Banco</th>
+                <th class="hoja-col-asistencia" style="width:80px; text-align:center;">Asistencia</th>
+                <th class="hoja-col-recuperacion" style="width:110px;">Recuperación</th>
             </tr>
         </thead>
         <tbody>
             {% for item in hoja.items %}
             <tr>
-                <td style="text-align:center; color:#888;">{{ forloop.counter }}</td>
-                <td>
-                    {{ item.estudiante.nombre_completo }}
+                <td class="hoja-col-num" style="text-align:center; color:#888;">{{ forloop.counter }}</td>
+                <td class="hoja-col-estudiante fp-table-identity-column">
+                    <div class="hoja-estudiante-nombre">
+                        {{ item.estudiante.nombre_completo }}
+                    </div>
                     {% if item.talla %}<span style="color:#888; font-size:10px;">({{ item.talla }})</span>{% endif %}
+                    <div class="fp-table-identity-context" aria-hidden="true">
+                        <span class="fp-table-identity-context__item">
+                            <strong>Inicio:</strong>
+                            {% if item.jornada_inicio %}{{ item.jornada_inicio|date:"d/m/Y" }}{% else %}—{% endif %}
+                        </span>
+                        <span class="fp-table-identity-context__item">
+                            <strong>Módulo:</strong> {{ item.modulo_label }}
+                        </span>
+                        <span class="fp-table-identity-context__item">
+                            <strong>Pago:</strong> {{ item.forma_pago }}
+                        </span>
+                    </div>
                 </td>
-                <td style="text-align:center; font-size:11px;">
+                <td class="hoja-col-inicio" style="text-align:center; font-size:11px;">
                     {% if item.jornada_inicio %}{{ item.jornada_inicio|date:"d/m/Y" }}{% else %}—{% endif %}
                 </td>
-                <td style="text-align:center; font-weight:700;">{{ item.modulo_label }}</td>
-                <td class="celda-cuota col-cuota" style="text-align:right; font-weight:600; color:#1a237e;"
+                <td class="hoja-col-modulo" style="text-align:center; font-weight:700;">{{ item.modulo_label }}</td>
+                <td class="celda-cuota col-cuota hoja-col-cuota" style="text-align:right; font-weight:600; color:#1a237e;"
                     data-matricula="{{ item.matricula_id }}"
                     data-auto="{{ item.cuota_sugerida|unlocalize }}"
                     data-saldo="{{ item.saldo_modulo|unlocalize }}"
                     data-manual="{% if item.cuota_manual %}1{% else %}0{% endif %}">{% if item.cuota_manual %}<span class="marca-manual" title="Cuota fijada manualmente para esta fecha">✏️</span> {% endif %}${{ item.cuota_sugerida|floatformat:2 }}</td>
-                <td style="text-align:right; font-weight:700; color:{% if item.recaudado > 0 %}#2e7d32{% else %}#999{% endif %};">
+                <td class="hoja-col-recaudado" style="text-align:right; font-weight:700; color:{% if item.recaudado > 0 %}#2e7d32{% else %}#999{% endif %};">
                     ${{ item.recaudado|floatformat:2 }}
                 </td>
-                <td>{{ item.forma_pago }}</td>
-                <td>{{ item.banco }}</td>
-                <td style="text-align:center;">{{ item.asistencia }}</td>
-                <td style="font-weight:700; color:#8a5a00; {% if item.recuperacion %}background:#fff8e1; border-left:2px solid #f0ad4e;{% endif %}">
+                <td class="hoja-col-forma">{{ item.forma_pago }}</td>
+                <td class="hoja-col-banco">{{ item.banco }}</td>
+                <td class="hoja-col-asistencia" style="text-align:center;">{{ item.asistencia }}</td>
+                <td class="hoja-col-recuperacion" style="font-weight:700; color:#8a5a00; {% if item.recuperacion %}background:#fff8e1; border-left:2px solid #f0ad4e;{% endif %}">
                     {{ item.recuperacion }}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
 
     <div class="hoja-totales">
         <div>

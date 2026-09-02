@@ -3965,6 +3965,14 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertContains(response, 'Exportar a Excel')
         self.assertNotContains(response, 'Exportar a PDF')
         self.assertNotContains(response, 'type="date" name="fecha"')
+        self.assertContains(response, 'hoja-tabla-wrap responsive-table-shell')
+        self.assertContains(response, 'data-table-navigation="true"')
+        self.assertContains(response, 'data-table-identity-column="1"')
+        self.assertContains(response, 'fp-table-identity-context')
+        self.assertContains(response, '<strong>Inicio:</strong>')
+        self.assertContains(response, '<strong>Módulo:</strong> Módulo 1')
+        self.assertContains(response, 'min-width: 1560px;')
+        self.assertContains(response, 'min-width: 0 !important;')
 
     def test_hoja_recaudacion_rango_suma_pagos_del_periodo(self):
         admin = User.objects.create_superuser(
