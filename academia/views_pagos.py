@@ -3866,6 +3866,7 @@ def _recaudacion_filtros(fecha, fecha_desde, fecha_hasta, ciudad,
         'fecha': fecha,
         'fecha_desde': fecha_desde,
         'fecha_hasta': fecha_hasta,
+        'fecha_guardado': fecha or fecha_hasta,
         'ciudad': ciudad,
         'curso': curso_id,
         'jornada': jornada_id,
@@ -5050,7 +5051,8 @@ def hoja_recaudacion_export_excel(request):
     headers = [
         'Curso', 'Jornada', 'Fecha', 'Día', 'Ciudad', 'Responsable', '#',
         'Estudiante', 'Inicio jornada', 'Mód.',
-        'Recaudado', 'Forma de pago', 'Banco', 'Recuperación', 'Talla',
+        'A Recaudar (Módulo)', 'Recaudado', 'Forma de pago', 'Banco',
+        'Recuperación', 'Talla',
     ]
     rows = []
     for h in hojas:
@@ -5067,6 +5069,7 @@ def hoja_recaudacion_export_excel(request):
                 else f"{item['estudiante'].nombres}".strip(),
                 item['jornada_inicio'] if item['jornada_inicio'] else '',
                 item['modulo_label'],
+                float(item['cuota_sugerida'] or 0),
                 float(item['recaudado'] or 0),
                 item['forma_pago'],
                 item['banco'],
@@ -5085,6 +5088,7 @@ def hoja_recaudacion_export_excel(request):
             2: 'dd/mm/yyyy',
             8: 'dd/mm/yyyy',
             10: '"$"#,##0.00',
+            11: '"$"#,##0.00',
         },
     )
 

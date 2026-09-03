@@ -525,27 +525,31 @@
     {% endif %}
 </div>
 
-{% if hojas and not filtros.es_rango %}
+{% if hojas %}
 {% comment %}
    Modo manual de recaudación: al activarlo, la columna "A Recaudar (Módulo)"
    se vuelve editable por estudiante y los totales se recalculan al instante.
    La lógica de cobranza se mantiene: la cuota manual nunca puede superar el
-   saldo del módulo vigente ni ser negativa. "Guardar cambios" persiste
-   los valores para ESTA fecha y desde entonces salen igual en la vista, la
-   impresión y el Excel. Dejar una cuota igual a la automática
+   saldo del módulo vigente ni ser negativa. En rangos se usa la fecha final
+   como fecha efectiva del plan. "Guardar cambios" persiste los valores y
+   desde entonces salen igual en la vista, la impresión y el Excel.
+   Dejar una cuota igual a la automática
    la restaura al cálculo dinámico del sistema.
 {% endcomment %}
 <div class="card-box no-print" id="panel-cuota-manual"
      style="margin-bottom:14px; padding:12px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; border-left:4px solid #1a237e;">
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:#1a237e; font-size:13px; margin:0;">
-        <input type="checkbox" id="chk-cuota-manual" style="width:17px; height:17px; cursor:pointer;">
-        ✏️ Poner el recaudar manualmente
-    </label>
+    <input type="checkbox" id="chk-cuota-manual" hidden>
+    <button type="button" id="btn-editar-cuotas" class="btn btn-secondary"
+            aria-pressed="false"
+            style="font-size:12.5px; padding:7px 14px;">
+        ✏️ Editar A Recaudar
+    </button>
     <span id="ayuda-cuota-manual" style="font-size:11.5px; color:#777; flex:1; min-width:260px;">
-        Activa esta opción para editar la columna "A Recaudar (Módulo)" de cada estudiante.
+        Usa el botón para editar la columna "A Recaudar (Módulo)" de cada estudiante.
         El total se recalcula solo y ninguna cuota puede superar el saldo del módulo vigente.
-        Con <strong>Guardar cambios</strong> los valores quedan fijos para esta fecha
-        (también en la impresión y el Excel); una cuota igual a la automática vuelve al cálculo del sistema.
+        Con <strong>Guardar cambios</strong> los valores quedan fijos
+        {% if filtros.es_rango %}para el final del período{% else %}para esta fecha{% endif %}
+        y también salen en el Excel; una cuota igual a la automática vuelve al cálculo del sistema.
     </span>
     <button type="button" id="btn-guardar-cuotas" class="btn btn-success"
             style="display:none; font-size:12.5px; padding:7px 14px;">
@@ -553,7 +557,7 @@
     </button>
     <span id="estado-guardado-cuotas" style="font-size:11.5px; font-weight:600;"></span>
     {% csrf_token %}
-    <span id="fecha-hoja-recaudacion" data-fecha="{{ filtros.fecha }}" hidden></span>
+    <span id="fecha-hoja-recaudacion" data-fecha="{{ filtros.fecha_guardado }}" hidden></span>
 </div>
 {% endif %}
 
@@ -1200,11 +1204,12 @@
     // Reglas de cobranza que se mantienen SIEMPRE:
     //   • 0 ≤ cuota manual ≤ saldo pendiente del módulo vigente
     //   • el total "A Recaudar (Cuotas)" de cada hoja = suma de sus cuotas
-    //   • "Guardar cambios" persiste los valores para ESTA fecha y desde
-    //     entonces salen igual en la vista, la impresión y Excel
+    //   • "Guardar cambios" persiste los valores para la fecha efectiva y
+    //     desde entonces salen igual en la vista, la impresión y Excel
     //   • una cuota igual a la automática se restaura al cálculo dinámico
     var chk = document.getElementById('chk-cuota-manual');
     if (!chk) return;
+    var btnEditar = document.getElementById('btn-editar-cuotas');
     var btnGuardar = document.getElementById('btn-guardar-cuotas');
     var estado = document.getElementById('estado-guardado-cuotas');
     var fechaEl = document.getElementById('fecha-hoja-recaudacion');
@@ -1219,6 +1224,14 @@
     function leerNumero(input) {
         var v = parseFloat(String(input.value).replace(',', '.'));
         return isNaN(v) ? 0 : v;
+    }
+
+    function sincronizarBotonEditar() {
+        if (!btnEditar) return;
+        btnEditar.setAttribute('aria-pressed', chk.checked ? 'true' : 'false');
+        btnEditar.textContent = chk.checked
+            ? '↩️ Cancelar edición'
+            : '✏️ Editar A Recaudar';
     }
 
     function recalcularHoja(hoja) {
@@ -1266,6 +1279,7 @@
             recalcularHoja(hoja);
         });
         if (btnGuardar) btnGuardar.style.display = 'inline-block';
+        sincronizarBotonEditar();
     }
 
     function desactivarManual() {
@@ -1282,10 +1296,17 @@
         });
         if (btnGuardar) btnGuardar.style.display = 'none';
         if (estado) estado.textContent = '';
+        sincronizarBotonEditar();
     }
 
     function guardarCuotas() {
-        if (!fechaEl || !fechaEl.dataset.fecha || !csrf) return;
+        if (!fechaEl || !fechaEl.dataset.fecha || !csrf) {
+            if (estado) {
+                estado.style.color = '#c62828';
+                estado.textContent = 'No se encontró la fecha para guardar.';
+            }
+            return;
+        }
         var cuotas = [];
         var invalidas = 0;
         document.querySelectorAll('.cuota-input').forEach(function (inp) {
@@ -1337,7 +1358,14 @@
             desactivarManual();
         }
     });
+    if (btnEditar) {
+        btnEditar.addEventListener('click', function () {
+            chk.checked = !chk.checked;
+            chk.dispatchEvent(new Event('change'));
+        });
+    }
     if (btnGuardar) btnGuardar.addEventListener('click', guardarCuotas);
+    sincronizarBotonEditar();
 })();
 </script>
 {% endif %}

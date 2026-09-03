@@ -3968,11 +3968,14 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertContains(response, 'hoja-tabla-wrap responsive-table-shell')
         self.assertContains(response, 'data-table-navigation="true"')
         self.assertContains(response, 'data-table-identity-column="1"')
+        self.assertContains(response, 'id="btn-editar-cuotas"')
+        self.assertContains(response, 'Editar A Recaudar')
         self.assertContains(response, 'fp-table-identity-context')
         self.assertContains(response, '<strong>Inicio:</strong>')
         self.assertContains(response, '<strong>Módulo:</strong> Módulo 1')
         self.assertContains(response, 'min-width: 1560px;')
         self.assertContains(response, 'min-width: 0 !important;')
+        self.assertContains(response, 'data-fecha="2026-07-30"')
 
     def test_hoja_recaudacion_rango_suma_pagos_del_periodo(self):
         admin = User.objects.create_superuser(
@@ -4031,9 +4034,24 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertTrue(filtros['es_rango'])
         self.assertEqual(filtros['fecha'], '')
         self.assertEqual(filtros['periodo_label'], '30/07/2026 - 01/08/2026')
+        self.assertEqual(filtros['fecha_guardado'], '2026-08-01')
         self.assertEqual(hojas[0]['items'][0]['recaudado'], Decimal('30.00'))
         self.assertEqual(hojas[0]['total_efectivo'], Decimal('10.00'))
         self.assertEqual(hojas[0]['total_transferencia'], Decimal('20.00'))
+
+        self.client.force_login(admin)
+        response = self.client.get(
+            reverse('academia:hoja_recaudacion'),
+            {
+                'fecha_desde': '2026-07-30',
+                'fecha_hasta': '2026-08-01',
+                'curso': str(self.curso.pk),
+            },
+        )
+        self.assertContains(response, 'id="btn-editar-cuotas"')
+        self.assertContains(response, 'Editar A Recaudar')
+        self.assertContains(response, 'data-fecha="2026-08-01"')
+        self.assertContains(response, 'para el final del período')
 
     def test_hoja_recaudacion_excel_no_incluye_fila_de_totales(self):
         admin = User.objects.create_superuser(
@@ -4083,10 +4101,74 @@ class PagoInicialMatriculaTests(TestCase):
         ]
         self.assertNotIn('Saldo Pend.', encabezados)
         self.assertNotIn('A Recaudar (Cuota)', encabezados)
+        self.assertIn('A Recaudar (Módulo)', encabezados)
         self.assertIn('Recaudado', encabezados)
         self.assertEqual(ws.cell(row=3, column=10).value, 'Módulo 1')
+        self.assertEqual(ws.cell(row=3, column=11).value, 22)
         self.assertIn(self.curso.nombre, primera_columna)
         self.assertNotIn('TOTAL', primera_columna)
+
+    def test_hoja_recaudacion_excel_usa_valor_manual_guardado_en_rango(self):
+        admin = User.objects.create_superuser(
+            username='admin_excel_manual_rango',
+            password='clave12345',
+        )
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('15.00'),
+            tipo_registro='central_ia',
+            registrado_por=admin,
+        )
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse('academia:hoja_recaudacion_guardar_cuotas'),
+            data=(
+                '{"fecha":"2026-08-01","cuotas":['
+                f'{{"matricula_id":{matricula.pk},"monto":"7.50"}}'
+                ']}'
+            ),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        self.assertTrue(
+            CuotaManualRecaudacion.objects.filter(
+                matricula=matricula,
+                fecha=date(2026, 8, 1),
+                monto=Decimal('7.50'),
+            ).exists()
+        )
+
+        response = self.client.get(
+            reverse('academia:hoja_recaudacion_export_excel'),
+            {
+                'fecha_desde': '2026-07-30',
+                'fecha_hasta': '2026-08-01',
+                'curso': str(self.curso.pk),
+            },
+        )
+
+        from openpyxl import load_workbook
+
+        self.assertEqual(response.status_code, 200)
+        wb = load_workbook(BytesIO(response.content), read_only=True)
+        ws = wb.active
+        encabezados = list(next(ws.iter_rows(
+            min_row=2,
+            max_row=2,
+            values_only=True,
+        )))
+        col_recaudar = encabezados.index('A Recaudar (Módulo)') + 1
+        self.assertEqual(ws.cell(row=3, column=col_recaudar).value, 7.5)
 
     def test_editar_solo_datos_oculta_campos_de_pago(self):
         admin = User.objects.create_superuser(
