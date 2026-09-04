@@ -4084,11 +4084,11 @@ class PagoInicialMatriculaTests(TestCase):
         from openpyxl import load_workbook
 
         self.assertEqual(response.status_code, 200)
-        wb = load_workbook(BytesIO(response.content), read_only=True)
+        wb = load_workbook(BytesIO(response.content))
         ws = wb.active
         encabezados = list(next(ws.iter_rows(
-            min_row=2,
-            max_row=2,
+            min_row=3,
+            max_row=3,
             values_only=True,
         )))
         primera_columna = [
@@ -4101,11 +4101,19 @@ class PagoInicialMatriculaTests(TestCase):
         ]
         self.assertNotIn('Saldo Pend.', encabezados)
         self.assertNotIn('A Recaudar (Cuota)', encabezados)
-        self.assertIn('A Recaudar (Módulo)', encabezados)
-        self.assertIn('Recaudado', encabezados)
-        self.assertEqual(ws.cell(row=3, column=10).value, 'Módulo 1')
-        self.assertEqual(ws.cell(row=3, column=11).value, 22)
-        self.assertIn(self.curso.nombre, primera_columna)
+        self.assertIn('RECAUDAR', encabezados)
+        self.assertIn('RECAUDADO', encabezados)
+        self.assertIn(self.curso.nombre.upper(), ws.cell(row=1, column=2).value)
+        self.assertIn('FECHA: JUEVES 30 DE JULIO', ws.cell(row=2, column=2).value)
+        self.assertEqual(ws.cell(row=3, column=2).value, 'NOMBRE DEL ESTUDIANTE')
+        self.assertEqual(ws.cell(row=3, column=10).value, 'RECUPERACIÓN')
+        self.assertEqual(ws.cell(row=4, column=3).value, 1)
+        self.assertEqual(ws.cell(row=4, column=4).value, 22)
+        self.assertEqual(ws.column_dimensions['B'].width, 42.38)
+        self.assertEqual(ws.cell(row=2, column=2).fill.fgColor.rgb, 'FF6D9EEB')
+        self.assertEqual(ws.cell(row=2, column=9).fill.fgColor.rgb, 'FF00FF00')
+        self.assertEqual(ws.cell(row=3, column=2).fill.fgColor.rgb, 'FFE06666')
+        self.assertEqual(ws.row_dimensions[4].height, 45)
         self.assertNotIn('TOTAL', primera_columna)
 
     def test_hoja_recaudacion_excel_usa_valor_manual_guardado_en_rango(self):
@@ -4163,12 +4171,12 @@ class PagoInicialMatriculaTests(TestCase):
         wb = load_workbook(BytesIO(response.content), read_only=True)
         ws = wb.active
         encabezados = list(next(ws.iter_rows(
-            min_row=2,
-            max_row=2,
+            min_row=3,
+            max_row=3,
             values_only=True,
         )))
-        col_recaudar = encabezados.index('A Recaudar (Módulo)') + 1
-        self.assertEqual(ws.cell(row=3, column=col_recaudar).value, 7.5)
+        col_recaudar = encabezados.index('RECAUDAR') + 1
+        self.assertEqual(ws.cell(row=4, column=col_recaudar).value, 7.5)
 
     def test_editar_solo_datos_oculta_campos_de_pago(self):
         admin = User.objects.create_superuser(
@@ -5139,6 +5147,11 @@ class PagosPorModuloFiltroTests(TestCase):
         self.assertTrue(modulo['es_recuperacion'])
         self.assertEqual(modulo['recuperacion_monto'], Decimal('30.00'))
         self.assertEqual(modulo['recuperacion_recibos'], abono.numero_recibo)
+        self.assertIn('Ya pagada', modulo['recuperacion_detalle'])
+        self.assertIn('Falta 10/07/2026', modulo['recuperacion_detalle'])
+        self.assertIn('Recuperar 12/07/2026', modulo['recuperacion_detalle'])
+        self.assertIn('Recuperó 12/07/2026', modulo['recuperacion_detalle'])
+        self.assertIn('$30.00', modulo['recuperacion_detalle'])
 
     def test_filtro_estado_modulo_recuperacion_muestra_recuperaciones(self):
         matricula_recuperacion = self._crear_matricula(
@@ -5173,6 +5186,85 @@ class PagosPorModuloFiltroTests(TestCase):
         self.assertEqual(modulo['numero'], 2)
         self.assertEqual(modulo['estado'], 'Pendiente')
         self.assertTrue(modulo['es_recuperacion'])
+        self.assertIn('Pendiente', modulo['recuperacion_detalle'])
+        self.assertIn('Falta 09/07/2026', modulo['recuperacion_detalle'])
+        self.assertIn('Saldo $90.00', modulo['recuperacion_detalle'])
+
+    def test_filtro_fecha_modulo_incluye_recuperacion_programada_pendiente(self):
+        matricula_dentro = self._crear_matricula(
+            '0981234567', 'Estudiante Recuperación Programada'
+        )
+        matricula_fuera = self._crear_matricula(
+            '0987654321', 'Estudiante Recuperación Fuera'
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula_dentro,
+            numero_modulo=2,
+            fecha_marcada=date(2026, 7, 9),
+            fecha_programada=date(2026, 7, 14),
+            saldo_pendiente_al_marcar=Decimal('90.00'),
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula_fuera,
+            numero_modulo=2,
+            fecha_marcada=date(2026, 7, 9),
+            fecha_programada=date(2026, 7, 20),
+            saldo_pendiente_al_marcar=Decimal('90.00'),
+        )
+
+        matriculas, _modulos, _resumen, modulos_visibles = _construir_matriz_pagos(
+            self.curso,
+            filtro_modulo_estado='2_Recuperacion',
+            fecha_modulo_desde=date(2026, 7, 14),
+            fecha_modulo_hasta=date(2026, 7, 14),
+        )
+
+        self.assertEqual(modulos_visibles, [2])
+        self.assertEqual(
+            [x['matricula'].pk for x in matriculas],
+            [matricula_dentro.pk],
+        )
+        modulo = matriculas[0]['modulos_visibles_data'][0]
+        self.assertTrue(modulo['coincide_fecha_modulo'])
+        self.assertIn(date(2026, 7, 14), modulo['recuperacion_fechas'])
+
+    def test_pagos_por_modulo_excel_exporta_detalle_de_recuperacion(self):
+        admin = User.objects.create_superuser(
+            username='admin_excel_modulo_recuperacion',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula(
+            '0981212121', 'Estudiante Excel Recuperación'
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=2,
+            fecha_marcada=date(2026, 7, 9),
+            fecha_programada=date(2026, 7, 14),
+            saldo_pendiente_al_marcar=Decimal('90.00'),
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse('academia:pagos_por_modulo_export_excel'),
+            {
+                'curso': str(self.curso.pk),
+                'filtro_modulo_estado': '2_Recuperacion',
+                'fecha_modulo_desde': '2026-07-14',
+                'fecha_modulo_hasta': '2026-07-14',
+            },
+        )
+
+        from openpyxl import load_workbook
+
+        self.assertEqual(response.status_code, 200)
+        wb = load_workbook(BytesIO(response.content), read_only=True)
+        ws = wb.active
+        modulo_cell = ws.cell(row=3, column=12).value
+        self.assertIn('Recuperación', modulo_cell)
+        self.assertIn('Falta 09/07/2026', modulo_cell)
+        self.assertIn('Recuperar 14/07/2026', modulo_cell)
+        self.assertIn('Saldo $90.00', modulo_cell)
 
     def test_filtro_fecha_modulo_filtra_por_rango_de_fecha_pago(self):
         matricula_antes = self._crear_matricula(
@@ -5739,7 +5831,12 @@ class PlanRecaudacionTests(TestCase):
 
         item = hojas[0]['items'][0]
         self.assertEqual(item['recaudado'], Decimal('25.00'))
-        self.assertEqual(item['recuperacion'], '✱ Pagada · Módulo 1')
+        self.assertIn('Ya pagada', item['recuperacion'])
+        self.assertIn('Módulo 1', item['recuperacion'])
+        self.assertIn('Falta 02/08/2026', item['recuperacion'])
+        self.assertIn('Recuperar 10/08/2026', item['recuperacion'])
+        self.assertIn('Recuperó 02/08/2026', item['recuperacion'])
+        self.assertIn('$25.00', item['recuperacion'])
 
     def test_hoja_recaudacion_usa_nombre_de_modulo_personalizado(self):
         matricula = self._matricula_con_adelanto(

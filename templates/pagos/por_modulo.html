@@ -343,7 +343,7 @@
             {% endif %}
         </div>
         <div class="filtro-fecha-modulo">
-            <label class="form-label" style="font-size:11px;">Fecha de módulo</label>
+            <label class="form-label" style="font-size:11px;">Fecha pago/recuperación</label>
             <div style="display:grid; grid-template-columns:repeat(2, minmax(120px, 1fr)); gap:8px;">
                 <div>
                     <div style="font-size:10px; color:#6b7280; margin-bottom:2px;">Desde</div>
@@ -365,7 +365,7 @@
             {% if not curso_sel %}
             <div style="font-size:10px; color:#999; margin-top:2px;">Selecciona un curso primero</div>
             {% elif filtros.fecha_modulo_label %}
-            <div style="font-size:10px; color:#1a237e; margin-top:2px;">Filtrando módulos con fecha {{ filtros.fecha_modulo_label }}</div>
+            <div style="font-size:10px; color:#1a237e; margin-top:2px;">Filtrando pagos o recuperaciones con fecha {{ filtros.fecha_modulo_label }}</div>
             {% endif %}
         </div>
         <div class="filtro-estudiante-jornada">
@@ -599,6 +599,11 @@
                          style="display:inline-block; margin-top:5px; background:#fff3cd; border:1px solid #f0c36d; color:#8a5a00; padding:2px 6px; border-radius:6px; font-size:9px; font-weight:800; line-height:1.2;">
                         ✱ Recuperación
                     </div>
+                    {% for detalle in mod.recuperaciones_detalle %}
+                    <div style="margin-top:4px; color:#8a5a00; font-size:9px; font-weight:600; line-height:1.25;">
+                        {{ detalle|linebreaksbr }}
+                    </div>
+                    {% endfor %}
                     {% endif %}
                 </td>
                 {% endif %}

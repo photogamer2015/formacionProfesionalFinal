@@ -1142,7 +1142,7 @@
                 <td class="hoja-col-banco">{{ item.banco }}</td>
                 <td class="hoja-col-asistencia" style="text-align:center;">{{ item.asistencia }}</td>
                 <td class="hoja-col-recuperacion" style="font-weight:700; color:#8a5a00; {% if item.recuperacion %}background:#fff8e1; border-left:2px solid #f0ad4e;{% endif %}">
-                    {{ item.recuperacion }}
+                    {{ item.recuperacion|linebreaksbr }}
                 </td>
             </tr>
             {% endfor %}

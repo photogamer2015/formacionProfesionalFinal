@@ -221,7 +221,7 @@
                 <td style="color:#c62828; font-weight:600;">${{ r.saldo_pendiente_al_marcar|floatformat:2 }}</td>
                 <td>
                     {% if r.pagada %}
-                    <span class="badge badge-pagado">✓ Pagada {{ r.fecha_recuperacion|date:"d/m/Y" }}</span>
+                    <span class="badge badge-pagado">✓ Ya pagada {{ r.fecha_recuperacion|date:"d/m/Y" }}</span>
                     {% else %}
                     <span class="badge badge-pendiente">○ Pendiente</span>
                     {% endif %}

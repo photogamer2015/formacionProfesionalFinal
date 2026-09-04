@@ -2785,6 +2785,10 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                     and recuperacion.abono.cuenta_para_saldo
                 ):
                     pagos_recuperacion[recuperacion.abono.pk] = recuperacion.abono
+            recuperacion_detalles = _recuperacion_detalles_modulo(
+                recuperaciones_modulo,
+                pagos_recuperacion.values(),
+            )
 
             modulos_data.append({
                 'numero': numero,
@@ -2801,6 +2805,12 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                 'recuperacion_recibos': ', '.join(
                     a.numero_recibo for a in pagos_recuperacion.values()
                     if a.numero_recibo
+                ),
+                'recuperaciones_detalle': recuperacion_detalles,
+                'recuperacion_detalle': '\n'.join(recuperacion_detalles),
+                'recuperacion_fechas': _recuperacion_fechas_relevantes(
+                    recuperaciones_modulo,
+                    pagos_recuperacion.values(),
                 ),
             })
         # Si la matrícula tiene menos módulos que el máximo del curso
@@ -2819,6 +2829,9 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
                 'es_recuperacion': False,
                 'recuperacion_monto': Decimal('0.00'),
                 'recuperacion_recibos': '',
+                'recuperaciones_detalle': [],
+                'recuperacion_detalle': '',
+                'recuperacion_fechas': [],
             })
 
         # Diccionario plano para los cálculos posteriores que sí lo necesitan
@@ -2947,14 +2960,19 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
             fecha_modulo_desde, fecha_modulo_hasta = fecha_modulo_hasta, fecha_modulo_desde
 
         def _modulo_en_rango_fecha(mod):
-            fecha_pago = mod.get('fecha_pago')
-            if not mod.get('aplica', True) or not fecha_pago:
+            fechas = []
+            if mod.get('fecha_pago'):
+                fechas.append(mod['fecha_pago'])
+            fechas.extend(mod.get('recuperacion_fechas') or [])
+            if not mod.get('aplica', True) or not fechas:
                 return False
-            if fecha_modulo_desde and fecha_pago < fecha_modulo_desde:
-                return False
-            if fecha_modulo_hasta and fecha_pago > fecha_modulo_hasta:
-                return False
-            return True
+            for fecha in fechas:
+                if fecha_modulo_desde and fecha < fecha_modulo_desde:
+                    continue
+                if fecha_modulo_hasta and fecha > fecha_modulo_hasta:
+                    continue
+                return True
+            return False
 
         matriculas = [
             x for x in matriculas
@@ -3396,7 +3414,7 @@ def recuperaciones_export_excel(request):
 
     for r in recuperaciones:
         abono = r.abono
-        estado_label = 'Pagada' if r.pagada else 'Pendiente'
+        estado_label = 'Ya pagada' if r.pagada else 'Pendiente'
         estudiante = r.matricula.estudiante
         banco = abono.get_banco_display() if (abono and abono.banco) else '—'
         monto = abono.monto if abono else Decimal('0.00')
@@ -3516,7 +3534,7 @@ def recuperaciones_export_pdf(request):
             pago_recuperacion = f'{abono.numero_recibo} · ${float(monto or 0):.2f}' if abono else 'Por cobrar'
 
         data.append([
-            'Pagada' if r.pagada else 'Pendiente',
+            'Ya pagada' if r.pagada else 'Pendiente',
             r.fecha_marcada.strftime('%d/%m/%Y') if r.fecha_marcada else '',
             r.fecha_programada.strftime('%d/%m/%Y') if r.fecha_programada else '—',
             estudiante.nombre_completo,
@@ -3905,6 +3923,87 @@ def _modulo_recaudacion_label(matricula, numero_modulo):
     return f'Módulo {numero} - {nombre}' if nombre else f'Módulo {numero}'
 
 
+def _fecha_corta(valor):
+    return valor.strftime('%d/%m/%Y') if valor else '—'
+
+
+def _monto_corto(valor):
+    return f'${(valor or Decimal("0.00")):.2f}'
+
+
+def _recuperacion_detalle_desde_registro(recuperacion):
+    """Texto único para mostrar recuperación en vistas y exportaciones."""
+    abono = recuperacion.abono
+    fecha_pago = recuperacion.fecha_recuperacion or (abono.fecha if abono else None)
+    partes = [
+        f'✱ {"Ya pagada" if recuperacion.pagada else "Pendiente"}',
+        f'Módulo {recuperacion.numero_modulo}',
+        f'Falta {_fecha_corta(recuperacion.fecha_marcada)}',
+    ]
+    if recuperacion.fecha_programada:
+        partes.append(f'Recuperar {_fecha_corta(recuperacion.fecha_programada)}')
+    else:
+        partes.append('Sin fecha programada')
+
+    if recuperacion.pagada:
+        if fecha_pago:
+            partes.append(f'Recuperó {_fecha_corta(fecha_pago)}')
+        if abono and abono.numero_recibo:
+            partes.append(f'Recibo {abono.numero_recibo}')
+        if abono:
+            partes.append(_monto_corto(abono.monto))
+    else:
+        partes.append(f'Saldo {_monto_corto(recuperacion.saldo_pendiente_al_marcar)}')
+    return ' · '.join(partes)
+
+
+def _recuperacion_detalle_desde_abono(abono):
+    """Detalle para pagos históricos de recuperación sin registro asociado."""
+    partes = [
+        '✱ Ya pagada',
+        f'Módulo {abono.numero_modulo or 1}',
+        f'Recuperó {_fecha_corta(abono.fecha)}',
+    ]
+    if abono.numero_recibo:
+        partes.append(f'Recibo {abono.numero_recibo}')
+    partes.append(_monto_corto(abono.monto))
+    return ' · '.join(partes)
+
+
+def _recuperacion_fechas_relevantes(recuperaciones, abonos=None):
+    """Fechas por las que debe coincidir el filtro cuando el módulo es recuperación."""
+    fechas = set()
+    for recuperacion in recuperaciones:
+        for fecha in (
+            recuperacion.fecha_marcada,
+            recuperacion.fecha_programada,
+            recuperacion.fecha_recuperacion,
+            recuperacion.abono.fecha if recuperacion.abono else None,
+        ):
+            if fecha:
+                fechas.add(fecha)
+    for abono in abonos or []:
+        if abono.fecha:
+            fechas.add(abono.fecha)
+    return sorted(fechas)
+
+
+def _recuperacion_detalles_modulo(recuperaciones, pagos_recuperacion):
+    detalles = [
+        _recuperacion_detalle_desde_registro(recuperacion)
+        for recuperacion in recuperaciones
+    ]
+    abonos_vinculados = {
+        recuperacion.abono_id
+        for recuperacion in recuperaciones
+        if recuperacion.abono_id
+    }
+    for abono in pagos_recuperacion:
+        if abono.pk not in abonos_vinculados:
+            detalles.append(_recuperacion_detalle_desde_abono(abono))
+    return list(dict.fromkeys(detalles))
+
+
 def _recuperacion_recaudacion_label(matricula, abonos_dia):
     """Estado de recuperación visible en pantalla, impresión y Excel."""
     recuperaciones = list(matricula.recuperaciones_pendientes.all())
@@ -3917,9 +4016,7 @@ def _recuperacion_recaudacion_label(matricula, abonos_dia):
             recuperacion.pagada
             and recuperacion.abono_id in abonos_dia_ids
         ):
-            etiquetas.append(
-                f'✱ Pagada · Módulo {recuperacion.numero_modulo}'
-            )
+            etiquetas.append(_recuperacion_detalle_desde_registro(recuperacion))
             abonos_vinculados.add(recuperacion.abono_id)
 
     # Protege también pagos de recuperación antiguos o importados que aún no
@@ -3929,18 +4026,14 @@ def _recuperacion_recaudacion_label(matricula, abonos_dia):
             abono.tipo_pago == 'recuperacion'
             and abono.pk not in abonos_vinculados
         ):
-            etiquetas.append(
-                f'✱ Pagada · Módulo {abono.numero_modulo or 1}'
-            )
+            etiquetas.append(_recuperacion_detalle_desde_abono(abono))
 
     for recuperacion in recuperaciones:
         if not recuperacion.pagada:
-            etiquetas.append(
-                f'✱ Pendiente · Módulo {recuperacion.numero_modulo}'
-            )
+            etiquetas.append(_recuperacion_detalle_desde_registro(recuperacion))
 
     # Conserva el orden y evita duplicados si un dato histórico coincidiera.
-    return ' · '.join(dict.fromkeys(etiquetas))
+    return '\n'.join(dict.fromkeys(etiquetas))
 
 
 def _jornadas_recaudacion_queryset(curso_id, ciudad='', modalidad=''):
@@ -4024,6 +4117,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
             'forma_pago': forma,
             'banco': banco_str,
             'asistencia': '—',  # no tenemos campo asistencia, queda manual
+            'observaciones': (m.observaciones or '').strip(),
             'recuperacion': recup_str,
             'talla': m.talla_camiseta or '',
             'jornada_inicio': (
@@ -4716,6 +4810,8 @@ def pagos_por_modulo_export_excel(request):
                 )
                 if mod.get('es_recuperacion'):
                     detalle += ' – Recuperación'
+                    if mod.get('recuperacion_detalle'):
+                        detalle += f"\n{mod['recuperacion_detalle']}"
                 fila.append(detalle)
             else:
                 fila.append('— (no aplica)')
@@ -4759,6 +4855,7 @@ def pagos_por_modulo_export_pdf(request):
         from reportlab.platypus import (
             SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
         )
+        from xml.sax.saxutils import escape
     except ImportError:
         return HttpResponse(
             'Para exportar a PDF instala reportlab: pip install reportlab',
@@ -4864,6 +4961,15 @@ def pagos_por_modulo_export_pdf(request):
                 '<br/><font color="#8a5a00"><b>Recuperación</b></font>'
                 if mod.get('es_recuperacion') else ''
             )
+            if marca_recuperacion and mod.get('recuperaciones_detalle'):
+                detalle_recuperacion = '<br/>'.join(
+                    escape(detalle)
+                    for detalle in mod['recuperaciones_detalle']
+                )
+                marca_recuperacion += (
+                    f'<br/><font color="#8a5a00" size="6">'
+                    f'{detalle_recuperacion}</font>'
+                )
             fila.append(Paragraph(
                 f'<font color="{color}"><b>{simbolo} ${float(mod["pagado"]):.2f}</b></font>'
                 f'{marca_recuperacion}',
@@ -4882,7 +4988,7 @@ def pagos_por_modulo_export_pdf(request):
         Paragraph(f'<b>${total_pagado:.2f}</b>', cell_bold_st),
         Paragraph(f'<b>${total_saldo:.2f}</b>', cell_bold_st),
     ]
-    fila_total += [Paragraph('', cell_st)] * len(modulos)
+    fila_total += [Paragraph('', cell_st)] * len(modulos_visibles)
     fila_total.append('')
     data.append(fila_total)
 
@@ -5037,9 +5143,264 @@ def hoja_recaudacion_guardar_cuotas(request):
     })
 
 
+def _recaudacion_excel_texto(valor, fallback=''):
+    texto = str(valor or '').strip()
+    if not texto or texto == '—':
+        return fallback
+    return texto
+
+
+def _recaudacion_excel_nombre_estudiante(item):
+    estudiante = item['estudiante']
+    nombre = (
+        getattr(estudiante, 'nombre_completo', '')
+        or getattr(estudiante, 'nombres', '')
+        or ''
+    ).strip()
+    talla = _recaudacion_excel_texto(item.get('talla'))
+    if talla and talla != 'NA':
+        return f'{nombre} ({talla})'
+    return nombre
+
+
+def _recaudacion_excel_metodo(valor):
+    texto = _recaudacion_excel_texto(valor, 'N/A')
+    return texto.replace('Transferencia bancaria', 'Transferencia')
+
+
+def _recaudacion_excel_recuperacion(valor):
+    texto = _recaudacion_excel_texto(valor)
+    return texto.replace('✱', '').replace('·', '-').strip()
+
+
+def _recaudacion_excel_fecha_label(hoja):
+    ciudad = _recaudacion_excel_texto(hoja.get('ciudad'), '—').upper()
+    curso = _recaudacion_excel_texto(
+        getattr(hoja.get('curso'), 'nombre', ''),
+        'CURSO',
+    ).upper()
+    if hoja.get('es_rango'):
+        fecha_txt = f'PERÍODO: {hoja.get("periodo_label", "")}'
+    else:
+        fecha = hoja.get('fecha')
+        mes = MESES_ES[fecha.month].upper() if fecha else ''
+        fecha_txt = f'FECHA: {hoja.get("dia_semana", "")} {fecha.day} DE {mes}'
+    return f'{fecha_txt} / CIUDAD: {ciudad} / MÓDULO DE {curso}'
+
+
+def _recaudacion_excel_resaltar_fila(item):
+    cuota = item.get('cuota_sugerida') or Decimal('0.00')
+    recaudado = item.get('recaudado') or Decimal('0.00')
+    observaciones = _recaudacion_excel_texto(item.get('observaciones')).lower()
+    return bool(
+        item.get('recuperacion')
+        or (cuota > 0 and recaudado <= 0)
+        or 'retira' in observaciones
+    )
+
+
+def _build_recaudacion_excel_response(filename, sheet_name, hojas):
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.worksheet.page import PageMargins
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+    ws.sheet_view.showGridLines = False
+
+    widths = {
+        'A': 4.25,
+        'B': 42.38,
+        'C': 11.38,
+        'D': 13.38,
+        'E': 19.88,
+        'F': 23.63,
+        'G': 20.63,
+        'H': 23.25,
+        'I': 31.63,
+        'J': 42.38,
+    }
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    black_side = Side(style='thin', color='000000')
+    border = Border(
+        left=black_side, right=black_side,
+        top=black_side, bottom=black_side,
+    )
+    font_base = Font(name='Georgia', size=12, italic=True)
+    font_bold = Font(name='Georgia', size=12, bold=True, italic=True)
+
+    fill_course = PatternFill('solid', fgColor='FFFBBC04')
+    fill_date = PatternFill('solid', fgColor='FF6D9EEB')
+    fill_responsable = PatternFill('solid', fgColor='FF00FF00')
+    fill_responsable_nombre = PatternFill('solid', fgColor='FFFFFF00')
+    fill_header = PatternFill('solid', fgColor='FFE06666')
+    fill_alert = PatternFill('solid', fgColor='FF00FFFF')
+    fill_recovery = PatternFill('solid', fgColor='FFFF0000')
+    fill_alt = PatternFill('solid', fgColor='FFF6F8F9')
+
+    headers = [
+        'NOMBRE DEL ESTUDIANTE',
+        'MÓD.',
+        'RECAUDAR',
+        'RECAUDADO',
+        'FORMA DE PAGO',
+        'BANCO',
+        'ASISTENCIA / FIRMA',
+        'OBSERVACIONES',
+        'RECUPERACIÓN',
+    ]
+
+    dv_forma = DataValidation(
+        type='list',
+        formula1='"Efectivo,Transferencia,Tarjeta,N/A"',
+        allow_blank=True,
+    )
+    dv_banco = DataValidation(
+        type='list',
+        formula1='"Pichincha,Guayaquil,Produbanco,Banco del Pacífico,Payphone,Interbancario,N/A"',
+        allow_blank=True,
+    )
+    dv_asistencia = DataValidation(
+        type='list',
+        formula1='"Sí,No"',
+        allow_blank=True,
+    )
+    ws.add_data_validation(dv_forma)
+    ws.add_data_validation(dv_banco)
+    ws.add_data_validation(dv_asistencia)
+
+    row = 1
+    for hoja_index, hoja in enumerate(hojas):
+        if hoja_index:
+            row += 2
+
+        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=10)
+        course_cell = ws.cell(
+            row=row,
+            column=2,
+            value=(
+                f'{hoja["curso"].nombre.upper()} // RECORDAR QUE SI EL '
+                'ESTUDIANTE FALTA A CLASES IGUAL DEBE CUMPLIR CON EL PLAN '
+                'DE FINANCIAMIENTO'
+            ),
+        )
+        course_cell.fill = fill_course
+        ws.row_dimensions[row].height = 45
+
+        for col in range(2, 11):
+            cell = ws.cell(row=row, column=col)
+            cell.font = font_bold
+            cell.border = border
+            cell.alignment = Alignment(horizontal='left', vertical='bottom')
+
+        row += 1
+        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=6)
+        ws.merge_cells(start_row=row, start_column=7, end_row=row, end_column=8)
+        meta_cell = ws.cell(row=row, column=2, value=_recaudacion_excel_fecha_label(hoja))
+        meta_cell.fill = fill_date
+        ws.cell(row=row, column=9, value='Responsable:')
+        ws.cell(row=row, column=10, value=_recaudacion_excel_texto(hoja.get('responsable'), '—'))
+        ws.row_dimensions[row].height = 45
+
+        for col in range(2, 7):
+            ws.cell(row=row, column=col).fill = fill_date
+        for col in range(7, 9):
+            ws.cell(row=row, column=col).fill = PatternFill(fill_type=None)
+        ws.cell(row=row, column=9).fill = fill_responsable
+        ws.cell(row=row, column=10).fill = fill_responsable_nombre
+        for col in range(2, 11):
+            cell = ws.cell(row=row, column=col)
+            cell.font = font_bold
+            cell.border = border
+            cell.alignment = Alignment(horizontal='left', vertical='bottom')
+
+        row += 1
+        for offset, header in enumerate(headers, start=2):
+            cell = ws.cell(row=row, column=offset, value=header)
+            cell.fill = fill_header
+            cell.font = font_bold
+            cell.border = border
+            cell.alignment = Alignment(horizontal='left', vertical='bottom', wrap_text=True)
+        ws.row_dimensions[row].height = 45
+
+        data_start = row + 1
+        for idx, item in enumerate(hoja['items'], start=1):
+            row += 1
+            modulo = item.get('modulo') or ''
+            recaudado = item.get('recaudado') or Decimal('0.00')
+            recuperacion = _recaudacion_excel_recuperacion(item.get('recuperacion'))
+            values = [
+                idx,
+                _recaudacion_excel_nombre_estudiante(item),
+                modulo,
+                float(item.get('cuota_sugerida') or 0),
+                float(recaudado),
+                _recaudacion_excel_metodo(item.get('forma_pago')),
+                _recaudacion_excel_texto(item.get('banco'), 'N/A'),
+                _recaudacion_excel_texto(item.get('asistencia')),
+                _recaudacion_excel_texto(item.get('observaciones')),
+                recuperacion,
+            ]
+            resaltar = _recaudacion_excel_resaltar_fila(item)
+            for col, value in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.font = font_base
+                cell.border = border
+                cell.alignment = Alignment(
+                    horizontal='left',
+                    vertical='bottom',
+                    wrap_text=True,
+                )
+                if 2 <= col <= 10 and resaltar:
+                    cell.fill = fill_alert
+                elif col == 2 and idx % 2 == 0:
+                    cell.fill = fill_alt
+                if col in (4, 5):
+                    cell.number_format = '#,##0.00'
+                if col == 9 and value:
+                    cell.font = font_bold
+                if col == 10 and value:
+                    cell.font = font_bold
+                    if resaltar:
+                        cell.fill = fill_recovery
+            ws.row_dimensions[row].height = 45
+
+        data_end = row
+        if data_end >= data_start:
+            dv_forma.add(f'F{data_start}:F{data_end}')
+            dv_banco.add(f'G{data_start}:G{data_end}')
+            dv_asistencia.add(f'H{data_start}:H{data_end}')
+
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_margins = PageMargins(
+        left=0.25, right=0.25, top=0.35, bottom=0.35,
+        header=0.2, footer=0.2,
+    )
+    ws.print_options.horizontalCentered = True
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    response = HttpResponse(
+        output.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 @matricula_requerida
 def hoja_recaudacion_export_excel(request):
-    """Exporta las hojas de recaudación a Excel (todos los cursos en una sola hoja)."""
+    """Exporta las hojas de recaudación con el formato físico de control."""
     hojas, filtros = _hojas_recaudacion_data(request)
     if not hojas:
         messages.error(
@@ -5048,49 +5409,9 @@ def hoja_recaudacion_export_excel(request):
         )
         return redirect('academia:hoja_recaudacion')
 
-    headers = [
-        'Curso', 'Jornada', 'Fecha', 'Día', 'Ciudad', 'Responsable', '#',
-        'Estudiante', 'Inicio jornada', 'Mód.',
-        'A Recaudar (Módulo)', 'Recaudado', 'Forma de pago', 'Banco',
-        'Recuperación', 'Talla',
-    ]
-    rows = []
-    for h in hojas:
-        for idx, item in enumerate(h['items'], start=1):
-            rows.append([
-                h['curso'].nombre,
-                h.get('jornada_label') or '—',
-                h['periodo_label'] if h.get('es_rango') else h['fecha'],
-                h['dia_semana'],
-                h['ciudad'],
-                h['responsable'],
-                idx,
-                item['estudiante'].nombre_completo if hasattr(item['estudiante'], 'nombre_completo')
-                else f"{item['estudiante'].nombres}".strip(),
-                item['jornada_inicio'] if item['jornada_inicio'] else '',
-                item['modulo_label'],
-                float(item['cuota_sugerida'] or 0),
-                float(item['recaudado'] or 0),
-                item['forma_pago'],
-                item['banco'],
-                item['recuperacion'],
-                item['talla'],
-            ])
-
     filename = f'hoja_recaudacion_{filtros["periodo_slug"]}.xlsx'
     sheet_name = f'Recaudación {filtros["periodo_slug"]}'[:31]
-    return _build_excel_response(
-        filename,
-        sheet_name,
-        headers,
-        rows,
-        column_formats={
-            2: 'dd/mm/yyyy',
-            8: 'dd/mm/yyyy',
-            10: '"$"#,##0.00',
-            11: '"$"#,##0.00',
-        },
-    )
+    return _build_recaudacion_excel_response(filename, sheet_name, hojas)
 
 
 @matricula_requerida
