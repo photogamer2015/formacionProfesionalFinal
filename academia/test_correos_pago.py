@@ -5,7 +5,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from .correos_pago import enviar_recordatorios_pago
+from .correos_pago import _crear_mensaje, enviar_recordatorios_pago
 from .models import (
     Curso, Estudiante, JornadaCurso, Matricula, RecordatorioPagoCorreo,
 )
@@ -65,6 +65,32 @@ class RecordatoriosPagoCorreoTests(TestCase):
             fecha_actual=hoy,
             excluir_revisadas=False,
         )
+
+    def test_plazo_online_depende_del_envio_incluso_al_cambiar_de_anio(self):
+        alerta = self._alertas()[0]
+        mensaje = _crear_mensaje(
+            alerta, self.estudiante.correo, SMTP_CONFIG, date(2026, 12, 31),
+        )
+        for formato in ('plain', 'html'):
+            contenido = mensaje.get_body(preferencelist=(formato,)).get_content()
+            self.assertIn('31/12/2026', contenido)
+            self.assertIn('01/01/2027', contenido)
+            self.assertIn('12:00 p. m. (mediodía)', contenido)
+            self.assertNotIn('acercarse a nuestras instalaciones', contenido)
+
+    def test_presencial_solicita_pago_en_instalaciones_sin_plazo_online(self):
+        alerta = self._alertas()[0]
+        alerta['matricula'].modalidad = 'presencial'
+        alerta['modalidad_label'] = 'Presencial'
+        mensaje = _crear_mensaje(
+            alerta, self.estudiante.correo, SMTP_CONFIG, date(2026, 8, 14),
+        )
+        for formato in ('plain', 'html'):
+            contenido = mensaje.get_body(preferencelist=(formato,)).get_content()
+            self.assertIn('acercarse a nuestras instalaciones', contenido)
+            self.assertIn('14/08/2026', contenido)
+            self.assertNotIn('mediodía', contenido)
+            self.assertNotIn('15/08/2026', contenido)
 
     @patch('academia.correos_pago.config_correo_mfa', return_value=SMTP_CONFIG)
     @patch('academia.correos_pago.smtplib.SMTP')

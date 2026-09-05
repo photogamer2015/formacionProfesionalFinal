@@ -78,6 +78,10 @@ def _contexto_recordatorio(alerta):
 def _crear_mensaje(alerta, destinatario, config, fecha_envio):
     contexto = _contexto_recordatorio(alerta)
     contexto['recordatorio_atrasado'] = alerta['fecha_alerta'] < fecha_envio
+    contexto['fecha_envio'] = fecha_envio
+    contexto['fecha_limite_online'] = fecha_envio + timedelta(days=1)
+    contexto['es_online'] = alerta['matricula'].modalidad == 'online'
+    contexto['es_presencial'] = alerta['matricula'].modalidad == 'presencial'
     from_name = _env(
         'PAYMENT_REMINDER_EMAIL_FROM_NAME',
         _env('MFA_EMAIL_FROM_NAME', 'Formación Profesional EC'),

@@ -10,6 +10,11 @@ Fecha correspondiente al pago: {{ fecha_pago|date:"d/m/Y" }}
 VALOR PENDIENTE DE ESTE PAGO: ${{ monto|floatformat:2 }}
 Saldo total pendiente del curso: ${{ saldo_total|floatformat:2 }}
 
+Fecha de envío: {{ fecha_envio|date:"d/m/Y" }}
+
+{% if es_online %}PLAZO DE PAGO: Le recordamos que puede realizar su pago hasta el {{ fecha_limite_online|date:"d/m/Y" }}, a las 12:00 p. m. (mediodía), día siguiente al envío de este correo. Agradecemos su puntualidad en el cumplimiento de su plan de pagos.
+{% elif es_presencial %}PAGO EN NUESTRAS INSTALACIONES: Le solicitamos cordialmente acercarse a nuestras instalaciones para realizar el pago correspondiente a su curso. Agradecemos su puntualidad en el cumplimiento de su plan de pagos.
+{% endif %}
 Si ya realizaste el pago, por favor ignora este mensaje. Si necesitas ayuda, responde a este correo y con gusto te atenderemos.
 
 Gracias por ser parte de Formación Profesional EC.

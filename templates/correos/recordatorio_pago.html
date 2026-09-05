@@ -40,6 +40,12 @@
                   <p style="margin:9px 0 0; color:#78643c; font-size:13px;">Saldo total pendiente del curso: ${{ saldo_total|floatformat:2 }}</p>
                 </div>
 
+                <p style="margin:0 0 12px; color:#4a5568; font-size:14px; line-height:1.65;"><strong>Fecha de envío:</strong> {{ fecha_envio|date:"d/m/Y" }}</p>
+                {% if es_online %}
+                <p style="margin:0 0 20px; color:#1b2a4e; font-size:16px; line-height:1.65;"><strong>Plazo de pago:</strong> Le recordamos que puede realizar su pago hasta el <strong>{{ fecha_limite_online|date:"d/m/Y" }}, a las 12:00 p. m. (mediodía)</strong>, día siguiente al envío de este correo. Agradecemos su puntualidad en el cumplimiento de su plan de pagos.</p>
+                {% elif es_presencial %}
+                <p style="margin:0 0 20px; color:#1b2a4e; font-size:16px; line-height:1.65;"><strong>Pago en nuestras instalaciones:</strong> Le solicitamos cordialmente acercarse a nuestras instalaciones para realizar el pago correspondiente a su curso. Agradecemos su puntualidad en el cumplimiento de su plan de pagos.</p>
+                {% endif %}
                 <p style="margin:0; color:#4a5568; font-size:14px; line-height:1.65;">Si ya realizaste el pago, por favor ignora este mensaje. Si necesitas ayuda, responde a este correo y con gusto te atenderemos.</p>
                 <p style="margin:20px 0 0; color:#1b2a4e; font-size:15px; line-height:1.6;">Gracias por ser parte de Formación Profesional EC.</p>
               </td>
