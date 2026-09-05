@@ -1,0 +1,48 @@
+{% load l10n %}
+{% if paginas_combinadas %}
+<style>
+ .impresion-combinada { display:none; }
+ @media print {
+   .impresion-combinada { display:block !important; }
+   .pagina-combinada { break-after:page; page-break-after:always; }
+   .pagina-combinada:last-child { break-after:auto; page-break-after:auto; }
+   .pagina-combinada .hoja-tabla tbody tr { height:11mm; }
+   .pagina-combinada .hoja-tabla td { padding:1mm !important; font-size:9pt !important; }
+   .pagina-combinada .jornada-estudiante { font-size:7pt; line-height:1.1; margin-top:1mm; }
+   .pagina-combinada .hoja-meta { font-size:8pt !important; }
+ }
+</style>
+<div class="impresion-combinada">
+{% for hoja in paginas_combinadas %}
+<section class="pagina-combinada">
+ <div class="hoja-encabezado">{{ hoja.curso.nombre }} — {{ hoja.jornada_label }} — Página {{ hoja.pagina }} de {{ hoja.num_paginas }}<br>Recordar que si el estudiante falta a clases igual debe cumplir con el plan de financiamiento</div>
+ <div class="hoja-meta"><div><strong>PERÍODO:</strong> {{ hoja.periodo_label }}</div><div><strong>CIUDAD:</strong> {{ hoja.ciudad }}</div><div><strong>JORNADAS:</strong> Indicadas junto a cada estudiante</div><div><strong>RESPONSABLE:</strong> {{ hoja.responsable }}</div></div>
+ <table class="hoja-tabla">
+ <thead><tr><th class="hoja-col-num">#</th><th class="hoja-col-estudiante">Estudiante / Jornada</th><th class="hoja-col-modulo">Mód.</th><th class="hoja-col-cuota">Recaudar</th><th class="hoja-col-recaudado">Recaudado</th><th class="hoja-col-forma">Forma de pago</th><th class="hoja-col-banco">Banco</th><th class="hoja-col-asistencia">Asistencia / Firma</th><th class="hoja-col-observaciones">Observaciones</th><th class="hoja-col-recuperacion">Recuperación</th></tr></thead>
+ <tbody>{% for item in hoja.items %}<tr{% if item.pago_pendiente_fecha %} class="pago-pendiente-fecha"{% endif %}>
+ <td>{{ forloop.counter|add:hoja.inicio }}</td>
+ <td><strong>{{ item.estudiante.nombre_completo }}</strong>{% if item.talla %} ({{ item.talla }}){% endif %}<div class="jornada-estudiante">{{ item.jornada_label|default:hoja.jornada_label }}</div></td>
+ <td>{{ item.modulo_label }}</td><td data-print-cuota="{{ item.matricula_id }}">${{ item.cuota_sugerida|floatformat:2 }}</td><td>${{ item.recaudado|floatformat:2 }}</td><td>{{ item.forma_pago }}</td><td>{{ item.banco }}</td><td>{{ item.asistencia|default_if_none:"" }}</td><td>{{ item.observaciones|linebreaksbr }}</td><td>{{ item.recuperacion|linebreaksbr }}</td>
+ </tr>{% endfor %}</tbody></table>
+ {% if hoja.ultima %}
+ <div class="hoja-cierre-impresion"><table class="hoja-resumen-pagos"><tbody>
+ <tr><th>Recaudación en efectivo</th><td></td></tr>
+ <tr><th>Recaudación en transferencia</th><td></td></tr>
+ <tr><th>Recaudación en PayPhone</th><td></td></tr>
+ <tr><th>Total recaudado</th><td></td></tr>
+ </tbody></table><div class="hoja-observaciones-adicionales"><strong>Observaciones adicionales</strong></div></div>
+ {% else %}<p style="font-size:9pt;">Continúa en la siguiente página. El resumen total está al final de la lista.</p>{% endif %}
+</section>
+{% endfor %}
+</div>
+<script>
+window.addEventListener('beforeprint',function(){
+ document.querySelectorAll('[data-print-cuota]').forEach(function(celda){
+   var origen=document.querySelector('.celda-cuota[data-matricula="'+celda.dataset.printCuota+'"]');
+   if(!origen)return;
+   var input=origen.querySelector('input');
+   celda.textContent=input?'$'+Number(input.value||0).toLocaleString('es-EC',{minimumFractionDigits:2,maximumFractionDigits:2}):origen.textContent.replace('✏️','').trim();
+ });
+});
+</script>
+{% endif %}

@@ -1,0 +1,206 @@
+<style>
+ .jornadas-dialog {
+   position:fixed;
+   inset:50% auto auto 50%;
+   transform:translate(-50%, -50%);
+   width:min(720px, calc(100vw - 32px));
+   max-width:calc(100vw - 32px);
+   max-height:calc(100dvh - 32px);
+   margin:0;
+   border:1px solid #dce3ed;
+   border-radius:16px;
+   padding:24px;
+   color:#18233f;
+   background:white;
+   box-shadow:0 18px 70px #14234440;
+   overflow:hidden;
+ }
+ .jornadas-dialog[open] { display:flex; flex-direction:column; }
+ .jornadas-dialog::backdrop { background:#14234480; }
+ .jornadas-dialog h2 { margin:0 0 10px; font-size:24px; line-height:1.15; }
+ .jornadas-dialog p { margin:0 0 12px; line-height:1.35; }
+ .jornadas-dialog .acciones { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; margin-top:18px; }
+ .jornadas-opcion { display:flex; align-items:flex-start; gap:12px; padding:14px; border:1px solid #dce3ed; border-radius:8px; margin:8px 0; cursor:pointer; }
+ .jornadas-opcion input { width:18px; height:18px; flex-shrink:0; }
+ .jornadas-lista { max-height:min(45vh, 420px); overflow:auto; padding-right:2px; }
+ .historial-seleccion { padding:14px; border:1px solid #dce3ed; border-radius:8px; margin:10px 0; }
+ .historial-seleccion strong { display:block; margin-bottom:6px; }
+ .historial-fecha { margin-bottom:10px !important; }
+ .historial-nombres { overflow-wrap:anywhere; }
+ .historial-acciones { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+ .historial-barra { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:6px 0 12px; }
+ .historial-paginacion { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:12px; }
+ .historial-contador { color:#6b7386; font-size:14px; }
+ .btn-danger-soft { background:#fff0f1; color:#a51d2d; border:1px solid #ffd3d8; }
+ .btn-danger-soft:hover { background:#ffe0e5; }
+ @media (max-width: 768px) {
+   .jornadas-dialog {
+     width:calc(100vw - 24px);
+     max-width:calc(100vw - 24px);
+     max-height:calc(100dvh - 24px);
+     padding:18px;
+     border-radius:14px;
+   }
+   .jornadas-dialog h2 { font-size:22px; }
+   .jornadas-lista { max-height:52vh; }
+ }
+ @media (max-width: 520px) {
+   .jornadas-dialog {
+     width:calc(100vw - 16px);
+     max-width:calc(100vw - 16px);
+     max-height:calc(100dvh - 16px);
+     padding:14px;
+     border-radius:12px;
+   }
+   .jornadas-dialog h2 { font-size:20px; }
+   .jornadas-dialog p { font-size:14px; }
+   .jornadas-opcion { gap:10px; padding:12px; font-size:14px; }
+   .jornadas-dialog .acciones { flex-direction:column-reverse; }
+   .jornadas-dialog .acciones .btn { width:100%; justify-content:center; }
+   .historial-barra { align-items:flex-start; flex-direction:column; }
+   .historial-paginacion, .historial-acciones { flex-direction:column; }
+   .historial-paginacion .btn, .historial-acciones .btn { width:100%; justify-content:center; }
+ }
+ @media print { .jornadas-dialog { display:none !important; } }
+</style>
+<div hidden id="jornadas-csrf">{% csrf_token %}</div>
+<dialog id="dialog-varias-jornadas" class="jornadas-dialog no-print" aria-labelledby="titulo-varias-jornadas">
+ <h2 id="titulo-varias-jornadas">Combinar jornadas</h2>
+ <p data-curso-dialog></p>
+ <p>Marca las jornadas que quieres reunir en una sola lista. Se conservará la jornada de cada estudiante.</p>
+ <div class="jornadas-lista" id="opciones-varias-jornadas"></div>
+ <p id="error-varias-jornadas" role="alert" style="color:#a51d2d;"></p>
+ <div class="acciones"><button type="button" class="btn btn-secondary" data-cerrar-jornadas>Cancelar</button><button type="button" class="btn btn-primary" id="aceptar-varias-jornadas">Aceptar y generar</button></div>
+</dialog>
+<dialog id="dialog-historial-jornadas" class="jornadas-dialog no-print" aria-labelledby="titulo-historial-jornadas">
+ <h2 id="titulo-historial-jornadas">Historial de selecciones</h2>
+ <p data-curso-dialog></p>
+ <p>Selecciones guardadas por ti para este curso. Al usarlas se consultan los pagos actuales.</p>
+ <div class="historial-barra" id="barra-historial-jornadas" hidden>
+  <span class="historial-contador" id="contador-historial-jornadas"></span>
+  <span class="historial-contador">10 por página</span>
+ </div>
+ <div id="lista-historial-jornadas" class="jornadas-lista" aria-live="polite"></div>
+ <div class="historial-paginacion" id="paginacion-historial-jornadas" hidden>
+  <button type="button" class="btn btn-secondary" id="historial-anterior">Anterior</button>
+  <span class="historial-contador" id="pagina-historial-jornadas"></span>
+  <button type="button" class="btn btn-secondary" id="historial-siguiente">Siguiente</button>
+ </div>
+ <div class="acciones"><button type="button" class="btn btn-secondary" data-cerrar-jornadas>Cerrar</button></div>
+</dialog>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+ const curso=document.getElementById('id-curso-recaudacion'), jornada=document.getElementById('id-jornada-recaudacion');
+ const form=curso.form, varios=document.getElementById('btn-varias-jornadas'), historial=document.getElementById('btn-historial-jornadas');
+ const modal=document.getElementById('dialog-varias-jornadas'), historico=document.getElementById('dialog-historial-jornadas');
+ const hidden=document.getElementById('seleccion-jornadas-hidden'), resumen=document.getElementById('resumen-jornadas-seleccion');
+ const opciones=document.getElementById('opciones-varias-jornadas'), error=document.getElementById('error-varias-jornadas'), aceptar=document.getElementById('aceptar-varias-jornadas');
+ const listaHistorial=document.getElementById('lista-historial-jornadas'), barraHistorial=document.getElementById('barra-historial-jornadas');
+ const paginacionHistorial=document.getElementById('paginacion-historial-jornadas'), contadorHistorial=document.getElementById('contador-historial-jornadas');
+ const paginaHistorial=document.getElementById('pagina-historial-jornadas'), anteriorHistorial=document.getElementById('historial-anterior'), siguienteHistorial=document.getElementById('historial-siguiente');
+ const endpoint="{% url 'academia:hoja_recaudacion_historial' %}";
+ const historialPorPagina=10;
+ let guardando=false, historialRegistros=[], historialPaginaActual=1;
+ function seleccion() { return Array.from(hidden.querySelectorAll('[name="jornadas"]')).map(x=>x.value); }
+ function limpiar() { hidden.replaceChildren(); jornada.options[0].textContent='— Todas las jornadas del curso (separadas) —'; resumen.textContent='Selecciona jornadas del curso o consulta su historial.'; }
+ function habilitar() { varios.disabled=historial.disabled=!curso.value; }
+ function datos(ids) { const d=new FormData(form); return {curso:curso.value,jornadas:ids,fecha_desde:d.get('fecha_desde'),fecha_hasta:d.get('fecha_hasta')||d.get('fecha_desde'),ciudad:d.get('ciudad'),modalidad:d.get('modalidad')}; }
+ async function guardar(d) {
+   if (guardando) return;
+   if (!d.jornadas.length) throw new Error('Marca al menos una jornada.');
+   if (!d.fecha_desde || !d.fecha_hasta) throw new Error('Selecciona primero una fecha o rango en el formulario.');
+   guardando=true; aceptar.disabled=true;
+   try {
+     const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('#jornadas-csrf input').value},body:JSON.stringify(d)});
+     if (!r.ok) { const e=await r.json(); throw new Error(e.error||'No se pudo guardar la selección.'); }
+     const result=await r.json(); window.location.assign(result.url);
+   } finally { guardando=false; aceptar.disabled=false; }
+ }
+ function renderHistorial() {
+   listaHistorial.replaceChildren();
+   const total=historialRegistros.length;
+   barraHistorial.hidden=!total;
+   paginacionHistorial.hidden=total<=historialPorPagina;
+   if (!total) {
+     listaHistorial.textContent='Todavía no has guardado selecciones para este curso.';
+     return;
+   }
+   const totalPaginas=Math.ceil(total/historialPorPagina);
+   historialPaginaActual=Math.min(Math.max(historialPaginaActual, 1), totalPaginas);
+   const inicio=(historialPaginaActual-1)*historialPorPagina;
+   const fin=Math.min(inicio+historialPorPagina, total);
+   contadorHistorial.textContent='Mostrando '+(inicio+1)+'-'+fin+' de '+total+' selecciones guardadas';
+   paginaHistorial.textContent='Página '+historialPaginaActual+' / '+totalPaginas;
+   anteriorHistorial.disabled=historialPaginaActual<=1;
+   siguienteHistorial.disabled=historialPaginaActual>=totalPaginas;
+   historialRegistros.slice(inicio, fin).forEach((reg, indice)=>{
+     const card=document.createElement('div'); card.className='historial-seleccion';
+     const titulo=document.createElement('strong'); titulo.textContent='#'+(inicio+indice+1)+' · Guardado: '+reg.creado;
+     const fechas=document.createElement('p'); fechas.className='historial-fecha'; fechas.textContent='Fecha / rango: '+reg.filtros.fecha_desde+' — '+reg.filtros.fecha_hasta;
+     const nombres=document.createElement('p'); nombres.className='historial-nombres'; nombres.textContent=reg.jornadas.map(j=>j.nombre).join(' / ');
+     const acciones=document.createElement('div'); acciones.className='historial-acciones';
+     const usar=document.createElement('button'); usar.type='button'; usar.className='btn btn-secondary'; usar.textContent='Usar selección';
+     const eliminar=document.createElement('button'); eliminar.type='button'; eliminar.className='btn btn-danger-soft'; eliminar.textContent='Eliminar';
+     usar.addEventListener('click',async()=>{
+       usar.disabled=true;
+       try { await guardar(reg.filtros); }
+       catch(e) { const aviso=document.createElement('p'); aviso.textContent=e.message; card.append(aviso); usar.disabled=false; }
+     });
+     eliminar.addEventListener('click',async()=>{
+       if (!window.confirm('¿Eliminar esta selección del historial?')) return;
+       eliminar.disabled=true; usar.disabled=true;
+       try {
+         const r=await fetch(endpoint,{method:'DELETE',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('#jornadas-csrf input').value},body:JSON.stringify({id:reg.id})});
+         if(!r.ok) { const e=await r.json(); throw new Error(e.error||'No se pudo eliminar la selección.'); }
+         historialRegistros=historialRegistros.filter(item=>item.id!==reg.id);
+         renderHistorial();
+       } catch(e) {
+         const aviso=document.createElement('p'); aviso.textContent=e.message; card.append(aviso);
+         eliminar.disabled=false; usar.disabled=false;
+       }
+     });
+     acciones.append(usar, eliminar);
+     card.append(titulo, fechas, nombres, acciones);
+     listaHistorial.append(card);
+   });
+ }
+ [curso,document.getElementById('id-modalidad-recaudacion'),document.getElementById('id-ciudad-recaudacion')].forEach(el=>el.addEventListener('change',()=>{limpiar();habilitar();}));
+ jornada.addEventListener('change',limpiar);
+ document.querySelectorAll('[data-cerrar-jornadas]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
+ varios.addEventListener('click',()=>{
+   error.textContent=''; opciones.replaceChildren();
+   modal.querySelector('[data-curso-dialog]').textContent=curso.selectedOptions[0].textContent;
+   const elegidas=new Set(seleccion());
+   Array.from(jornada.options).filter(o=>o.value&&!o.disabled&&!o.hidden&&o.dataset.course===curso.value).forEach(o=>{
+     const label=document.createElement('label'); label.className='jornadas-opcion';
+     const check=document.createElement('input'); check.type='checkbox'; check.value=o.value; check.checked=elegidas.has(o.value);
+     const texto=document.createElement('span'); texto.textContent=o.textContent.trim(); label.append(check,texto); opciones.append(label);
+   });
+   if (!opciones.children.length) opciones.textContent='No hay jornadas para este curso con los filtros actuales.';
+   modal.showModal();
+ });
+ aceptar.addEventListener('click',async()=>{error.textContent='';try{await guardar(datos(Array.from(opciones.querySelectorAll('input:checked')).map(x=>x.value)));}catch(e){error.textContent=e.message;}});
+ form.addEventListener('submit',async e=>{
+   if (!seleccion().length) return;
+   e.preventDefault();
+   try {await guardar(datos(seleccion()));}catch(err){resumen.textContent=err.message;}
+ });
+ anteriorHistorial.addEventListener('click',()=>{historialPaginaActual-=1;renderHistorial();});
+ siguienteHistorial.addEventListener('click',()=>{historialPaginaActual+=1;renderHistorial();});
+ historial.addEventListener('click',async()=>{
+   const cursoConsulta=curso.value;
+   historico.querySelector('[data-curso-dialog]').textContent=curso.selectedOptions[0].textContent;
+   barraHistorial.hidden=true; paginacionHistorial.hidden=true; listaHistorial.textContent='Cargando historial…'; historico.showModal();
+   try {
+     const r=await fetch(endpoint+'?curso='+encodeURIComponent(cursoConsulta));
+     if(!r.ok) throw new Error('No se pudo cargar el historial.');
+     const data=await r.json();
+     historialRegistros=data.registros;
+     historialPaginaActual=1;
+     renderHistorial();
+   }catch(e){listaHistorial.textContent=e.message;}
+ });
+ habilitar();
+ if(seleccion().length) jornada.options[0].textContent='— '+seleccion().length+' jornadas combinadas —';
+});
+</script>

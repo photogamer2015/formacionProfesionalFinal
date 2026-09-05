@@ -2,6 +2,17 @@ from django.db import models
 from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
 
+class SeleccionJornadasRecaudacion(models.Model):
+    usuario = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    curso = models.ForeignKey('Curso', on_delete=models.CASCADE)
+    filtros = models.JSONField(default=dict)
+    jornadas = models.JSONField(default=list)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-creado', '-pk']
+
+
 # ─────────────────────────────────────────────────────────
 # Constantes compartidas
 # ─────────────────────────────────────────────────────────

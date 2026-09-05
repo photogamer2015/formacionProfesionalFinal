@@ -12,6 +12,7 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 import re
+import json
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -22,6 +23,8 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import AbonoForm, RecuperacionPendienteForm
@@ -4036,6 +4039,72 @@ def _recuperacion_recaudacion_label(matricula, abonos_dia):
     return '\n'.join(dict.fromkeys(etiquetas))
 
 
+def _fecha_en_periodo_recaudacion(fecha, fecha_desde, fecha_hasta):
+    return bool(fecha and fecha_desde <= fecha <= fecha_hasta)
+
+
+def _estado_recuperacion_para_hoja(matricula, fecha_desde, fecha_hasta):
+    """Devuelve las recuperaciones que corresponden al período de la hoja.
+
+    Una recuperación pagada se reconoce tanto por su fecha programada como
+    por la fecha real del pago. Para registros antiguos sin fecha programada,
+    la fecha en que se marcó funciona como referencia. Así, una recuperación
+    del día no se confunde con la siguiente cuota ordinaria del curso.
+    """
+    relevantes = []
+    pendientes = []
+    pagadas = []
+    recuperaciones_manager = getattr(
+        matricula, 'recuperaciones_pendientes', None,
+    )
+    recuperaciones = (
+        recuperaciones_manager.all() if recuperaciones_manager is not None else []
+    )
+    for recuperacion in recuperaciones:
+        fecha_pago = (
+            recuperacion.fecha_recuperacion
+            or (recuperacion.abono.fecha if recuperacion.abono else None)
+        )
+        fecha_clase = recuperacion.fecha_programada or recuperacion.fecha_marcada
+        corresponde = _fecha_en_periodo_recaudacion(
+            fecha_clase, fecha_desde, fecha_hasta,
+        )
+        if recuperacion.pagada:
+            corresponde = corresponde or _fecha_en_periodo_recaudacion(
+                fecha_pago, fecha_desde, fecha_hasta,
+            )
+        if not corresponde:
+            continue
+        relevantes.append(recuperacion)
+        (pagadas if recuperacion.pagada else pendientes).append(recuperacion)
+    return {
+        'relevantes': relevantes,
+        'pendientes': pendientes,
+        'pagadas': pagadas,
+    }
+
+
+def _monto_recuperaciones_pendientes(matricula, recuperaciones):
+    """Calcula el valor de las clases a recuperar, no todo el saldo del curso."""
+    if not recuperaciones:
+        return Decimal('0.00')
+    total_cuotas = _semanas_recaudacion_matricula(matricula)
+    cuotas = _cuotas_objetivo_recaudacion(matricula, total_cuotas)
+    monto = Decimal('0.00')
+    for recuperacion in recuperaciones:
+        indice = max(int(recuperacion.numero_modulo or 1), 1) - 1
+        cuota_modulo = cuotas[indice] if indice < len(cuotas) else Decimal('0.00')
+        saldo_al_marcar = max(
+            recuperacion.saldo_pendiente_al_marcar or Decimal('0.00'),
+            Decimal('0.00'),
+        )
+        if cuota_modulo > 0 and saldo_al_marcar > 0:
+            monto += min(cuota_modulo, saldo_al_marcar)
+        else:
+            monto += max(cuota_modulo, saldo_al_marcar)
+    return monto.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
 def _jornadas_recaudacion_queryset(curso_id, ciudad='', modalidad=''):
     """Jornadas disponibles para el selector de la hoja de recaudación."""
     if not (curso_id and str(curso_id).isdigit()):
@@ -4064,6 +4133,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
     total_transferencia = Decimal('0.00')
     total_recaudado = Decimal('0.00')
     total_cuotas = Decimal('0.00')
+    total_payphone = Decimal('0.00')
 
     for m in matriculas:
         # Abonos del estudiante registrados en la fecha o periodo seleccionado.
@@ -4091,17 +4161,63 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
         modulo_actual = plan_recaudacion['modulo']
 
         recup_str = _recuperacion_recaudacion_label(m, abonos_dia)
+        estado_recuperacion = _estado_recuperacion_para_hoja(
+            m, fecha_obj, fecha_hasta_obj,
+        )
+        recuperaciones_pendientes = estado_recuperacion['pendientes']
+        if estado_recuperacion['relevantes']:
+            modulo_actual = estado_recuperacion['relevantes'][0].numero_modulo
+
+        # Si se pagó antes de la fecha programada, el abono no pertenece al
+        # día de la hoja, pero la clase debe seguir identificada como pagada.
+        for recuperacion in estado_recuperacion['pagadas']:
+            detalle = _recuperacion_detalle_desde_registro(recuperacion)
+            if detalle not in recup_str:
+                recup_str = '\n'.join(filter(None, (recup_str, detalle)))
 
         cuota_sugerida = plan_recaudacion['cuota_sugerida']
+        saldo_modulo = plan_recaudacion['saldo_modulo']
+        cuota_manual = plan_recaudacion.get('cuota_manual', False)
+        if estado_recuperacion['relevantes']:
+            if recuperaciones_pendientes:
+                monto_recuperacion = _monto_recuperaciones_pendientes(
+                    m, recuperaciones_pendientes,
+                )
+                saldo_modulo = monto_recuperacion
+                cuota_sugerida = (
+                    min(cuota_sugerida, monto_recuperacion)
+                    if cuota_manual else monto_recuperacion
+                )
+                for recuperacion in recuperaciones_pendientes:
+                    detalle_original = _recuperacion_detalle_desde_registro(
+                        recuperacion,
+                    )
+                    monto_clase = _monto_recuperaciones_pendientes(
+                        m, [recuperacion],
+                    )
+                    detalle_hoja = detalle_original.replace(
+                        f'Saldo {_monto_corto(recuperacion.saldo_pendiente_al_marcar)}',
+                        f'Debe {_monto_corto(monto_clase)}',
+                    )
+                    recup_str = recup_str.replace(
+                        detalle_original, detalle_hoja,
+                    )
+            else:
+                # La clase de recuperación correspondiente a esta hoja ya se
+                # pagó: no se adelanta aquí la cuota ordinaria siguiente.
+                cuota_sugerida = Decimal('0.00')
+                saldo_modulo = Decimal('0.00')
+                cuota_manual = False
 
         # Suma a totales por método
         for parte in partes_dia:
+            if parte['banco'] == 'payphone':
+                total_payphone += parte['monto']
             if parte['metodo'] == 'efectivo':
                 total_efectivo += parte['monto']
             elif parte['metodo'] in ('transferencia', 'tarjeta'):
                 total_transferencia += parte['monto']
 
-        saldo_modulo = plan_recaudacion['saldo_modulo']
         total_cuotas += cuota_sugerida
         total_recaudado += pagado_dia
 
@@ -4111,14 +4227,22 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
             'modulo': modulo_actual,
             'modulo_label': _modulo_recaudacion_label(m, modulo_actual),
             'saldo_modulo': saldo_modulo,
+            'pago_pendiente_fecha': (
+                bool(recuperaciones_pendientes and cuota_sugerida > 0)
+                if estado_recuperacion['relevantes']
+                else _recaudacion_pago_pendiente_fecha(
+                    m, fecha_hasta_obj, plan_recaudacion,
+                )
+            ),
             'cuota_sugerida': cuota_sugerida,
-            'cuota_manual': plan_recaudacion.get('cuota_manual', False),
+            'cuota_manual': cuota_manual,
             'recaudado': pagado_dia,
             'forma_pago': forma,
             'banco': banco_str,
             'asistencia': '—',  # no tenemos campo asistencia, queda manual
             'observaciones': (m.observaciones or '').strip(),
             'recuperacion': recup_str,
+            'es_recuperacion': bool(recup_str),
             'talla': m.talla_camiseta or '',
             'jornada_inicio': (
                 m.jornada.fecha_inicio
@@ -4129,6 +4253,14 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
                 m.jornada.descripcion_legible if m.jornada else '—'
             ),
         })
+
+    # Los estudiantes con recuperación quedan juntos al final; dentro de
+    # cada grupo se conserva un orden estable y fácil de localizar.
+    items.sort(key=lambda item: (
+        1 if item['es_recuperacion'] else 0,
+        item['estudiante'].nombre_completo.casefold(),
+        item['matricula_id'],
+    ))
 
     # Responsable: usuario que más matrículas registró en esta jornada.
     responsables = {}
@@ -4165,6 +4297,8 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
         'items': items,
         'total_efectivo': total_efectivo,
         'total_transferencia': total_transferencia,
+        'total_payphone': total_payphone,
+        'total_transferencia_impresion': total_transferencia - total_payphone,
         'total_cuotas': total_cuotas,
         'total_recaudado': total_recaudado,
     }
@@ -4172,7 +4306,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
 
 def _construir_hojas_recaudacion(fecha_obj, curso_id, ciudad='',
                                  modalidad='', jornada_id='',
-                                 fecha_hasta_obj=None):
+                                 fecha_hasta_obj=None, jornadas_ids=None):
     """
     Construye hojas de recaudación desde los filtros.
     Requiere curso; si no hay jornada específica, separa una hoja por jornada.
@@ -4203,6 +4337,8 @@ def _construir_hojas_recaudacion(fecha_obj, curso_id, ciudad='',
         mat_qs = mat_qs.filter(jornada__modalidad=modalidad)
     if jornada_id and str(jornada_id).isdigit():
         mat_qs = mat_qs.filter(jornada_id=int(jornada_id))
+    if jornadas_ids is not None:
+        mat_qs = mat_qs.filter(jornada_id__in=jornadas_ids)
 
     grupos = {}
     for matricula in mat_qs:
@@ -4674,21 +4810,15 @@ def hoja_recaudacion(request):
     ).select_related('curso', 'sede').order_by(
         'curso__nombre', 'fecha_inicio', 'modalidad', 'hora_inicio', 'id',
     )
-    hojas = _construir_hojas_recaudacion(
-        fecha_desde_obj, curso_id, ciudad=ciudad,
-        modalidad=modalidad, jornada_id=jornada_id,
-        fecha_hasta_obj=fecha_hasta_obj,
-    )
+    hojas, filtros = _hojas_recaudacion_data(request)
 
     return render(request, 'pagos/hoja_recaudacion.html', {
         'cursos_disponibles': cursos_disponibles,
         'jornadas_disponibles': jornadas_disponibles,
         'jornadas_todas': jornadas_todas,
         'hojas': hojas,
-        'filtros': _recaudacion_filtros(
-            fecha_str, fecha_desde, fecha_hasta, ciudad,
-            curso_id, jornada_id, modalidad,
-        ),
+        'paginas_combinadas': _paginas_recaudacion_combinada(hojas),
+        'filtros': filtros,
     })
 
 
@@ -5065,15 +5195,114 @@ def _hojas_recaudacion_data(request):
     if modalidad not in ('presencial', 'online'):
         modalidad = ''
 
+    combinar = request.GET.get('varias') == '1'
+    seleccion = sorted(set(request.GET.getlist('jornadas')))
+    validas = set(str(pk) for pk in _jornadas_recaudacion_queryset(
+        curso_id, ciudad=ciudad, modalidad=modalidad,
+    ).values_list('pk', flat=True)) if combinar else set()
+    seleccion_valida = bool(seleccion) and set(seleccion) <= validas
+    if combinar:
+        jornada_id = ''
+
     hojas = _construir_hojas_recaudacion(
         fecha_desde_obj, curso_id, ciudad=ciudad,
         modalidad=modalidad, jornada_id=jornada_id,
         fecha_hasta_obj=fecha_hasta_obj,
+        jornadas_ids=seleccion if combinar and seleccion_valida else ([] if combinar else None),
     )
-    return hojas, _recaudacion_filtros(
+    if combinar and hojas:
+        conjunta = dict(hojas[0])
+        items = []
+        for hoja in hojas:
+            for item in hoja['items']:
+                items.append(dict(item, jornada_label=hoja['jornada_label']))
+        conjunta.update(
+            combinada=True, jornada=None, jornada_id='',
+            jornada_label=f'{len(seleccion)} jornadas seleccionadas',
+            jornadas_labels=[j.etiqueta for j in _jornadas_recaudacion_queryset(curso_id).filter(pk__in=seleccion)],
+            ciudad=', '.join(sorted({h['ciudad'] for h in hojas})),
+            responsable=', '.join(sorted({h['responsable'] for h in hojas})),
+            items=sorted(items, key=lambda i: (
+                1 if i.get('es_recuperacion') else 0,
+                i['estudiante'].nombre_completo.casefold(),
+                i['matricula_id'],
+            )),
+        )
+        for key in ('total_cuotas', 'total_recaudado', 'total_efectivo', 'total_transferencia',
+                    'total_transferencia_impresion', 'total_payphone'):
+            conjunta[key] = sum((h[key] for h in hojas), Decimal('0.00'))
+        hojas = [conjunta]
+    filtros = _recaudacion_filtros(
         fecha_str, fecha_desde, fecha_hasta, ciudad,
         curso_id, jornada_id, modalidad,
     )
+    filtros.update(varias=combinar, jornadas=seleccion)
+    if combinar:
+        filtros['querystring'] += '&' + urlencode({'varias': '1', 'jornadas': seleccion}, doseq=True)
+    return hojas, filtros
+
+
+def _paginas_recaudacion_combinada(hojas):
+    paginas = []
+    for hoja in hojas:
+        for inicio in range(0, max(1, len(hoja['items'])), 8):
+            paginas.append(dict(hoja, items=hoja['items'][inicio:inicio + 8],
+                                inicio=inicio, pagina=inicio // 8 + 1,
+                                num_paginas=(len(hoja['items']) + 7) // 8,
+                                ultima=inicio + 8 >= len(hoja['items'])))
+    return paginas
+
+
+@matricula_requerida
+def hoja_recaudacion_historial(request):
+    from .models import SeleccionJornadasRecaudacion
+    if request.method == 'GET':
+        curso_id = request.GET.get('curso', '')
+        if not curso_id.isdigit():
+            return JsonResponse({'error': 'Selecciona primero un curso.'}, status=400)
+        registros = SeleccionJornadasRecaudacion.objects.filter(
+            usuario=request.user, curso_id=curso_id,
+        )
+        return JsonResponse({'registros': [dict(
+            id=r.pk, creado=timezone.localtime(r.creado).strftime('%d/%m/%Y %H:%M'),
+            filtros=r.filtros, jornadas=r.jornadas,
+        ) for r in registros]})
+    if request.method == 'DELETE':
+        try:
+            datos = json.loads(request.body or '{}')
+            registro_id = int(datos['id'])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return JsonResponse({'error': 'No se pudo identificar la selección.'}, status=400)
+        eliminados, _ = SeleccionJornadasRecaudacion.objects.filter(
+            pk=registro_id, usuario=request.user,
+        ).delete()
+        if not eliminados:
+            return JsonResponse({'error': 'La selección ya no existe o no te pertenece.'}, status=404)
+        return JsonResponse({'ok': True, 'id': registro_id})
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    try:
+        datos = json.loads(request.body)
+        curso_id = str(datos['curso'])
+        ids = sorted({str(int(pk)) for pk in datos['jornadas']})
+        desde, hasta = parse_date(datos['fecha_desde']), parse_date(datos['fecha_hasta'])
+        ciudad, modalidad = str(datos.get('ciudad', '')).strip(), str(datos.get('modalidad', ''))
+        if not curso_id.isdigit() or not ids or not desde or not hasta or modalidad not in ('', 'online', 'presencial'):
+            raise ValueError
+        if hasta < desde:
+            desde, hasta = hasta, desde
+        jornadas = list(_jornadas_recaudacion_queryset(curso_id, ciudad=ciudad, modalidad=modalidad).filter(pk__in=ids))
+        if len(jornadas) != len(ids):
+            raise ValueError
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return JsonResponse({'error': 'Revisa el curso, las fechas y las jornadas seleccionadas.'}, status=400)
+    filtros = dict(curso=curso_id, jornadas=ids, varias='1', fecha_desde=desde.isoformat(),
+                   fecha_hasta=hasta.isoformat(), ciudad=ciudad, modalidad=modalidad)
+    etiquetas = [dict(id=str(j.pk), nombre=j.etiqueta) for j in jornadas]
+    SeleccionJornadasRecaudacion.objects.create(
+        usuario=request.user, curso_id=curso_id, filtros=filtros, jornadas=etiquetas,
+    )
+    return JsonResponse({'url': reverse('academia:hoja_recaudacion') + '?' + urlencode(filtros, doseq=True)})
 
 
 @matricula_requerida
@@ -5188,15 +5417,24 @@ def _recaudacion_excel_fecha_label(hoja):
     return f'{fecha_txt} / CIUDAD: {ciudad} / MÓDULO DE {curso}'
 
 
+def _recaudacion_pago_pendiente_fecha(matricula, fecha, plan):
+    """Resalta las obligaciones que Matrículas reclama en la fecha de la hoja.
+
+    El plan acumulado reconoce pagos anteriores y anticipos. El siguiente
+    módulo sin cubrir no implica atraso antes de su fecha de aviso.
+    Una cuota manual de cero tampoco cancela la deuda del módulo.
+    """
+    if not fecha or plan['saldo_modulo'] <= 0:
+        return False
+    jornada = matricula.jornada
+    if not jornada or not jornada.fecha_inicio:
+        return False
+    aviso = _calendario_alertas_pago(matricula).get(plan['modulo'])
+    return bool(aviso and aviso[0] <= fecha)
+
+
 def _recaudacion_excel_resaltar_fila(item):
-    cuota = item.get('cuota_sugerida') or Decimal('0.00')
-    recaudado = item.get('recaudado') or Decimal('0.00')
-    observaciones = _recaudacion_excel_texto(item.get('observaciones')).lower()
-    return bool(
-        item.get('recuperacion')
-        or (cuota > 0 and recaudado <= 0)
-        or 'retira' in observaciones
-    )
+    return bool(item.get('pago_pendiente_fecha', False))
 
 
 def _build_recaudacion_excel_response(filename, sheet_name, hojas):
@@ -5204,6 +5442,7 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.worksheet.datavalidation import DataValidation
     from openpyxl.worksheet.page import PageMargins
+    from openpyxl.worksheet.pagebreak import Break
 
     wb = Workbook()
     ws = wb.active
@@ -5211,16 +5450,16 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
     ws.sheet_view.showGridLines = False
 
     widths = {
-        'A': 4.25,
-        'B': 42.38,
-        'C': 11.38,
-        'D': 13.38,
-        'E': 19.88,
-        'F': 23.63,
-        'G': 20.63,
-        'H': 23.25,
-        'I': 31.63,
-        'J': 42.38,
+        'A': 4,
+        'B': 32,
+        'C': 7,
+        'D': 11,
+        'E': 12,
+        'F': 16,
+        'G': 15,
+        'H': 18,
+        'I': 21,
+        'J': 22,
     }
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
@@ -5238,9 +5477,8 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
     fill_responsable = PatternFill('solid', fgColor='FF00FF00')
     fill_responsable_nombre = PatternFill('solid', fgColor='FFFFFF00')
     fill_header = PatternFill('solid', fgColor='FFE06666')
-    fill_alert = PatternFill('solid', fgColor='FF00FFFF')
-    fill_recovery = PatternFill('solid', fgColor='FFFF0000')
-    fill_alt = PatternFill('solid', fgColor='FFF6F8F9')
+    fill_alert = PatternFill('solid', fgColor='FFBDEBFA')
+    fill_white = PatternFill('solid', fgColor='FFFFFFFF')
 
     headers = [
         'NOMBRE DEL ESTUDIANTE',
@@ -5273,10 +5511,21 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
     ws.add_data_validation(dv_banco)
     ws.add_data_validation(dv_asistencia)
 
+    # Bloques de diez estudiantes: ninguna jornada se reduce a letra diminuta.
+    paginas = []
+    for hoja in hojas:
+        items = hoja['items']
+        limite = 8 if hoja.get('combinada') else 10
+        for inicio in range(0, max(1, len(items)), limite):
+            paginas.append((hoja, inicio, items[inicio:inicio + limite]))
+
+    areas_impresion = []
     row = 1
-    for hoja_index, hoja in enumerate(hojas):
-        if hoja_index:
-            row += 2
+    for pagina_index, (hoja, inicio, items_pagina) in enumerate(paginas):
+        if pagina_index:
+            ws.row_breaks.append(Break(id=row))
+            row += 1
+        pagina_inicio = row
 
         ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=10)
         course_cell = ws.cell(
@@ -5289,22 +5538,25 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
             ),
         )
         course_cell.fill = fill_course
-        ws.row_dimensions[row].height = 45
+        ws.row_dimensions[row].height = 36
 
         for col in range(2, 11):
             cell = ws.cell(row=row, column=col)
             cell.font = font_bold
             cell.border = border
-            cell.alignment = Alignment(horizontal='left', vertical='bottom')
+            cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
         row += 1
         ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=6)
         ws.merge_cells(start_row=row, start_column=7, end_row=row, end_column=8)
         meta_cell = ws.cell(row=row, column=2, value=_recaudacion_excel_fecha_label(hoja))
         meta_cell.fill = fill_date
+        ws.cell(row=row, column=7, value=(
+            'JORNADA: ' + _recaudacion_excel_texto(hoja.get('jornada_label'), '—')
+        ))
         ws.cell(row=row, column=9, value='Responsable:')
         ws.cell(row=row, column=10, value=_recaudacion_excel_texto(hoja.get('responsable'), '—'))
-        ws.row_dimensions[row].height = 45
+        ws.row_dimensions[row].height = 48
 
         for col in range(2, 7):
             ws.cell(row=row, column=col).fill = fill_date
@@ -5316,26 +5568,28 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
             cell = ws.cell(row=row, column=col)
             cell.font = font_bold
             cell.border = border
-            cell.alignment = Alignment(horizontal='left', vertical='bottom')
+            cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
         row += 1
         for offset, header in enumerate(headers, start=2):
             cell = ws.cell(row=row, column=offset, value=header)
             cell.fill = fill_header
-            cell.font = font_bold
+            cell.font = Font(name='Georgia', size=10, bold=True, italic=True)
             cell.border = border
             cell.alignment = Alignment(horizontal='left', vertical='bottom', wrap_text=True)
-        ws.row_dimensions[row].height = 45
+        ws.row_dimensions[row].height = 32
 
         data_start = row + 1
-        for idx, item in enumerate(hoja['items'], start=1):
+        for idx, item in enumerate(items_pagina, start=inicio + 1):
             row += 1
             modulo = item.get('modulo') or ''
             recaudado = item.get('recaudado') or Decimal('0.00')
             recuperacion = _recaudacion_excel_recuperacion(item.get('recuperacion'))
             values = [
                 idx,
-                _recaudacion_excel_nombre_estudiante(item),
+                _recaudacion_excel_nombre_estudiante(item) + (
+                    '\n' + item['jornada_label'] if hoja.get('combinada') else ''
+                ),
                 modulo,
                 float(item.get('cuota_sugerida') or 0),
                 float(recaudado),
@@ -5352,22 +5606,17 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
                 cell.border = border
                 cell.alignment = Alignment(
                     horizontal='left',
-                    vertical='bottom',
+                    vertical='center',
                     wrap_text=True,
                 )
-                if 2 <= col <= 10 and resaltar:
-                    cell.fill = fill_alert
-                elif col == 2 and idx % 2 == 0:
-                    cell.fill = fill_alt
+                cell.fill = fill_alert if resaltar else fill_white
                 if col in (4, 5):
                     cell.number_format = '#,##0.00'
                 if col == 9 and value:
                     cell.font = font_bold
                 if col == 10 and value:
                     cell.font = font_bold
-                    if resaltar:
-                        cell.fill = fill_recovery
-            ws.row_dimensions[row].height = 45
+            ws.row_dimensions[row].height = 62 if hoja.get('combinada') else 45
 
         data_end = row
         if data_end >= data_start:
@@ -5375,16 +5624,60 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
             dv_banco.add(f'G{data_start}:G{data_end}')
             dv_asistencia.add(f'H{data_start}:H{data_end}')
 
+        # Las casillas libres mantienen el tamaño físico incluso con pocos alumnos.
+        for _ in range((8 if hoja.get('combinada') else 10) - len(items_pagina)):
+            row += 1
+            ws.row_dimensions[row].height = 62 if hoja.get('combinada') else 45
+            for col in range(1, 11):
+                ws.cell(row=row, column=col).border = border
+
+        if inicio + len(items_pagina) >= len(hoja['items']):
+            row += 1
+            ws.row_dimensions[row].height = 14
+            resumen = [
+                ('RECAUDACIÓN EN EFECTIVO', hoja['total_efectivo']),
+                ('RECAUDACIÓN EN TRANSFERENCIA', hoja['total_transferencia_impresion']),
+                ('RECAUDACIÓN EN PAYPHONE', hoja['total_payphone']),
+                ('TOTAL RECAUDADO', hoja['total_recaudado']),
+            ]
+            for etiqueta, monto in resumen:
+                row += 1
+                ws.row_dimensions[row].height = 24
+                ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
+                ws.cell(row=row, column=2, value=etiqueta)
+                ws.cell(row=row, column=10, value=None)
+                for col in range(2, 11):
+                    cell = ws.cell(row=row, column=col)
+                    cell.font = font_bold if col < 10 or etiqueta == 'TOTAL RECAUDADO' else font_base
+                    cell.border = border
+                    cell.alignment = Alignment(vertical='center', wrap_text=True)
+                    if etiqueta == 'TOTAL RECAUDADO':
+                        cell.fill = fill_responsable
+                ws.cell(row=row, column=10).number_format = '"$"#,##0.00'
+            observaciones_inicio = row + 1
+            row += 4
+            ws.merge_cells(start_row=observaciones_inicio, start_column=2, end_row=row, end_column=10)
+            for obs_row in range(observaciones_inicio, row + 1):
+                ws.row_dimensions[obs_row].height = 24
+                for col in range(2, 11):
+                    ws.cell(row=obs_row, column=col).border = border
+            obs_cell = ws.cell(row=observaciones_inicio, column=2, value='OBSERVACIONES ADICIONALES')
+            obs_cell.font = font_bold
+            obs_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+        areas_impresion.append(f'A{pagina_inicio}:J{row}')
+
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
+    ws.page_setup.fitToHeight = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_margins = PageMargins(
-        left=0.25, right=0.25, top=0.35, bottom=0.35,
-        header=0.2, footer=0.2,
+        left=0.25, right=0.25, top=0.25, bottom=0.25,
+        header=0, footer=0,
     )
     ws.print_options.horizontalCentered = True
+    # Excel imprime cada área por separado; el ajuste no comprime varias jornadas.
+    ws.print_area = areas_impresion
 
     output = BytesIO()
     wb.save(output)
@@ -5416,7 +5709,7 @@ def hoja_recaudacion_export_excel(request):
 
 @matricula_requerida
 def hoja_recaudacion_export_pdf(request):
-    """Exporta las hojas de recaudación a un PDF (una página por curso)."""
+    """Exporta todas las filas con continuación y casillas de cierre en blanco."""
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import landscape, A4
@@ -5445,80 +5738,58 @@ def hoja_recaudacion_export_pdf(request):
         leftMargin=1*cm, rightMargin=1*cm, topMargin=1.2*cm, bottomMargin=1*cm,
         title=f'Hoja de Recaudación — {filtros["periodo_label"]}',
     )
+    from xml.sax.saxutils import escape
     styles = getSampleStyleSheet()
-    titulo_st = ParagraphStyle('titulo', parent=styles['Title'],
-                               textColor=colors.HexColor('#1A237E'),
-                               fontSize=14, alignment=1, spaceAfter=4)
-    sub_st = ParagraphStyle('sub', parent=styles['Normal'],
-                            textColor=colors.HexColor('#666666'),
-                            fontSize=9, alignment=1, spaceAfter=10)
-    meta_st = ParagraphStyle('meta', parent=styles['Normal'],
-                             fontSize=9, spaceAfter=6)
+    cell_style = ParagraphStyle('recaudacion_cell', parent=styles['Normal'], fontSize=8, leading=10)
+    title_style = ParagraphStyle('recaudacion_title', parent=cell_style, fontSize=11, leading=13)
+    def paragraph(value, style=cell_style):
+        # ReportLab paragraphs require escaped user text; emoji are decorative.
+        text = str(value or '').replace('🟢', '').replace('🏫', '')
+        return Paragraph(escape(text).replace('\n', '<br/>'), style)
 
     elementos = []
-
-    for idx_hoja, h in enumerate(hojas):
-        elementos.append(Paragraph(
-            f'Recaudación — {h["curso"].nombre} — {h.get("jornada_label") or "—"}',
-            titulo_st,
-        ))
-        elementos.append(Paragraph(
-            f'<b>{"Período" if h.get("es_rango") else "Fecha"}:</b> '
-            f'{h["dia_semana"]} {h["periodo_label"]} · '
-            f'<b>Ciudad:</b> {h["ciudad"]} · '
-            f'<b>Jornada:</b> {h.get("jornada_label") or "—"} · '
-            f'<b>Responsable:</b> {h["responsable"]} · '
-            f'<b>Estudiantes:</b> {len(h["items"])}',
-            meta_st,
-        ))
-
-        headers = [
-            '#', 'Estudiante', 'Inicio jornada', 'Mód.',
-            'Recaudado', 'Forma', 'Banco', 'Recuperación',
-        ]
-        data = [headers]
-        for i, item in enumerate(h['items'], start=1):
-            est = item['estudiante']
-            nombre = (est.nombre_completo if hasattr(est, 'nombre_completo')
-                      else f'{est.nombres}'.strip())
-            data.append([
-                str(i),
-                nombre,
-                item['jornada_inicio'].strftime('%d/%m/%Y') if item['jornada_inicio'] else '—',
-                item['modulo_label'],
-                f"${float(item['recaudado']):.2f}",
-                item['forma_pago'],
-                item['banco'],
-                item['recuperacion'],
-            ])
-        # Fila de totales
-        data.append([
-            '', 'TOTAL', '', '',
-            f"${float(h['total_recaudado']):.2f}",
-            f"Efectivo: ${float(h['total_efectivo']):.2f}",
-            f"Transf.: ${float(h['total_transferencia']):.2f}",
-            '',
-        ])
-
-        table = Table(data, repeatRows=1)
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F0AD4E')),
-            ('TEXTCOLOR',  (0, 0), (-1, 0), colors.whitesmoke),
-            ('FONTNAME',   (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE',   (0, 0), (-1, 0), 8),
-            ('ALIGN',      (0, 0), (-1, 0), 'CENTER'),
-            ('FONTSIZE',   (0, 1), (-1, -2), 7),
-            ('GRID',       (0, 0), (-1, -1), 0.3, colors.HexColor('#CCCCCC')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#FAFAFA')]),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#FFF8E1')),
-            ('FONTNAME',   (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('TEXTCOLOR',  (0, -1), (-1, -1), colors.HexColor('#1A237E')),
-            ('FONTSIZE',   (0, -1), (-1, -1), 8),
-        ]))
-        elementos.append(table)
-
-        if idx_hoja < len(hojas) - 1:
+    widths = [doc.width * n / 90 for n in (3, 21, 5, 7, 7, 9, 9, 10, 10, 9)]
+    for page_index, h in enumerate(_paginas_recaudacion_combinada(hojas)):
+        if page_index:
             elementos.append(PageBreak())
+        elementos.append(paragraph(
+            f'{h["curso"].nombre} — {h.get("jornada_label") or "—"} — '
+            f'Página {h["pagina"]} de {h["num_paginas"]}', title_style))
+        elementos.append(paragraph('Recordar que si el estudiante falta a clases igual debe cumplir con el plan de financiamiento'))
+        elementos.append(paragraph(
+            f'Período: {h["periodo_label"]} · Ciudad: {h["ciudad"]} · Responsable: {h["responsable"]}'))
+        elementos.append(Spacer(1, 6))
+        data = [[paragraph(x) for x in ['#', 'Estudiante / Jornada', 'Mód.', 'Recaudar',
+                'Recaudado', 'Forma de pago', 'Banco', 'Asistencia / Firma', 'Observaciones', 'Recuperación']]]
+        for i, item in enumerate(h['items'], start=h['inicio'] + 1):
+            nombre = _recaudacion_excel_nombre_estudiante(item)
+            nombre += '\n' + str(item.get('jornada_label') or h.get('jornada_label') or '')
+            data.append([paragraph(x) for x in [i, nombre, item['modulo_label'],
+                f"${item['cuota_sugerida']:.2f}", f"${item['recaudado']:.2f}",
+                item['forma_pago'], item['banco'], item.get('asistencia'),
+                item.get('observaciones'), item.get('recuperacion')]])
+        table = Table(data, colWidths=widths, repeatRows=1, minRowHeights=[28] + [32] * len(h['items']))
+        commands = [('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#333333')),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#df8585'))]
+        for i, item in enumerate(h['items'], start=1):
+            if item.get('pago_pendiente_fecha'):
+                commands.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#bdebfa')))
+        table.setStyle(TableStyle(commands))
+        elementos.append(table)
+        if h['ultima']:
+            elementos.append(Spacer(1, 10))
+            summary = Table([[paragraph(label), ''] for label in (
+                'RECAUDACIÓN EN EFECTIVO', 'RECAUDACIÓN EN TRANSFERENCIA',
+                'RECAUDACIÓN EN PAYPHONE', 'TOTAL RECAUDADO')],
+                colWidths=[doc.width * .75, doc.width * .25], rowHeights=18)
+            summary.setStyle(TableStyle([('GRID', (0, 0), (-1, -1), .5, colors.black),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#d6ef6b'))]))
+            notes = Table([[paragraph('Observaciones adicionales')]], colWidths=[doc.width], rowHeights=90)
+            notes.setStyle(TableStyle([('BOX', (0, 0), (-1, -1), .5, colors.black),
+                                      ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+            from reportlab.platypus import KeepTogether
+            elementos.append(KeepTogether([summary, notes]))
 
     doc.build(elementos)
     pdf_bytes = buf.getvalue()

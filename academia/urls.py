@@ -73,6 +73,7 @@ urlpatterns = [
 
     # ── Hoja de Recaudación imprimible ─────────────────────────
     path('pagos/hoja-recaudacion/', views_pagos.hoja_recaudacion, name='hoja_recaudacion'),
+    path('pagos/hoja-recaudacion/historial/', views_pagos.hoja_recaudacion_historial, name='hoja_recaudacion_historial'),
     path('pagos/hoja-recaudacion/guardar-cuotas/',
          views_pagos.hoja_recaudacion_guardar_cuotas, name='hoja_recaudacion_guardar_cuotas'),
     path('pagos/hoja-recaudacion/exportar/excel/',

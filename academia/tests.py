@@ -3959,7 +3959,7 @@ class PagoInicialMatriculaTests(TestCase):
         )
         self.assertContains(response, '.screen-only { display: none !important; }')
         self.assertContains(response, '.print-only { display: inline !important; }')
-        self.assertContains(response, 'Saldo a recaudar')
+        self.assertContains(response, '<span class="print-only">Recaudar</span>')
         self.assertNotContains(response, 'Saldo módulo')
         self.assertContains(response, 'Módulo 1')
         self.assertContains(response, 'Exportar a Excel')
@@ -4053,7 +4053,7 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertContains(response, 'data-fecha="2026-08-01"')
         self.assertContains(response, 'para el final del período')
 
-    def test_hoja_recaudacion_excel_no_incluye_fila_de_totales(self):
+    def test_hoja_recaudacion_excel_incluye_resumen_y_formato_impresion(self):
         admin = User.objects.create_superuser(
             username='admin_excel_hoja_recaudacion',
             password='clave12345',
@@ -4109,12 +4109,21 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(ws.cell(row=3, column=10).value, 'RECUPERACIÓN')
         self.assertEqual(ws.cell(row=4, column=3).value, 1)
         self.assertEqual(ws.cell(row=4, column=4).value, 22)
-        self.assertEqual(ws.column_dimensions['B'].width, 42.38)
+        self.assertEqual(ws.column_dimensions['B'].width, 32)
         self.assertEqual(ws.cell(row=2, column=2).fill.fgColor.rgb, 'FF6D9EEB')
         self.assertEqual(ws.cell(row=2, column=9).fill.fgColor.rgb, 'FF00FF00')
         self.assertEqual(ws.cell(row=3, column=2).fill.fgColor.rgb, 'FFE06666')
         self.assertEqual(ws.row_dimensions[4].height, 45)
         self.assertNotIn('TOTAL', primera_columna)
+        self.assertIn('JORNADA:', ws['G2'].value)
+        self.assertEqual(ws['B15'].value, 'RECAUDACIÓN EN EFECTIVO')
+        self.assertEqual(ws['B16'].value, 'RECAUDACIÓN EN TRANSFERENCIA')
+        self.assertEqual(ws['B17'].value, 'RECAUDACIÓN EN PAYPHONE')
+        self.assertEqual(ws['B18'].value, 'TOTAL RECAUDADO')
+        self.assertEqual(ws['B19'].value, 'OBSERVACIONES ADICIONALES')
+        self.assertEqual(ws.page_setup.orientation, 'landscape')
+        self.assertEqual(ws.page_setup.fitToWidth, 1)
+        self.assertIn('$A$1:$J$22', str(ws.print_area))
 
     def test_hoja_recaudacion_excel_usa_valor_manual_guardado_en_rango(self):
         admin = User.objects.create_superuser(
@@ -5666,6 +5675,49 @@ class PagosPorModuloFiltroTests(TestCase):
 
 
 class PlanRecaudacionTests(TestCase):
+    def test_sombreado_respeta_pagos_previos_y_vencimiento_siguiente(self):
+        from .views_pagos import _construir_hoja_recaudacion
+        for modalidad, es_corto, quincenal, proximo in [
+            ('presencial', False, False, date(2026, 7, 15)),
+            ('presencial', False, True, date(2026, 7, 22)),
+            ('online', False, False, date(2026, 7, 15)),
+            ('online', True, False, date(2026, 7, 15)),
+            ('online', False, True, date(2026, 7, 21)),
+        ]:
+            m = self._matricula_con_adelanto(
+                Decimal('110'), Decimal('35'), 4,
+                modalidad=modalidad, es_ciclo_corto=es_corto,
+            )
+            m.curso.pagos_cada_dos_semanas = quincenal
+            m.curso.save()
+            for fecha, esperado in [(date(2026, 7, 9), False),
+                                    (proximo - timedelta(days=1), False), (proximo, True),
+                                    (proximo + timedelta(days=1), True)]:
+                with self.subTest(modalidad=modalidad, corto=es_corto, quincenal=quincenal, fecha=fecha):
+                    hoja = _construir_hoja_recaudacion(m.curso, [m], fecha)
+                    self.assertEqual(hoja['items'][0]['pago_pendiente_fecha'], esperado)
+                    alertas = _calcular_alertas_pago(fecha_actual=fecha, excluir_revisadas=False)
+                    self.assertEqual(
+                        hoja['items'][0]['pago_pendiente_fecha'],
+                        any(a['matricula'].pk == m.pk for a in alertas),
+                    )
+
+    def test_sombreado_pago_parcial_y_curso_cancelado(self):
+        from .views_pagos import _construir_hoja_recaudacion
+        m = self._matricula_con_adelanto(Decimal('110'), Decimal('20'), 4)
+        hoja = _construir_hoja_recaudacion(m.curso, [m], date(2026, 7, 8))
+        self.assertTrue(hoja['items'][0]['pago_pendiente_fecha'])
+        self.assertGreater(hoja['items'][0]['recaudado'], 0)
+        CuotaManualRecaudacion.objects.create(matricula=m, fecha=date(2026, 7, 9), monto=0)
+        hoja = _construir_hoja_recaudacion(m.curso, [m], date(2026, 7, 9))
+        self.assertTrue(hoja['items'][0]['pago_pendiente_fecha'])
+        pagado = self._matricula_con_adelanto(
+            Decimal('35'), Decimal('35'), 2, modalidad='online',
+            es_ciclo_corto=True, pago_unico_online=True,
+        )
+        hoja = _construir_hoja_recaudacion(pagado.curso, [pagado], date(2026, 8, 1))
+        self.assertFalse(hoja['items'][0]['pago_pendiente_fecha'])
+
     def setUp(self):
         self._seq = 0
 
@@ -5837,6 +5889,106 @@ class PlanRecaudacionTests(TestCase):
         self.assertIn('Recuperar 10/08/2026', item['recuperacion'])
         self.assertIn('Recuperó 02/08/2026', item['recuperacion'])
         self.assertIn('$25.00', item['recuperacion'])
+
+    def test_hoja_recuperacion_pagada_muestra_cero_y_queda_al_final(self):
+        from .views_pagos import _construir_hoja_recaudacion
+
+        matricula = self._matricula_con_adelanto(
+            Decimal('110.00'), Decimal('10.00'), 4,
+            modalidad='presencial',
+        )
+        recuperacion = RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 8, 30),
+            fecha_programada=date(2026, 9, 6),
+            saldo_pendiente_al_marcar=Decimal('100.00'),
+        )
+        pago = Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 9, 6),
+            monto=Decimal('25.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=1,
+            cuenta_para_saldo=True,
+            metodo='efectivo',
+        )
+        recuperacion.pagada = True
+        recuperacion.fecha_recuperacion = pago.fecha
+        recuperacion.abono = pago
+        recuperacion.save()
+
+        otro_estudiante = Estudiante.objects.create(
+            cedula='0999999991', nombres='Zeta Sin Recuperación',
+        )
+        otra_matricula = Matricula.objects.create(
+            estudiante=otro_estudiante,
+            curso=matricula.curso,
+            jornada=matricula.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 8),
+            valor_curso=Decimal('110.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+        )
+        Abono.objects.create(
+            matricula=otra_matricula,
+            fecha=date(2026, 7, 8),
+            monto=Decimal('10.00'),
+            tipo_pago='abono',
+        )
+
+        hoja = _construir_hoja_recaudacion(
+            matricula.curso,
+            [matricula, otra_matricula],
+            date(2026, 9, 6),
+            jornada=matricula.jornada,
+        )
+
+        self.assertEqual(
+            [item['matricula_id'] for item in hoja['items']],
+            [otra_matricula.pk, matricula.pk],
+        )
+        item = hoja['items'][-1]
+        self.assertEqual(item['modulo'], 1)
+        self.assertEqual(item['cuota_sugerida'], Decimal('0.00'))
+        self.assertEqual(item['recaudado'], Decimal('25.00'))
+        self.assertFalse(item['pago_pendiente_fecha'])
+        self.assertIn('Ya pagada', item['recuperacion'])
+
+    def test_hoja_recuperacion_pendiente_cobra_la_clase_y_muestra_debe(self):
+        from .views_pagos import _construir_hoja_recaudacion
+
+        matricula = self._matricula_con_adelanto(
+            Decimal('110.00'), Decimal('10.00'), 4,
+            modalidad='presencial',
+        )
+        RecuperacionPendiente.objects.create(
+            matricula=matricula,
+            numero_modulo=1,
+            fecha_marcada=date(2026, 8, 30),
+            fecha_programada=date(2026, 9, 6),
+            saldo_pendiente_al_marcar=Decimal('100.00'),
+        )
+
+        hoja = _construir_hoja_recaudacion(
+            matricula.curso,
+            [matricula],
+            date(2026, 9, 6),
+            jornada=matricula.jornada,
+        )
+        item = hoja['items'][0]
+
+        self.assertEqual(item['modulo'], 1)
+        self.assertEqual(item['cuota_sugerida'], Decimal('25.00'))
+        self.assertEqual(item['saldo_modulo'], Decimal('25.00'))
+        self.assertEqual(item['recaudado'], Decimal('0.00'))
+        self.assertTrue(item['pago_pendiente_fecha'])
+        self.assertIn('Pendiente', item['recuperacion'])
+        self.assertIn('Debe $25.00', item['recuperacion'])
+        self.assertNotIn('Debe $100.00', item['recuperacion'])
 
     def test_hoja_recaudacion_usa_nombre_de_modulo_personalizado(self):
         matricula = self._matricula_con_adelanto(

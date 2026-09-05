@@ -135,12 +135,17 @@ class ConfirmacionMatriculaCorreoTests(TestCase):
         ):
             self.assertIn(contenido, texto)
         self.assertIn('Completar formulario de inscripción', html)
+        self.assertIn('Paso importante para tu matrícula', html)
         self.assertIn(
             'href="https://forms.gle/qvUb589ueCvb8Ng69"', html,
         )
-        self.assertGreater(
+        self.assertLess(
             texto.index('https://forms.gle/qvUb589ueCvb8Ng69'),
-            texto.index('RESUMEN FINANCIERO'),
+            texto.index('DATOS DEL ESTUDIANTE'),
+        )
+        self.assertLess(
+            html.index('Completa tu inscripción'),
+            html.index('Información de la matrícula'),
         )
 
         registro = ConfirmacionMatriculaCorreo.objects.get(

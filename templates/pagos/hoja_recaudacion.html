@@ -375,16 +375,6 @@
             text-align: right !important;
             white-space: nowrap !important;
         }
-        .hoja-tabla th:nth-child(1),  .hoja-tabla td:nth-child(1)  { width: 3% !important; }
-        .hoja-tabla th:nth-child(2),  .hoja-tabla td:nth-child(2)  { width: 22% !important; }
-        .hoja-tabla th:nth-child(3),  .hoja-tabla td:nth-child(3)  { width: 9% !important; }
-        .hoja-tabla th:nth-child(4),  .hoja-tabla td:nth-child(4)  { width: 8% !important; }
-        .hoja-tabla th:nth-child(5),  .hoja-tabla td:nth-child(5)  { width: 9% !important; }
-        .hoja-tabla th:nth-child(6),  .hoja-tabla td:nth-child(6)  { width: 8% !important; }
-        .hoja-tabla th:nth-child(7),  .hoja-tabla td:nth-child(7)  { width: 13% !important; }
-        .hoja-tabla th:nth-child(8),  .hoja-tabla td:nth-child(8)  { width: 12% !important; }
-        .hoja-tabla th:nth-child(9),  .hoja-tabla td:nth-child(9)  { width: 6% !important; }
-        .hoja-tabla th:nth-child(10), .hoja-tabla td:nth-child(10) { width: 10% !important; }
         .hoja-tabla thead {
             display: table-header-group;
         }
@@ -498,6 +488,62 @@
         color: #1a237e;
         font-weight: 700;
     }
+
+    @media screen and (max-width: 1100px) {
+        .recaudacion-filtros { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .recaudacion-filtros > div { min-width: 0; }
+        .recaudacion-filtros select { width: 100%; min-width: 0; }
+    }
+    @media screen and (max-width: 540px) {
+        .recaudacion-filtros { grid-template-columns: minmax(0, 1fr) !important; }
+        .hoja-meta, .hoja-totales { grid-template-columns: minmax(0, 1fr) !important; }
+        .hoja-recaudacion { padding: 10px; min-width: 0; }
+        #ayuda-cuota-manual { min-width: 0 !important; flex-basis: 100% !important; }
+    }
+    .print-cell, .hoja-cierre-impresion { display: none; }
+    @media print {
+        .hoja-encabezado {
+            background: #ffc817 !important; color: #111 !important;
+            border: 1px solid #222; border-radius: 0 !important;
+            padding: 3mm 2mm !important; margin: 0 !important;
+            font: bold italic 11pt/1.2 "Times New Roman", serif !important;
+            letter-spacing: 0 !important;
+        }
+        .hoja-meta { margin: 0 !important; gap: 0 !important; font-size: 9pt !important; }
+        .hoja-meta div { border: 1px solid #222; padding: 2mm !important; background: #8eb4e8 !important; }
+        .hoja-meta div:last-child { background: #d6ef6b !important; }
+        .hoja-tabla { font: 10pt/1.2 "Times New Roman", serif !important; }
+        .hoja-tabla th, .hoja-tabla td {
+            min-width: 0 !important; max-width: none !important;
+            border: 1px solid #333 !important; padding: 2mm 1mm !important;
+            vertical-align: middle !important; color: #111 !important;
+        }
+        .hoja-tabla th { font-size: 9pt !important; background: #df8585 !important; color: #111 !important; letter-spacing: 0 !important; }
+        .hoja-tabla th { overflow-wrap: normal !important; font-size: 8pt !important; }
+        .hoja-tabla .fp-table-identity-context { display: none !important; }
+        .hoja-tabla tbody tr { height: 8mm; }
+        .hoja-tabla .hoja-col-inicio { display: none !important; }
+        .hoja-tabla .print-cell { display: table-cell !important; }
+        .hoja-tabla .hoja-col-num { width: 3% !important; }
+        .hoja-tabla .hoja-col-estudiante { width: 21% !important; }
+        .hoja-tabla .hoja-col-modulo { width: 5% !important; font-size: 8pt !important; }
+        .hoja-tabla .hoja-col-cuota, .hoja-tabla .hoja-col-recaudado { width: 7% !important; }
+        .hoja-tabla .hoja-col-forma, .hoja-tabla .hoja-col-banco { width: 9% !important; }
+        .hoja-tabla .hoja-col-asistencia { width: 10% !important; }
+        .hoja-tabla .hoja-col-observaciones { width: 10% !important; }
+        .hoja-tabla .hoja-col-recuperacion { width: 9% !important; }
+        .hoja-cierre-impresion { display: block !important; width: 100% !important; margin-top: 5mm; break-inside: avoid; page-break-inside: avoid; color: #111; }
+        .hoja-resumen-pagos { width: 100% !important; table-layout: fixed; border-collapse: collapse; font: 10pt "Times New Roman", serif; }
+        .hoja-resumen-pagos th, .hoja-resumen-pagos td { border: 1px solid #333; padding: 1mm 2mm; height: 6mm; box-sizing: border-box; }
+        .hoja-resumen-pagos th { text-align: left; text-transform: uppercase; font-size: 9pt; }
+        .hoja-resumen-pagos td { width: 25%; white-space: nowrap; }
+        .hoja-resumen-pagos tr:last-child { background: #d6ef6b; font-weight: bold; }
+        .hoja-observaciones-adicionales { width: 100% !important; box-sizing: border-box; border: 1px solid #333; border-top: 0; padding: 2mm; min-height: 32mm; font: bold 10pt "Times New Roman", serif; }
+        .hoja-tabla tbody tr td { background: #fff !important; }
+        .hoja-tabla tbody tr.pago-pendiente-fecha td { background: #bdebfa !important; }
+        .cuota-input { width: 100% !important; font: inherit !important; }
+    }
+
 </style>
 {% endblock %}
 
@@ -563,7 +609,7 @@
 
 {# ─── Filtros ───────────────────────────────── #}
 <div class="card-box no-print" style="margin-bottom:18px; padding:16px;">
-    <form method="get" style="display:grid; grid-template-columns: minmax(260px, 1.45fr) 1fr 1fr 2fr 2fr auto; gap:10px; align-items:end;">
+    <form class="recaudacion-filtros" method="get" style="display:grid; grid-template-columns: minmax(260px, 1.45fr) 1fr 1fr 2fr 2fr auto; gap:10px; align-items:end;">
         <div>
             <label class="form-label" style="font-size:11px;">Fecha / rango *</label>
             <div class="recaudacion-date-picker" data-single-date-picker data-date-range-picker>
@@ -646,10 +692,18 @@
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <button type="submit" class="btn btn-primary">Generar</button>
+            <button type="button" class="btn btn-secondary" id="btn-varias-jornadas" disabled>Varias jornadas</button>
+            <button type="button" class="btn btn-secondary" id="btn-historial-jornadas" disabled>Historial</button>
             <a href="{% url 'academia:hoja_recaudacion' %}" class="btn btn-secondary">Limpiar</a>
         </div>
+        <div id="seleccion-jornadas-hidden" hidden>
+            {% if filtros.varias %}<input type="hidden" name="varias" value="1">{% endif %}
+            {% for id in filtros.jornadas %}<input type="hidden" name="jornadas" value="{{ id }}">{% endfor %}
+        </div>
     </form>
+    <p id="resumen-jornadas-seleccion" style="margin:10px 0 0;" aria-live="polite">{% if filtros.varias %}Lista combinada · {{ filtros.jornadas|length }} jornadas seleccionadas{% elif filtros.curso %}Usa Varias jornadas para reunir estudiantes o Historial para recuperar una selección.{% else %}Selecciona un curso para combinar jornadas o consultar su historial.{% endif %}</p>
 </div>
+{% include 'pagos/recaudacion_jornadas_dialogos.html' %}
 
 <script>
 (function () {
@@ -1059,7 +1113,7 @@
 {% else %}
 
 {% for hoja in hojas %}
-<div class="hoja-recaudacion">
+<div class="hoja-recaudacion no-print">
     <div class="hoja-encabezado">
         Módulo de {{ hoja.curso.nombre }} 
         {% if hoja.curso.es_ciclo_corto %}
@@ -1095,23 +1149,25 @@
                 <th class="hoja-col-modulo" style="width:82px; text-align:center;">Mód.</th>
                 <th class="col-cuota hoja-col-cuota" style="width:100px; text-align:right;">
                     <span class="screen-only">A Recaudar (Módulo)</span>
-                    <span class="print-only">Saldo a recaudar</span>
+                    <span class="print-only">Recaudar</span>
                 </th>
                 <th class="hoja-col-recaudado" style="width:80px; text-align:right;">Recaudado</th>
                 <th class="hoja-col-forma" style="width:120px;">Forma de pago</th>
                 <th class="hoja-col-banco" style="width:110px;">Banco</th>
-                <th class="hoja-col-asistencia" style="width:80px; text-align:center;">Asistencia</th>
+                <th class="hoja-col-asistencia" style="width:80px; text-align:center;">Asistencia<span class="print-only"> / Firma</span></th>
+                <th class="hoja-col-observaciones print-cell">Observaciones</th>
                 <th class="hoja-col-recuperacion" style="width:110px;">Recuperación</th>
             </tr>
         </thead>
         <tbody>
             {% for item in hoja.items %}
-            <tr>
+            <tr{% if item.pago_pendiente_fecha %} class="pago-pendiente-fecha"{% endif %}>
                 <td class="hoja-col-num" style="text-align:center; color:#888;">{{ forloop.counter }}</td>
                 <td class="hoja-col-estudiante fp-table-identity-column">
                     <div class="hoja-estudiante-nombre">
                         {{ item.estudiante.nombre_completo }}
                     </div>
+                    {% if hoja.combinada %}<div style="font-size:10px; font-weight:400;">{{ item.jornada_label }}</div>{% endif %}
                     {% if item.talla %}<span style="color:#888; font-size:10px;">({{ item.talla }})</span>{% endif %}
                     <div class="fp-table-identity-context" aria-hidden="true">
                         <span class="fp-table-identity-context__item">
@@ -1141,6 +1197,7 @@
                 <td class="hoja-col-forma">{{ item.forma_pago }}</td>
                 <td class="hoja-col-banco">{{ item.banco }}</td>
                 <td class="hoja-col-asistencia" style="text-align:center;">{{ item.asistencia }}</td>
+                <td class="hoja-col-observaciones print-cell">{{ item.observaciones|linebreaksbr }}</td>
                 <td class="hoja-col-recuperacion" style="font-weight:700; color:#8a5a00; {% if item.recuperacion %}background:#fff8e1; border-left:2px solid #f0ad4e;{% endif %}">
                     {{ item.recuperacion|linebreaksbr }}
                 </td>
@@ -1150,6 +1207,17 @@
     </table>
     </div>
 
+    <div class="hoja-cierre-impresion">
+        <table class="hoja-resumen-pagos">
+            <tbody>
+                <tr><th>Recaudación en efectivo</th><td></td></tr>
+                <tr><th>Recaudación en transferencia</th><td></td></tr>
+                <tr><th>Recaudación en PayPhone</th><td></td></tr>
+                <tr><th>Total recaudado</th><td></td></tr>
+            </tbody>
+        </table>
+        <div class="hoja-observaciones-adicionales"><strong>Observaciones adicionales</strong></div>
+    </div>
     <div class="hoja-totales">
         <div>
             <div class="label">Total a recaudar por módulos</div>
@@ -1165,6 +1233,8 @@
 {% endfor %}
 
 {% endif %}
+
+{% include 'pagos/recaudacion_combinada_impresion.html' %}
 
 {% if hojas %}
 <style>

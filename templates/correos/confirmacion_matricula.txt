@@ -1,6 +1,13 @@
 CONFIRMACIÓN DE MATRÍCULA
 Formación Profesional EC
 
+{% if formulario %}PASO IMPORTANTE PARA TU MATRÍCULA
+COMPLETA TU INSCRIPCIÓN
+Este formulario corresponde específicamente a {{ formulario.nombre }}.
+Ingresa en el siguiente enlace y completa la información solicitada:
+{{ formulario.url }}
+
+{% endif %}
 Hola {{ nombre_estudiante }},
 
 Tu matrícula fue registrada correctamente. A continuación encontrarás el resumen de la información ingresada.
@@ -38,12 +45,6 @@ Pago registrado: ${{ valor_pagado|floatformat:2 }}
 Saldo pendiente: ${{ saldo|floatformat:2 }}
 
 Por favor, revisa que los datos sean correctos. Si encuentras alguna novedad, responde a este correo para que podamos ayudarte.
-
-{% if formulario %}PARA COMPLETAR TU INSCRIPCIÓN
-Este formulario corresponde específicamente a {{ formulario.nombre }}.
-Ingresa en el siguiente enlace y completa la información solicitada:
-{{ formulario.url }}
-{% endif %}
 
 Atentamente,
 Formación Profesional EC
