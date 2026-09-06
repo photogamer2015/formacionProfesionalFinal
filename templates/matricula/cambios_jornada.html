@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Cambios de jornada{% endblock %}
+{% block content %}
+<h2 class="page-title">Cambios de jornada</h2>
+<p class="page-subtitle">{% if mes == actual %}Cambios de este mes{% elif mes == anterior %}Mes anterior{% else %}Historial mensual{% endif %} · {{ mes|date:'F Y' }} · {{ total }} cambio{{ total|pluralize:'s' }}</p>
+<div class="card-box">
+<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;align-items:center;">
+<a class="btn btn-secondary" href="?mes={{ actual|date:'Y-m' }}">Este mes</a><a class="btn btn-secondary" href="?mes={{ anterior|date:'Y-m' }}">Mes anterior</a>
+<form method="get" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><label for="mes-cambios">Consultar mes</label><select name="mes" id="mes-cambios" class="form-input" style="width:auto;">{% for opcion in meses %}<option value="{{ opcion|date:'Y-m' }}" {% if opcion == mes %}selected{% endif %}>{{ opcion|date:'F Y' }}</option>{% endfor %}</select><button class="btn btn-primary">Ver</button></form>
+</div>
+{% for cambio in pagina %}
+<article style="border:1px solid #dde4ee;border-radius:14px;padding:20px;margin-bottom:16px;">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;"><h3 style="font-size:18px;">{{ cambio.estudiante_nombre }}</h3><span style="color:#64748b;">{{ cambio.creado|date:'d/m/Y H:i' }}</span></div>
+<p style="margin:8px 0 16px;">{{ cambio.curso_nombre }}</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;">
+<div style="background:#f4f6f9;padding:14px;border-radius:10px;"><strong>Jornada anterior</strong><p style="margin-top:6px;">{{ cambio.jornada_anterior }}</p></div>
+<div style="background:#edf9f5;padding:14px;border-radius:10px;"><strong>Nueva jornada</strong><p style="margin-top:6px;">{{ cambio.jornada_nueva }}</p></div></div>
+<p style="margin:16px 0 6px;overflow-wrap:anywhere;"><strong>Motivo:</strong> {{ cambio.motivo }}</p><p style="color:#64748b;">Registrado por {{ cambio.responsable_nombre }}</p>
+</article>
+{% empty %}<p style="padding:28px 0;">No hay cambios de jornada registrados en este mes.</p>{% endfor %}
+{% if pagina.has_other_pages %}<div style="display:flex;gap:16px;align-items:center;">{% if pagina.has_previous %}<a class="btn btn-secondary" href="?mes={{ mes|date:'Y-m' }}&page={{ pagina.previous_page_number }}">Anterior</a>{% endif %}<span>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>{% if pagina.has_next %}<a class="btn btn-secondary" href="?mes={{ mes|date:'Y-m' }}&page={{ pagina.next_page_number }}">Siguiente</a>{% endif %}</div>{% endif %}
+</div>
+{% endblock %}

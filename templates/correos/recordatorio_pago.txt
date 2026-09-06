@@ -1,6 +1,6 @@
 Hola {{ nombre_estudiante }},
 
-{% if recordatorio_atrasado %}Tu matrícula fue registrada después de la fecha prevista para este pago. Por eso te enviamos ahora este recordatorio de pago pendiente.{% else %}Esperamos que estés muy bien. Te recordamos cordialmente que tienes un pago próximo correspondiente a tu curso.{% endif %}
+{% if es_presencial %}Esperamos que estés muy bien. Te enviamos un recordatorio cordial sobre la cuota correspondiente a tu clase presencial.{% elif recordatorio_atrasado %}Tu matrícula fue registrada después de la fecha prevista para este pago. Por eso te enviamos ahora este recordatorio de pago pendiente.{% else %}Esperamos que estés muy bien. Te recordamos cordialmente que tienes un pago próximo correspondiente a tu curso.{% endif %}
 
 Curso: {{ curso_nombre }}
 Modalidad: {{ modalidad }}
@@ -13,9 +13,9 @@ Saldo total pendiente del curso: ${{ saldo_total|floatformat:2 }}
 Fecha de envío: {{ fecha_envio|date:"d/m/Y" }}
 
 {% if es_online %}PLAZO DE PAGO: Le recordamos que puede realizar su pago hasta el {{ fecha_limite_online|date:"d/m/Y" }}, a las 12:00 p. m. (mediodía), día siguiente al envío de este correo. Agradecemos su puntualidad en el cumplimiento de su plan de pagos.
-{% elif es_presencial %}PAGO EN NUESTRAS INSTALACIONES: Le solicitamos cordialmente acercarse a nuestras instalaciones para realizar el pago correspondiente a su curso. Agradecemos su puntualidad en el cumplimiento de su plan de pagos.
+{% elif es_presencial %}RECORDATORIO PARA TU CLASE: Recuerda que, para poder ingresar al salón de clases, debes llevar la cuota correspondiente a tu clase y realizar el pago antes de ingresar. Te agradecemos tenerlo presente y cumplir puntualmente con tu plan de pagos. ¡Te esperamos en clase!
 {% endif %}
-Si ya realizaste el pago, por favor ignora este mensaje. Si tienes alguna duda o necesitas asistencia, contáctanos al número de la academia 593 96 271 6288 y con gusto te atenderemos.
+Si ya realizaste el pago, por favor ignora este mensaje. {% if es_presencial %}Si tienes alguna duda, puedes escribir a nuestra IA de atención por WhatsApp al {% else %}Si tienes alguna duda o necesitas asistencia, contáctanos al número de la academia {% endif %}593 96 271 6288 y con gusto te atenderemos.
 
 Gracias por ser parte de Formación Profesional EC.
 

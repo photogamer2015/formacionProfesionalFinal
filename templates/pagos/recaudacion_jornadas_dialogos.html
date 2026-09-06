@@ -88,6 +88,17 @@
  </div>
  <div class="acciones"><button type="button" class="btn btn-secondary" data-cerrar-jornadas>Cerrar</button></div>
 </dialog>
+<dialog id="dialog-eliminar-seleccion" class="jornadas-dialog no-print" style="width:min(460px, calc(100vw - 32px)); box-sizing:border-box;" aria-labelledby="titulo-eliminar-seleccion" aria-describedby="detalle-eliminar-seleccion">
+ <div aria-hidden="true" style="width:44px;height:44px;border-radius:12px;background:#fff0f1;color:#a51d2d;display:grid;place-items:center;font-size:24px;margin-bottom:16px;">×</div>
+ <h2 id="titulo-eliminar-seleccion">¿Eliminar esta selección?</h2>
+ <p id="detalle-eliminar-seleccion"></p>
+ <p>Se quitará del historial. Los estudiantes, las jornadas y los pagos se conservarán.</p>
+ <p id="error-eliminar-seleccion" role="alert" style="color:#a51d2d;"></p>
+ <div class="acciones">
+  <button type="button" class="btn btn-secondary" id="cancelar-eliminar-seleccion" autofocus>Cancelar</button>
+  <button type="button" class="btn btn-danger-soft" id="confirmar-eliminar-seleccion">Sí, eliminar selección</button>
+ </div>
+</dialog>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
  const curso=document.getElementById('id-curso-recaudacion'), jornada=document.getElementById('id-jornada-recaudacion');
@@ -99,6 +110,30 @@ document.addEventListener('DOMContentLoaded', function () {
  const paginacionHistorial=document.getElementById('paginacion-historial-jornadas'), contadorHistorial=document.getElementById('contador-historial-jornadas');
  const paginaHistorial=document.getElementById('pagina-historial-jornadas'), anteriorHistorial=document.getElementById('historial-anterior'), siguienteHistorial=document.getElementById('historial-siguiente');
  const endpoint="{% url 'academia:hoja_recaudacion_historial' %}";
+ const dialogEliminar=document.getElementById('dialog-eliminar-seleccion');
+ const confirmarEliminar=document.getElementById('confirmar-eliminar-seleccion'), cancelarEliminar=document.getElementById('cancelar-eliminar-seleccion');
+ const errorEliminar=document.getElementById('error-eliminar-seleccion');
+ let seleccionEliminar=null, eliminando=false;
+ cancelarEliminar.addEventListener('click',()=>dialogEliminar.close());
+ dialogEliminar.addEventListener('cancel',e=>{if(eliminando)e.preventDefault();});
+ dialogEliminar.addEventListener('close',()=>{seleccionEliminar=null;});
+ confirmarEliminar.addEventListener('click',async()=>{
+   if(eliminando || !seleccionEliminar)return;
+   const reg=seleccionEliminar;
+   eliminando=true; confirmarEliminar.disabled=true; cancelarEliminar.disabled=true;
+   confirmarEliminar.textContent='Eliminando…'; errorEliminar.textContent='';
+   try {
+     const r=await fetch(endpoint,{method:'DELETE',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('#jornadas-csrf input').value},body:JSON.stringify({id:reg.id})});
+     if(!r.ok) { const e=await r.json(); throw new Error(e.error||'No se pudo eliminar la selección.'); }
+     historialRegistros=historialRegistros.filter(item=>item.id!==reg.id);
+     dialogEliminar.close(); renderHistorial();
+     (listaHistorial.querySelector('button') || historico.querySelector('[data-cerrar-jornadas]')).focus();
+   } catch(e) { errorEliminar.textContent='No se pudo eliminar la selección. Inténtalo de nuevo.'; }
+   finally {
+     eliminando=false; confirmarEliminar.disabled=false; cancelarEliminar.disabled=false;
+     confirmarEliminar.textContent='Sí, eliminar selección';
+   }
+ });
  const historialPorPagina=10;
  let guardando=false, historialRegistros=[], historialPaginaActual=1;
  function seleccion() { return Array.from(hidden.querySelectorAll('[name="jornadas"]')).map(x=>x.value); }
@@ -146,18 +181,10 @@ document.addEventListener('DOMContentLoaded', function () {
        try { await guardar(reg.filtros); }
        catch(e) { const aviso=document.createElement('p'); aviso.textContent=e.message; card.append(aviso); usar.disabled=false; }
      });
-     eliminar.addEventListener('click',async()=>{
-       if (!window.confirm('¿Eliminar esta selección del historial?')) return;
-       eliminar.disabled=true; usar.disabled=true;
-       try {
-         const r=await fetch(endpoint,{method:'DELETE',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('#jornadas-csrf input').value},body:JSON.stringify({id:reg.id})});
-         if(!r.ok) { const e=await r.json(); throw new Error(e.error||'No se pudo eliminar la selección.'); }
-         historialRegistros=historialRegistros.filter(item=>item.id!==reg.id);
-         renderHistorial();
-       } catch(e) {
-         const aviso=document.createElement('p'); aviso.textContent=e.message; card.append(aviso);
-         eliminar.disabled=false; usar.disabled=false;
-       }
+     eliminar.addEventListener('click',()=>{
+       seleccionEliminar=reg; errorEliminar.textContent='';
+       document.getElementById('detalle-eliminar-seleccion').textContent='Guardada el '+reg.creado+' · Período: '+reg.filtros.fecha_desde+' — '+reg.filtros.fecha_hasta;
+       dialogEliminar.showModal(); cancelarEliminar.focus();
      });
      acciones.append(usar, eliminar);
      card.append(titulo, fechas, nombres, acciones);

@@ -2,7 +2,7 @@ from django.urls import path, re_path
 from . import (
     views, views_adicional, views_admin, views_avisos, views_cierre,
     views_comprobantes, views_pagos, views_recordatorios, views_sedes,
-    views_social,
+    views_social, views_jornadas_estudiante,
 )
 
 app_name = 'academia'
@@ -14,6 +14,8 @@ app_name = 'academia'
 #   /cursos/online/
 
 urlpatterns = [
+    path('cambios-jornada/', views_jornadas_estudiante.historial, name='cambios_jornada'),
+    path('matricula/cambiar-jornada/<int:pk>/', views_jornadas_estudiante.cambiar_jornada, name='matricula_cambiar_jornada'),
     path('bienvenida/', views.bienvenida, name='bienvenida'),
     path('session/keepalive/', views.session_keepalive, name='session_keepalive'),
 

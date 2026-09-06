@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Cambiar jornada{% endblock %}
+{% block content %}
+<div style="max-width:760px;margin:auto;">
+<h2 class="page-title">Cambiar jornada</h2>
+<p class="page-subtitle">{{ matricula.estudiante.nombre_completo }} · {{ matricula.curso.nombre }}</p>
+<form method="post" class="card-box">{% csrf_token %}
+<div style="background:#f1f5fb;border-radius:12px;padding:18px;margin-bottom:24px;"><strong>Jornada actual</strong><p style="margin-top:8px;">{{ matricula.jornada.etiqueta|default:'Sin jornada' }}</p></div>
+{{ form.non_field_errors }}{{ form.jornada_original }}{{ form.jornada_original.errors }}
+<label for="{{ form.jornada.id_for_label }}"><strong>Nueva jornada</strong></label><div style="margin:8px 0 20px;">{{ form.jornada }}{{ form.jornada.errors }}</div>
+<label for="{{ form.motivo.id_for_label }}"><strong>Motivo del cambio</strong></label><div style="margin:8px 0 20px;">{{ form.motivo }}{{ form.motivo.errors }}</div>
+<p style="line-height:1.6;margin-bottom:20px;">Las fechas de clase y los próximos avisos de cobro seguirán el calendario de la nueva jornada. Los pagos, saldos y recuperaciones registrados se conservarán.</p>
+{% if not form.fields.jornada.queryset.exists %}<p role="status">No hay otras jornadas activas del mismo curso y modalidad.</p>{% endif %}
+<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:20px;"><button class="btn btn-primary" type="submit" {% if not form.fields.jornada.queryset.exists %}disabled{% endif %}>Confirmar cambio de jornada</button><a class="btn btn-secondary" href="{% url 'academia:matricula_lista' modalidad=matricula.modalidad %}">Cancelar</a></div>
+</form></div>
+{% endblock %}

@@ -1219,9 +1219,16 @@ class Abono(models.Model):
     def save(self, *args, **kwargs):
         if not self.numero_recibo:
             self.numero_recibo = Abono.generar_numero_recibo(self.matricula)
-        super().save(*args, **kwargs)
-        if self.matricula_id:
-            self.matricula.recalcular_valor_pagado()
+        from django.db import transaction, router
+        nuevo = self._state.adding
+        using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            super().save(*args, **kwargs)
+            if self.matricula_id:
+                self.matricula.recalcular_valor_pagado()
+            if nuevo and self.monto > 0:
+                from .confirmaciones_pago import programar_confirmacion
+                programar_confirmacion(self, using=using)
 
     def delete(self, *args, **kwargs):
         matricula = self.matricula
@@ -3130,3 +3137,29 @@ class ActividadUsuario(models.Model):
 
     def __str__(self):
         return f'{self.usuario_nombre} · {self.accion} · {self.creado:%d/%m/%Y %H:%M}'
+
+
+class ConfirmacionPagoCorreo(models.Model):
+    """Un envío por recibo nuevo; no se reenvía al editar o imprimir."""
+    abono = models.OneToOneField(Abono, on_delete=models.CASCADE, related_name='confirmacion_correo')
+    destinatario = models.EmailField(blank=True)
+    estado = models.CharField(max_length=20, default='pendiente')
+    ultimo_error = models.TextField(blank=True)
+    enviado_en = models.DateTimeField(null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+
+class CambioJornada(models.Model):
+    """Historial persistente con etiquetas capturadas al realizar el traslado."""
+    matricula = models.ForeignKey(Matricula, null=True, on_delete=models.SET_NULL, related_name='cambios_jornada')
+    estudiante_nombre = models.CharField(max_length=300)
+    curso_nombre = models.CharField(max_length=300)
+    jornada_anterior = models.TextField()
+    jornada_nueva = models.TextField()
+    motivo = models.CharField(max_length=500)
+    realizado_por = models.ForeignKey('auth.User', null=True, on_delete=models.SET_NULL)
+    responsable_nombre = models.CharField(max_length=300)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-creado', '-pk']

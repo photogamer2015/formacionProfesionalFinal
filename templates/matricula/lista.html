@@ -1289,7 +1289,7 @@
     <div style="
             background:#fff; border-radius:16px;
             box-shadow:0 24px 64px rgba(0,0,0,0.25);
-            padding:32px 28px 24px; max-width:480px; width:92%;
+            padding:32px 28px 24px; max-width:480px; width:92%; max-height:90dvh; overflow-y:auto;
             text-align:center; position:relative;">
         <div style="
                 width:60px; height:60px; border-radius:50%;
@@ -1313,12 +1313,16 @@
                     ✏️ Editar solo los datos
                 </div>
                 <div style="font-size:13px; color:#3d6db3; line-height:1.4;">
-                    Corrige el nombre, correo, jornada, factura, etc.
+                    Corrige el nombre, documento y datos de contacto del estudiante.
                     <strong>Los pagos NO se tocan</strong> — el valor pagado y el
-                    saldo quedan igual. El <strong>curso no se puede cambiar</strong>.
+                    saldo quedan igual. La <strong>jornada se cambia por separado</strong>.
                 </div>
             </button>
 
+            <button type="button" id="btn-cambiar-jornada" style="padding:14px 16px;border-radius:12px;cursor:pointer;border:2px solid #b4ded3;background:#edf9f5;font-family:inherit;text-align:left;">
+                <div style="font-size:15px;font-weight:700;color:#176653;margin-bottom:4px;">Cambiar jornada</div>
+                <div style="font-size:13px;color:#397463;line-height:1.4;">Traslada a este estudiante a otra jornada del mismo curso y modalidad. El cambio quedará registrado en el historial.</div>
+            </button>
             <!-- Opción 2: editar el pago inicial directamente -->
             <button type="button" id="btn-editar-pago" style="
                     padding:14px 16px; border-radius:12px; cursor:pointer;
@@ -1377,6 +1381,12 @@
         document.getElementById('btn-editar-pago')
             .addEventListener('click', function () { irAEditar(true); });
 
+        document.getElementById('btn-cambiar-jornada').addEventListener('click', function () {
+            if (!_editarUrlBase) return;
+            const url = new URL(_editarUrlBase, window.location.origin);
+            url.searchParams.delete('editar_pago'); url.searchParams.delete('reiniciar_pago');
+            url.searchParams.set('cambiar_jornada', '1'); window.location.href = url.href;
+        });
         // Cerrar al hacer clic en el fondo
         document.getElementById('modal-editar-overlay')
             .addEventListener('click', function (e) {

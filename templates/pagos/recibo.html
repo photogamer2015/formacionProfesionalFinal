@@ -163,15 +163,21 @@
 <body>
     <div class="actions no-print">
         <button class="btn btn-primary" onclick="window.print()">🖨 Imprimir</button>
+        <a class="btn btn-primary" href="?formato=pdf">Descargar PDF</a>
         <button id="btn-copy" class="btn" style="background: #25D366; color: white;" onclick="copiarWhatsApp()">💬 Copiar para WhatsApp</button>
         <a href="javascript:window.close()" class="btn btn-secondary">Cerrar</a>
     </div>
 
+    {% if abono.confirmacion_correo %}<p class="no-print" role="status" style="max-width:600px;margin:0 auto 18px;">
+        {% with correo=abono.confirmacion_correo %}{% if correo.estado == 'enviado' %}Correo con comprobante enviado a {{ correo.destinatario }}.
+        {% elif correo.estado == 'sin_correo' %}Pago guardado. No se envió el comprobante: el estudiante no tiene un correo válido.
+        {% elif correo.estado == 'fallido' %}Pago guardado. No se pudo confirmar el envío del correo.
+        {% else %}Pago guardado. Confirmación por correo pendiente de envío.{% endif %}{% endwith %}</p>{% endif %}
     <div class="recibo">
         <div class="header">
             <div>
                 <h1>Formación Técnica y Profesional EC</h1>
-                <small>Comprobante de pago</small>
+                <small>{% if abono.tipo_pago == 'recuperacion' %}Comprobante de pago de recuperación{% else %}Comprobante de pago{% endif %}</small>
             </div>
             <div class="recibo-numero">{{ abono.numero_recibo }}</div>
         </div>
@@ -228,6 +234,12 @@
                 </div>
             </div>
 
+            <div style="padding:16px;margin-bottom:20px;border-radius:10px;background:{% if abono.tipo_pago == 'recuperacion' %}#fff4e5{% else %}#eef3fc{% endif %};">
+                <strong>{% if abono.tipo_pago == 'recuperacion' %}Pago de recuperación{% else %}{{ abono.get_tipo_pago_display }}{% endif %}</strong>
+                {% if abono.numero_modulo %}<p>{{ abono.get_modulo_display }}</p>{% endif %}
+                {% if abono.tipo_pago == 'recuperacion' %}{% for rec in abono.recuperaciones.all %}<p>Clase pendiente: {{ rec.fecha_marcada|date:"d/m/Y" }}{% if rec.fecha_programada %} · Recuperación programada: {{ rec.fecha_programada|date:"d/m/Y" }}{% endif %}</p>{% endfor %}{% endif %}
+                <p>{% if abono.cuenta_para_saldo %}Este pago se aplica al saldo del curso.{% else %}Cobro aparte: este pago no reduce el saldo del curso.{% endif %}</p>
+            </div>
             <div class="monto-box">
                 <div class="monto-label">Monto recibido</div>
                 <div class="monto-valor">${{ abono.monto|floatformat:2 }}</div>

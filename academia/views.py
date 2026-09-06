@@ -937,6 +937,12 @@ def matricula_editar(request, modalidad, pk):
             or request.GET.get('reiniciar_pago', '') == '1'
         )
 
+    if request.GET.get('cambiar_jornada') == '1':
+        return redirect('academia:matricula_cambiar_jornada', pk=matricula.pk)
+    if not editar_pago:
+        from .views_jornadas_estudiante import editar_datos_estudiante
+        return editar_datos_estudiante(request, matricula)
+
     # Campos del formulario que SÍ pertenecen al pago inicial. Todo lo demás
     # se fuerza al valor original en el modo "editar el pago".
     CAMPOS_PAGO = {

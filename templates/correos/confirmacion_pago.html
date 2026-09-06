@@ -1,0 +1,7 @@
+<!doctype html><html lang="es"><body style="background:#f4f7fb;font-family:Arial,sans-serif;color:#23304a;padding:24px;">
+<table role="presentation" style="max-width:600px;width:100%;margin:auto;background:white;border:1px solid #e0e6ef;border-radius:16px;" cellspacing="0"><tr><td style="padding:28px;background:#1a237e;color:white;"><b>Formación Técnica y Profesional EC</b><h1 style="font-size:25px;">Tu pago fue registrado exitosamente</h1></td></tr>
+<tr><td style="padding:28px;line-height:1.7;"><p>Hola <b>{{ matricula.estudiante.nombre_completo }}</b>,</p><p>Confirmamos que tu pago ha sido registrado exitosamente. Gracias por cumplir con tu formación.</p>
+<p><b>Curso:</b> {{ matricula.curso.nombre }}<br><b>Concepto:</b> {{ concepto }}{% if abono.numero_modulo %} · {{ abono.get_modulo_display }}{% endif %}<br><b>Recibo:</b> {{ abono.numero_recibo }}<br><b>Fecha de pago:</b> {{ abono.fecha|date:"d/m/Y" }}</p>
+<div style="padding:20px;background:#edf8ef;border-radius:10px;color:#268337;">Monto recibido<br><b style="font-size:30px;">${{ abono.monto|floatformat:2 }}</b></div>
+<p>{% if abono.cuenta_para_saldo %}Este pago se aplica al saldo de tu curso.{% else %}Este cobro es aparte y no reduce el saldo de tu curso.{% endif %}</p>
+<p><b>Tu comprobante está adjunto en PDF</b> para que puedas guardarlo o imprimirlo.</p><p>Si tienes alguna duda, escribe a nuestra IA de atención por WhatsApp al <b>+593 96 271 6288</b>.</p><p>Atentamente,<br>Formación Técnica y Profesional EC</p></td></tr></table></body></html>

@@ -1,0 +1,16 @@
+Hola {{ matricula.estudiante.nombre_completo }},
+
+Tu pago ha sido registrado exitosamente. Gracias por cumplir con tu formación.
+
+Curso: {{ matricula.curso.nombre }}
+Concepto: {{ concepto }}{% if abono.numero_modulo %} · {{ abono.get_modulo_display }}{% endif %}
+Recibo: {{ abono.numero_recibo }}
+Fecha de pago: {{ abono.fecha|date:"d/m/Y" }}
+Monto recibido: ${{ abono.monto|floatformat:2 }}
+{% if abono.cuenta_para_saldo %}Este pago se aplica al saldo de tu curso.{% else %}Este cobro es aparte y no reduce el saldo de tu curso.{% endif %}
+
+Adjuntamos tu comprobante en PDF para que puedas guardarlo o imprimirlo.
+Si tienes alguna duda, escribe a nuestra IA de atención por WhatsApp al +593 96 271 6288.
+
+Atentamente,
+Formación Técnica y Profesional EC

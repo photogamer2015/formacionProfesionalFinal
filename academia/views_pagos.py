@@ -2614,6 +2614,11 @@ def abono_recibo(request, abono_pk):
         ),
         pk=abono_pk
     )
+    if request.GET.get('formato') == 'pdf':
+        from .confirmaciones_pago import comprobante_pdf
+        response = HttpResponse(comprobante_pdf(abono), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Comprobante-{abono.numero_recibo}.pdf"'
+        return response
     return render(request, 'pagos/recibo.html', {
         'abono': abono,
         'matricula': abono.matricula,

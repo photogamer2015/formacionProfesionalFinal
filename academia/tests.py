@@ -1507,13 +1507,17 @@ class JornadaMatriculasAccessTests(TestCase):
             kwargs={'modalidad': 'presencial', 'pk': retirada.pk},
         )
         edicion_asesor = self.client.get(edicion_url)
-        self.assertTrue(edicion_asesor.context['mat_form'].fields['estado'].disabled)
+        self.assertEqual(edicion_asesor.status_code, 200)
+        self.assertNotIn('mat_form', edicion_asesor.context)
+        self.assertContains(edicion_asesor, 'Editar datos')
 
         self.client.force_login(administrador)
         response_admin = self.client.get(url)
         self.assertContains(response_admin, 'REVERTIR')
         edicion_admin = self.client.get(edicion_url)
-        self.assertFalse(edicion_admin.context['mat_form'].fields['estado'].disabled)
+        self.assertEqual(edicion_admin.status_code, 200)
+        self.assertNotIn('mat_form', edicion_admin.context)
+        self.assertContains(edicion_admin, 'Editar datos')
 
     def test_lista_matriculas_todos_mezcla_presencial_y_online(self):
         sede = Sede.objects.create(nombre='Guayaquil', orden=1)
@@ -4218,9 +4222,10 @@ class PagoInicialMatriculaTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode('utf-8')
-        self.assertIn('Seleccione la jornada', html)
-        self.assertIn('¿Factura con datos?', html)
-        self.assertIn('Selecciona el asesor', html)
+        self.assertNotIn('Seleccione la jornada', html)
+        self.assertNotIn('¿Factura con datos?', html)
+        self.assertNotIn('Selecciona el asesor', html)
+        self.assertIn('Editar solo los datos', html)
         self.assertNotIn('Valor pagado (USD)', html)
         self.assertNotIn('Forma de pago *', html)
         self.assertNotIn('Distribución de pago', html)

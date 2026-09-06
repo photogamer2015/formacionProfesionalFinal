@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Editar datos del estudiante{% endblock %}
+{% block content %}
+<div style="max-width:760px;margin:auto;">
+<h2 class="page-title">Editar solo los datos</h2>
+<p class="page-subtitle">{{ matricula.estudiante.nombre_completo }} · {{ matricula.curso.nombre }}</p>
+<form method="post" class="card-box">{% csrf_token %}
+{{ form.non_field_errors }}
+{% for field in form %}<div style="margin-bottom:18px;"><label for="{{ field.id_for_label }}" style="display:block;font-weight:600;margin-bottom:6px;">{{ field.label }}{% if field.field.required %} *{% endif %}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+<p style="margin:16px 0;color:#64748b;">Los datos personales se actualizan en la ficha de este estudiante, incluida su información en otras matrículas.</p>
+<div style="display:flex;flex-wrap:wrap;gap:12px;"><button class="btn btn-primary" type="submit">Guardar datos</button><a class="btn btn-secondary" href="{% url 'academia:matricula_lista' modalidad=matricula.modalidad %}">Cancelar</a></div>
+</form></div>
+{% endblock %}

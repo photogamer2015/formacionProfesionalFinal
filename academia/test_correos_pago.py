@@ -78,7 +78,7 @@ class RecordatoriosPagoCorreoTests(TestCase):
             self.assertIn('12:00 p. m. (mediodía)', contenido)
             self.assertNotIn('acercarse a nuestras instalaciones', contenido)
 
-    def test_presencial_solicita_pago_en_instalaciones_sin_plazo_online(self):
+    def test_presencial_recuerda_cuota_para_ingresar_sin_plazo_online(self):
         alerta = self._alertas()[0]
         alerta['matricula'].modalidad = 'presencial'
         alerta['modalidad_label'] = 'Presencial'
@@ -87,7 +87,11 @@ class RecordatoriosPagoCorreoTests(TestCase):
         )
         for formato in ('plain', 'html'):
             contenido = mensaje.get_body(preferencelist=(formato,)).get_content()
-            self.assertIn('acercarse a nuestras instalaciones', contenido)
+            self.assertIn('para poder ingresar al salón de clases', contenido)
+            self.assertIn('debes llevar la cuota correspondiente a tu clase', contenido)
+            self.assertIn('IA de atención por WhatsApp', contenido)
+            self.assertIn('593 96 271 6288', contenido)
+            self.assertNotIn('Tu matrícula fue registrada después', contenido)
             self.assertIn('14/08/2026', contenido)
             self.assertNotIn('mediodía', contenido)
             self.assertNotIn('15/08/2026', contenido)
