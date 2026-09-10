@@ -47,6 +47,9 @@ AVATARES_PERFIL = [
     ('buzz_lightyear', 'Buzz Lightyear'),
     ('shrek', 'Shrek'),
     ('woody', 'Woody'),
+    ('bo_peep', 'Bo Peep'),
+    ('jessie', 'Jessie'),
+    ('fiona', 'Fiona'),
 ]
 
 ARCHIVOS_AVATAR_PERFIL = {
@@ -60,6 +63,9 @@ ARCHIVOS_AVATAR_PERFIL.update({
     'buzz_lightyear': 'avatars/buzz_lightyear.webp',
     'shrek': 'avatars/shrek.jpg',
     'woody': 'avatars/woody.jpg',
+    'bo_peep': 'avatars/bo_peep.jpg',
+    'jessie': 'avatars/jessie.jpg',
+    'fiona': 'avatars/fiona.jpg',
 })
 
 
