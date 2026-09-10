@@ -51,6 +51,7 @@ AVATARES_PERFIL = [
     ('jessie', 'Jessie'),
     ('fiona', 'Fiona'),
     ('burro', 'Burro'),
+    ('slytherin', 'Slytherin'),
 ]
 
 ARCHIVOS_AVATAR_PERFIL = {
@@ -68,6 +69,7 @@ ARCHIVOS_AVATAR_PERFIL.update({
     'jessie': 'avatars/jessie.jpg',
     'fiona': 'avatars/fiona.jpg',
     'burro': 'avatars/burro.webp',
+    'slytherin': 'avatars/slytherin.jpg',
 })
 
 
