@@ -7091,7 +7091,7 @@ class JornadaOrdenYFiltroTests(TestCase):
         )
 
     def test_general_ordena_fecha_mas_nueva_primero_y_desempata_por_registro(self):
-        response = self.client.get(self.url, {'modalidad': 'presencial'})
+        response = self.client.get(self.url, {'modalidad': 'presencial', 'estado': 'general'})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -7128,13 +7128,13 @@ class JornadaOrdenYFiltroTests(TestCase):
         self.assertContains(activas, 'Activas <span>3</span>')
         self.assertContains(inactivas, 'Inactivas <span>1</span>')
 
-    def test_filtro_invalido_vuelve_a_general(self):
+    def test_filtro_invalido_vuelve_a_activas(self):
         response = self.client.get(
             self.url, {'modalidad': 'presencial', 'estado': 'desconocido'},
         )
 
-        self.assertEqual(response.context['estado_jornadas'], 'general')
-        self.assertEqual(len(response.context['jornadas_presencial']), 4)
+        self.assertEqual(response.context['estado_jornadas'], 'activa')
+        self.assertEqual(len(response.context['jornadas_presencial']), 3)
 
 
 class JornadaFeriadoTests(TestCase):

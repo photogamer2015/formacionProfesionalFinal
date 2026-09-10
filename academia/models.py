@@ -42,12 +42,25 @@ AVATARES_PERFIL = [
     ('gato', 'Gato'),
     ('princesa_peach', 'Princesa Peach'),
     ('logo_formacion', 'Logo Formación Profesional'),
+    ('anna', 'Anna'),
+    ('elsa', 'Elsa'),
+    ('buzz_lightyear', 'Buzz Lightyear'),
+    ('shrek', 'Shrek'),
+    ('woody', 'Woody'),
 ]
 
 ARCHIVOS_AVATAR_PERFIL = {
     clave: ('logo.png' if clave == 'logo_formacion' else f'avatars/{clave}.svg')
     for clave, _etiqueta in AVATARES_PERFIL
 }
+
+ARCHIVOS_AVATAR_PERFIL.update({
+    'anna': 'avatars/anna.webp',
+    'elsa': 'avatars/elsa.jpg',
+    'buzz_lightyear': 'avatars/buzz_lightyear.webp',
+    'shrek': 'avatars/shrek.jpg',
+    'woody': 'avatars/woody.jpg',
+})
 
 
 def avatar_archivo_usuario(user):
@@ -71,6 +84,9 @@ PORTADAS_PERFIL = [
     ('paisaje', 'Paisaje natural'),
     ('mundo_magico_nieve', 'Mundo mágico en la nieve'),
     ('mundo_champinon', 'Mundo champiñón'),
+    ('nieve_frozen', 'Nieve estilo Frozen'),
+    ('castillo_disney', 'Castillo estilo Disney'),
+    ('pantano_shrek', 'Pantano estilo Shrek'),
 ]
 ARCHIVOS_PORTADA_PERFIL = {
     'institucional': '',
@@ -79,6 +95,9 @@ ARCHIVOS_PORTADA_PERFIL = {
     'paisaje': 'portadas/paisaje.jpg',
     'mundo_magico_nieve': 'portadas/mundo_magico_nieve.jpg',
     'mundo_champinon': 'portadas/mundo_champinon.jpg',
+    'nieve_frozen': 'portadas/nieve_frozen.png',
+    'castillo_disney': 'portadas/castillo_disney.png',
+    'pantano_shrek': 'portadas/pantano_shrek.png',
 }
 
 MUSICA_MURAL = [

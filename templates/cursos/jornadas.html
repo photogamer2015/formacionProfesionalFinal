@@ -98,11 +98,6 @@
     <div>
         <nav class="jornada-filtros" aria-label="Filtrar jornadas por estado">
             <span class="jornada-filtros__label">Mostrar:</span>
-            <a href="?modalidad={{ modalidad_activa }}&estado=general"
-               class="jornada-filtros__opcion{% if estado_jornadas == 'general' %} is-active{% endif %}"
-               {% if estado_jornadas == 'general' %}aria-current="true"{% endif %}>
-                General <span>{{ resumen_jornadas.general }}</span>
-            </a>
             <a href="?modalidad={{ modalidad_activa }}&estado=activa"
                class="jornada-filtros__opcion{% if estado_jornadas == 'activa' %} is-active{% endif %}"
                {% if estado_jornadas == 'activa' %}aria-current="true"{% endif %}>
@@ -112,6 +107,11 @@
                class="jornada-filtros__opcion{% if estado_jornadas == 'inactiva' %} is-active{% endif %}"
                {% if estado_jornadas == 'inactiva' %}aria-current="true"{% endif %}>
                 Inactivas <span>{{ resumen_jornadas.inactivas }}</span>
+            </a>
+            <a href="?modalidad={{ modalidad_activa }}&estado=general"
+               class="jornada-filtros__opcion{% if estado_jornadas == 'general' %} is-active{% endif %}"
+               {% if estado_jornadas == 'general' %}aria-current="true"{% endif %}>
+                General <span>{{ resumen_jornadas.general }}</span>
             </a>
         </nav>
 

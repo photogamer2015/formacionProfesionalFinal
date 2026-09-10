@@ -1,0 +1,17 @@
+<div class="crm-jornada">
+    <span style="font-size:13px;">{% if modalidad == 'online' %}🟢{% else %}🏫{% endif %}</span>
+    <div style="flex:1;">
+        <div class="j-dia">{{ j.descripcion_legible }}</div>
+        <div class="j-meta">
+            {% if j.fecha_inicio %}
+                <span class="j-chip">📅 {{ j.fecha_inicio|date:"d/m/Y" }}</span>
+            {% endif %}
+            {% if j.hora_inicio %}
+                <span class="j-chip hora">🕒 {{ j.hora_inicio|time:"H:i" }}{% if j.hora_fin %}–{{ j.hora_fin|time:"H:i" }}{% endif %}</span>
+            {% endif %}
+            {% if j.sede_nombre %}
+                <span class="j-chip sede">📍 {{ j.sede_nombre }}</span>
+            {% endif %}
+        </div>
+    </div>
+</div>

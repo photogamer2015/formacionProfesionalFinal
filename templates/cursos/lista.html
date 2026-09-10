@@ -115,6 +115,23 @@
         border-radius: 8px; padding: 8px 10px; text-align:center;
     }
     body.dark-mode .crm-sin-jornada { background:#2a2410; color:#e0c97a; border-color:#5a4d1a; }
+    .crm-jornadas-extra { margin-top: 10px; }
+    .crm-jornadas-extra summary {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 10px 12px; border: 1px solid var(--line, #dce3ef); border-radius: 10px;
+        background: #f1f4fa; color: #1B2A4E; font-size: 12px; font-weight: 700;
+        cursor: pointer; list-style: none;
+    }
+    .crm-jornadas-extra summary::-webkit-details-marker { display: none; }
+    .crm-jornadas-extra summary:hover { background: #e8edf7; }
+    .crm-jornadas-extra summary:focus-visible,
+    .crm-jornadas-restantes:focus-visible { outline: 2px solid #1565c0; outline-offset: 3px; }
+    .crm-jornadas-menos, .crm-jornadas-extra[open] .crm-jornadas-ver { display: none; }
+    .crm-jornadas-extra[open] .crm-jornadas-menos { display: inline; }
+    .crm-jornadas-extra[open] .crm-jornadas-chevron { transform: rotate(180deg); }
+    .crm-jornadas-restantes { max-height: 280px; overflow-y: auto; padding: 6px 4px; scrollbar-gutter: stable; }
+    body.dark-mode .crm-jornadas-extra summary { background: #222838; border-color: #384152; color: #dbe3f5; }
+    body.dark-mode .crm-jornadas-extra summary:hover { background: #2c3548; }
     .crm-card-acciones {
         padding: 12px 18px; background: rgba(0,0,0,.015); border-top: 1px solid var(--line, #f0f0f0);
         display: flex; gap: 6px; flex-wrap: wrap;
@@ -387,25 +404,23 @@
                             🗓 Jornadas ({{ curso.jornadas_modalidad|length }})
                         </div>
                         {% if curso.jornadas_modalidad %}
-                            {% for j in curso.jornadas_modalidad %}
-                            <div class="crm-jornada">
-                                <span style="font-size:13px;">{% if modalidad == 'online' %}🟢{% else %}🏫{% endif %}</span>
-                                <div style="flex:1;">
-                                    <div class="j-dia">{{ j.descripcion_legible }}</div>
-                                    <div class="j-meta">
-                                        {% if j.fecha_inicio %}
-                                            <span class="j-chip">📅 {{ j.fecha_inicio|date:"d/m/Y" }}</span>
-                                        {% endif %}
-                                        {% if j.hora_inicio %}
-                                            <span class="j-chip hora">🕒 {{ j.hora_inicio|time:"H:i" }}{% if j.hora_fin %}–{{ j.hora_fin|time:"H:i" }}{% endif %}</span>
-                                        {% endif %}
-                                        {% if j.sede_nombre %}
-                                            <span class="j-chip sede">📍 {{ j.sede_nombre }}</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
+                            {% for j in curso.jornadas_modalidad|slice:":5" %}
+                                {% include 'cursos/_jornada_tarjeta.html' %}
                             {% endfor %}
+                            {% if curso.jornadas_modalidad|length > 5 %}
+                            <details class="crm-jornadas-extra">
+                                <summary>
+                                    <span class="crm-jornadas-ver">Ver {{ curso.jornadas_modalidad|length|add:"-5" }} más</span>
+                                    <span class="crm-jornadas-menos">Ver menos</span>
+                                    <span class="crm-jornadas-chevron" aria-hidden="true">⌄</span>
+                                </summary>
+                                <div class="crm-jornadas-restantes" role="region" aria-label="Más jornadas de {{ curso.nombre }}" tabindex="0">
+                                    {% for j in curso.jornadas_modalidad|slice:"5:" %}
+                                        {% include 'cursos/_jornada_tarjeta.html' %}
+                                    {% endfor %}
+                                </div>
+                            </details>
+                            {% endif %}
                         {% else %}
                             <div class="crm-sin-jornada">Sin jornadas {{ modalidad_label|lower }} abiertas todavía.</div>
                         {% endif %}

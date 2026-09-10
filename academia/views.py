@@ -1729,15 +1729,15 @@ def _estado_jornadas_desde_request(request):
     estado = (
         request.GET.get('estado')
         or request.POST.get('estado_jornadas')
-        or 'general'
+        or 'activa'
     ).strip().lower()
-    return estado if estado in {'general', 'activa', 'inactiva'} else 'general'
+    return estado if estado in {'general', 'activa', 'inactiva'} else 'activa'
 
 
-def _url_curso_jornadas(curso_pk, modalidad, estado='general'):
+def _url_curso_jornadas(curso_pk, modalidad, estado='activa'):
     """Construye el regreso al listado conservando modalidad y filtro activo."""
     parametros = {'modalidad': modalidad}
-    if estado != 'general':
+    if estado != 'activa':
         parametros['estado'] = estado
     return (
         f"{reverse('academia:curso_jornadas', args=[curso_pk])}"
