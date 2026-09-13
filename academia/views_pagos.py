@@ -32,7 +32,11 @@ from .models import (
     Abono, Curso, Estudiante, JornadaCurso, Matricula, RecuperacionPendiente,
     distribuir_monto_en_cuotas_enteras,
 )
-from .permisos import matricula_requerida, admin_requerido
+from .permisos import (
+    admin_requerido,
+    matricula_requerida,
+    puede_editar_matricula_registrada,
+)
 from .busqueda import filtrar_queryset_busqueda
 
 
@@ -1841,9 +1845,17 @@ def estudiantes_por_curso(request):
 def estudiante_detalle(request, pk):
     """Detalle de un estudiante con todas sus matrículas."""
     estudiante = get_object_or_404(Estudiante, pk=pk)
-    matriculas = estudiante.matriculas.select_related(
-        'curso', 'curso__categoria', 'jornada'
-    ).order_by('-fecha_matricula')
+    matriculas = list(
+        estudiante.matriculas.select_related(
+            'curso', 'curso__categoria', 'jornada',
+            'registrado_por', 'vendedora',
+        ).order_by('-fecha_matricula')
+    )
+    for matricula in matriculas:
+        matricula.puede_editar_registro = puede_editar_matricula_registrada(
+            request.user,
+            matricula,
+        )
 
     # Agrupar por año para el "historial"
     por_anio = defaultdict(list)
@@ -1864,7 +1876,7 @@ def estudiante_detalle(request, pk):
         'estudiante': estudiante,
         'matriculas': matriculas,
         'historial': historial,
-        'total_matriculas': matriculas.count(),
+        'total_matriculas': len(matriculas),
     })
 
 
@@ -2229,6 +2241,10 @@ def matricula_abonos(request, pk):
 
     return render(request, 'pagos/matricula_abonos.html', {
         'matricula': matricula,
+        'puede_editar_matricula': puede_editar_matricula_registrada(
+            request.user,
+            matricula,
+        ),
         'pago_unico_online': matricula.tiene_pago_unico_online,
         'abonos': abonos,
         'saldo_pendiente': saldo_pendiente,

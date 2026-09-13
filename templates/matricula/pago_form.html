@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block extra_head %}
+<style>
+#pago-form { max-width: 900px; }
+#pago-form p { margin: 0 0 18px; line-height: 1.6; }
+#pago-form .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 24px 0; }
+#pago-resumen { padding: 12px 16px; border-radius: 8px; background: #edf5ff; color: #16345b; font-weight: 600; }
+@media (max-width: 600px) { #pago-form .form-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<h2 class="page-title">{{ titulo }}</h2>
+<p class="page-subtitle">{{ matricula.estudiante.nombre_completo }} · {{ matricula.curso.nombre }} · {{ modalidad_label }}</p>
+<form method="post" class="card-box" id="pago-form" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="editar_pago" value="1">
+    <p>Corrige el pago inicial y guarda los cambios. Los abonos posteriores se conservan. Para registrar un pago nuevo, usa <strong>Gestionar Pagos</strong>.</p>
+    <p><strong>Pago inicial actual: ${{ monto_pago_inicial_actual|floatformat:2 }}</strong> · Valor del curso: ${{ matricula.valor_curso|floatformat:2 }}</p>
+    {% if mat_form.errors %}
+    <div class="flash flash-error" role="alert"><strong>No se guardaron los cambios.</strong>
+        {% for field in mat_form %}{% for error in field.errors %}<p>{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
+        {{ mat_form.non_field_errors }}
+    </div>
+    {% endif %}
+    <div class="form-grid">
+    {% for field in campos_pago %}
+        <div data-field="{{ field.name }}">
+            <label class="form-label" for="{{ field.id_for_label }}">{% if field.name == 'tipo_cobro' %}Distribución de pago{% else %}{{ field.label }}{% endif %}{% if field.field.required %} *{% endif %}</label>
+            {{ field }}
+        </div>
+    {% endfor %}
+    </div>
+    <p id="pago-resumen" aria-live="polite"></p>
+    <p>El pago inicial más los abonos posteriores no puede superar el valor del curso menos el descuento.</p>
+    <button type="submit" class="btn btn-primary">Guardar pago inicial</button>
+    <a class="btn btn-secondary" href="{% url 'academia:matricula_lista' modalidad=modalidad %}">Cancelar</a>
+</form>
+{{ matricula.valor_curso|json_script:'pago-valor-curso' }}
+<script>
+(function () {
+    const form = document.getElementById('pago-form');
+    const field = name => form.elements.namedItem('mat-' + name);
+    const show = (name, visible) => {
+        const wrap = form.querySelector('[data-field="' + name + '"]');
+        if (wrap) { wrap.hidden = !visible; field(name).disabled = !visible; }
+    };
+    function update() {
+        const mixed = field('tipo_cobro').value === 'mixto';
+        show('metodo_pago', !mixed);
+        show('banco', !mixed && ['transferencia', 'tarjeta'].includes(field('metodo_pago').value));
+        for (const i of [1, 2]) {
+            show('monto_pago_' + i, mixed);
+            show('metodo_pago_' + i, mixed);
+            show('banco_' + i, mixed && ['transferencia', 'tarjeta'].includes(field('metodo_pago_' + i).value));
+        }
+        show('modulos_a_pagar', {% if matricula.tipo_matricula == 'reserva_modulo_1' %}true{% else %}false{% endif %});
+        const price = Number(JSON.parse(document.getElementById('pago-valor-curso').textContent));
+        const discount = Number(field('descuento').value.replace(',', '.')) || 0;
+        document.getElementById('pago-resumen').textContent = 'Valor del curso con descuento: $' + Math.max(0, price - discount).toFixed(2);
+    }
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    update();
+})();
+</script>
+{% endblock %}

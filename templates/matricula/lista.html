@@ -787,9 +787,15 @@
                             </button>
                         </form>
                         {% endif %}
+                        {% if m.puede_editar_registro %}
                         <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}"
                             class="btn btn-warning btn-sm"
                             onclick="event.preventDefault(); abrirModalEditar(this.href);">Editar</a>
+                        {% else %}
+                        <span class="btn btn-secondary btn-sm"
+                            title="Solo puede editarla quien registró la matrícula o un administrador.">Bloqueado</span>
+                        {% endif %}
+                        {% if m.puede_editar_registro %}
                         <form method="post" action="{% url 'academia:matricula_eliminar' modalidad=m.modalidad pk=m.pk %}"
                             style="display:inline;"
                             onsubmit="return false;">
@@ -797,6 +803,7 @@
                             <button type="button" class="btn btn-danger btn-sm"
                                 onclick="confirmarAccion(this.closest('form'), '¿Eliminar esta matrícula? También se eliminará el comprobante asociado.', 'danger')">Eliminar</button>
                         </form>
+                        {% endif %}
                     </div>
                 </td>
             </tr>
@@ -1334,8 +1341,8 @@
                 <div style="font-size:13px; color:#8a6d1a; line-height:1.4;">
                     Corrige <strong>directamente</strong> el monto, la forma de pago,
                     el método o el descuento del pago inicial — sin borrarlo ni
-                    registrarlo de nuevo a mano. Los demás campos quedan
-                    <strong>bloqueados</strong> y los pagos posteriores se conservan.
+                    registrarlo de nuevo a mano. Verás <strong>solo los campos del pago</strong>
+                    y los pagos posteriores se conservan.
                 </div>
             </button>
         </div>

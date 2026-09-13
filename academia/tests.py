@@ -7242,6 +7242,8 @@ class JornadaFeriadoTests(TestCase):
             'academia.views.timezone.now',
             return_value=primer_click + timedelta(hours=23, minutes=59),
         ):
+            # La sesión tiene duración limitada; este test verifica el feriado.
+            self.client.force_login(self.usuario)
             response_bloqueada = self.client.post(
                 self._url_feriado(self.sabado),
                 follow=True,

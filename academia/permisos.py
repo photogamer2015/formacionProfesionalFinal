@@ -22,7 +22,7 @@ GRUPO_ASESOR = 'Asesores'
 
 def es_admin(user):
     """¿Es superusuario o pertenece al grupo Administradores?"""
-    if not user.is_authenticated:
+    if not user.is_authenticated or not user.is_active:
         return False
     if user.is_superuser:
         return True
@@ -31,7 +31,7 @@ def es_admin(user):
 
 def es_asesor(user):
     """¿Pertenece al grupo Asesores? (los admin NO se cuentan como asesores)"""
-    if not user.is_authenticated:
+    if not user.is_authenticated or not user.is_active:
         return False
     return user.groups.filter(name=GRUPO_ASESOR).exists()
 
@@ -39,6 +39,26 @@ def es_asesor(user):
 def puede_gestionar_matriculas(user):
     """Admin o asesor: ambos pueden registrar/editar matrículas."""
     return es_admin(user) or es_asesor(user)
+
+
+def puede_editar_matricula_registrada(user, matricula):
+    """
+    Permite modificar una matricula solo al admin o a quien la registro.
+
+    Para matriculas antiguas sin `registrado_por`, se usa `vendedora` como
+    respaldo porque ese campo era el identificador operativo de la asesora.
+    """
+    if not puede_gestionar_matriculas(user):
+        return False
+    if es_admin(user):
+        return True
+    if not matricula:
+        return False
+    if matricula.registrado_por_id:
+        return matricula.registrado_por_id == user.pk
+    if matricula.vendedora_id:
+        return matricula.vendedora_id == user.pk
+    return False
 
 
 def puede_editar_cursos(user):

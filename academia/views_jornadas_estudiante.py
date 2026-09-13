@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from .forms import EstudianteForm
 from .models import Matricula, JornadaCurso, CambioJornada, Comprobante
-from .permisos import matricula_requerida
+from .permisos import matricula_requerida, puede_editar_matricula_registrada
 
 
 def editar_datos_estudiante(request, matricula):
@@ -44,6 +44,13 @@ class CambioJornadaForm(forms.Form):
 @transaction.atomic
 def cambiar_jornada(request, pk):
     matricula = get_object_or_404(Matricula.objects.select_for_update(), pk=pk)
+    if not puede_editar_matricula_registrada(request.user, matricula):
+        messages.error(
+            request,
+            'No puedes cambiar la jornada de esta matrícula porque fue registrada por otra asesora. '
+            'Pide a un administrador que realice el cambio.'
+        )
+        return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
     form = CambioJornadaForm(request.POST if request.method == 'POST' else None, matricula=matricula)
     if request.method == 'POST' and form.is_valid():
         if form.cleaned_data['jornada_original'] != str(matricula.jornada_id or ''):

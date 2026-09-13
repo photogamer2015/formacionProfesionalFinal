@@ -33,6 +33,7 @@ from .permisos import (
     matricula_requerida,
     permiso_jornada_requerido,
     permiso_requerido,
+    puede_editar_matricula_registrada,
     puede_agregar_jornadas,
     puede_editar_jornadas,
     puede_eliminar_jornadas,
@@ -897,7 +898,14 @@ def matricula_registrar(request, modalidad):
 @transaction.atomic
 def matricula_editar(request, modalidad, pk):
     modalidad = _modalidad_o_404(modalidad)
-    matricula = get_object_or_404(Matricula, pk=pk, modalidad=modalidad)
+    matricula = get_object_or_404(Matricula.objects.select_for_update(), pk=pk, modalidad=modalidad)
+    if not puede_editar_matricula_registrada(request.user, matricula):
+        messages.error(
+            request,
+            'No puedes editar esta matrícula porque fue registrada por otra asesora. '
+            'Pide a un administrador que realice el cambio.'
+        )
+        return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
 
     asesores = User.objects.all().order_by('first_name', 'username')
     error_vendedora = None
@@ -946,7 +954,7 @@ def matricula_editar(request, modalidad, pk):
     # Campos del formulario que SÍ pertenecen al pago inicial. Todo lo demás
     # se fuerza al valor original en el modo "editar el pago".
     CAMPOS_PAGO = {
-        'tipo_matricula', 'forma_pago', 'valor_pagado', 'descuento',
+        'forma_pago', 'valor_pagado', 'descuento',
     }
 
     from .models import Abono
@@ -1016,17 +1024,8 @@ def matricula_editar(request, modalidad, pk):
                     'Solo un administrador puede revertir un retiro voluntario.',
                 )
 
-        vendedora_id = request.POST.get('vendedora_id', '').strip()
-        asesor = None
-        if vendedora_id:
-            asesor = User.objects.filter(id=vendedora_id).first()
-        if not asesor and editar_pago:
-            # En modo pago el selector de asesor está bloqueado: se conserva
-            # la vendedora actual de la matrícula.
-            asesor = matricula.vendedora
-
-        if not asesor:
-            error_vendedora = 'Debes seleccionar un asesor válido.'
+        # El asesor es ajeno al pago: ignorar incluso un POST manipulado.
+        asesor = matricula.vendedora
 
         # ── Validación: el curso NO se puede cambiar al editar ──
         if curso_cambiado:
@@ -1196,7 +1195,32 @@ def matricula_editar(request, modalidad, pk):
         .aggregate(s=Sum('monto'))['s'] or Decimal('0.00')
     )
 
-    return render(request, 'matricula/form.html', {
+    for nombre, etiqueta in {
+        'metodo_pago': 'Método de pago', 'banco': 'Banco o aplicación',
+        'monto_pago_1': 'Monto 1 (USD)', 'monto_pago_2': 'Monto 2 (USD)',
+        'metodo_pago_1': 'Método del monto 1', 'metodo_pago_2': 'Método del monto 2',
+        'banco_1': 'Banco o aplicación del monto 1', 'banco_2': 'Banco o aplicación del monto 2',
+        'modulos_a_pagar': 'Módulos incluidos en el pago inicial',
+    }.items():
+        mat_form.fields[nombre].label = etiqueta
+    numero_modulos = matricula.curso.get_numero_modulos(matricula.modalidad) or 1
+    mat_form.fields['modulos_a_pagar'].widget.choices = [
+        (n, str(n)) for n in range(1, numero_modulos + 1)
+    ]
+    for nombre in ('banco', 'banco_1', 'banco_2'):
+        valor = mat_form[nombre].value()
+        opciones = list(mat_form.fields[nombre].widget.choices)
+        if valor and valor not in dict(opciones):
+            opciones.append((valor, valor))
+            mat_form.fields[nombre].widget.choices = opciones
+
+    return render(request, 'matricula/pago_form.html', {
+        'campos_pago': [mat_form[n] for n in (
+            'valor_pagado', 'forma_pago', 'descuento', 'tipo_cobro',
+            'metodo_pago', 'banco', 'monto_pago_1', 'metodo_pago_1',
+            'banco_1', 'monto_pago_2', 'metodo_pago_2', 'banco_2',
+            'modulos_a_pagar',
+        )],
         'est_form': est_form,
         'mat_form': mat_form,
         'matricula': matricula,
@@ -1207,7 +1231,7 @@ def matricula_editar(request, modalidad, pk):
         'modo': 'editar',
         'editar_pago': editar_pago,
         'monto_pago_inicial_actual': monto_pago_inicial_actual,
-        'titulo': f'Editar Matrícula #{matricula.pk}',
+        'titulo': f'Editar pago inicial · Matrícula #{matricula.pk}',
         'asesores': asesores,
         'error_vendedora': error_vendedora,
         'vendedora_id_selected': vendedora_id_selected,
@@ -1316,7 +1340,12 @@ def matricula_lista(request, modalidad, solo_retirados=False):
             .distinct().order_by('ciudad')
         )
 
-    qs = qs.order_by('-creado', '-id')
+    matriculas = list(qs.order_by('-creado', '-id'))
+    for matricula in matriculas:
+        matricula.puede_editar_registro = puede_editar_matricula_registrada(
+            request.user,
+            matricula,
+        )
     filtros_aplicados = {
         key: value for key, value in {
             'q': q,
@@ -1337,7 +1366,7 @@ def matricula_lista(request, modalidad, solo_retirados=False):
     filtros_query = urlencode(filtros_exportacion)
 
     return render(request, 'matricula/lista.html', {
-        'matriculas': qs,
+        'matriculas': matriculas,
         'cursos': cursos_filtro,
         'registradores': registradores,
         'q': q,
@@ -1414,6 +1443,10 @@ def matricula_facturas(request):
         matricula.factura_resumen_pagos = _resumen_pagos_factura(
             getattr(matricula, 'abonos_factura', [])
         )
+        matricula.puede_editar_registro = puede_editar_matricula_registrada(
+            request.user,
+            matricula,
+        )
 
     total_neto = sum((m.valor_neto for m in matriculas), Decimal('0.00'))
     total_pagado = sum((m.valor_pagado or Decimal('0.00') for m in matriculas), Decimal('0.00'))
@@ -1463,6 +1496,13 @@ def matricula_facturas(request):
 def matricula_eliminar(request, modalidad, pk):
     modalidad = _modalidad_o_404(modalidad)
     matricula = get_object_or_404(Matricula, pk=pk, modalidad=modalidad)
+    if not puede_editar_matricula_registrada(request.user, matricula):
+        messages.error(
+            request,
+            'No puedes eliminar esta matrícula porque fue registrada por otra asesora. '
+            'Pide a un administrador que realice el cambio.'
+        )
+        return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
     matricula.delete()
     messages.success(request, 'Matrícula eliminada.')
     return redirect('academia:matricula_lista', modalidad=modalidad)
@@ -1999,7 +2039,7 @@ def api_curso_jornadas(request, pk):
     return JsonResponse({'ok': True, 'jornadas': data})
 
 
-@login_required
+@matricula_requerida
 def api_estudiante_por_cedula(request, cedula):
     """
     Busca un estudiante por cédula y devuelve sus datos para autocompletar
@@ -2105,7 +2145,7 @@ def _normalizar_celular(celular):
     return ''.join(x for x in (celular or '') if x.isdigit())
 
 
-@login_required
+@matricula_requerida
 def api_estudiantes_por_celular(request, celular):
     """
     Busca todos los estudiantes que comparten un mismo número de celular.

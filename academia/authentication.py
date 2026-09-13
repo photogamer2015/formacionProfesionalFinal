@@ -454,6 +454,12 @@ class LoginEmailView(FormView):
             limpiar_reto_correo(self.request)
             return redirect('login')
 
+        # Una cuenta con correo configurado nunca puede cambiar el destino
+        # de su segundo factor desde la pantalla de alta de correo.
+        if (user.email or '').strip():
+            limpiar_reto_correo(self.request)
+            return redirect('login')
+
         email = form.cleaned_data['email']
         redirect_to = self.request.session.get(LOGIN_MFA_REDIRECT_SESSION_KEY) or settings.LOGIN_REDIRECT_URL
 
@@ -552,7 +558,11 @@ class LoginCodeView(FormView):
             return redirect('login')
 
         email_to_save = self.request.session.get(LOGIN_MFA_EMAIL_TO_SAVE_SESSION_KEY, '')
-        if email_to_save and user.email != email_to_save:
+        if email_to_save and (user.email or '').strip() and user.email != email_to_save:
+            limpiar_reto_correo(self.request)
+            form.add_error('code', 'El correo de la cuenta cambió. Vuelve a iniciar sesión.')
+            return self.form_invalid(form)
+        if email_to_save and not (user.email or '').strip():
             user.email = email_to_save
             user.save(update_fields=['email'])
 

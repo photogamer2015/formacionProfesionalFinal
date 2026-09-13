@@ -13,12 +13,14 @@ Flujo:
 """
 
 import calendar
+import logging
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
 
 from django.contrib import messages
+from django.core.exceptions import BadRequest
 from django.db import transaction
 from django.db.models import Count, Sum
 from django.http import HttpResponse
@@ -33,6 +35,8 @@ from .models import (
 from .permisos import admin_requerido, matricula_requerida
 from .busqueda import filtrar_queryset_busqueda
 
+
+logger = logging.getLogger(__name__)
 
 MESES_ES = [
     '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -60,10 +64,10 @@ def _parsear_anio_mes(origen, prefijo, anio_default, mes_default):
     try:
         anio = int(origen.get(f'{prefijo}_anio', anio_default))
         mes = int(origen.get(f'{prefijo}_mes', mes_default))
-        if not (1 <= mes <= 12):
+        if not (1 <= mes <= 12 and 1900 <= anio <= 9998):
             raise ValueError
     except (TypeError, ValueError):
-        anio, mes = anio_default, mes_default
+        raise BadRequest("El período debe tener un mes válido y un año entre 1900 y 9998.")
     return anio, mes
 
 
@@ -215,6 +219,20 @@ def _calcular_totales(matriculas):
     }
 
 
+def _observaciones_pago_archivado(abono):
+    """Conserva el desglose mixto en el archivo y en su exportación."""
+    observaciones = abono.observaciones or ''
+    if abono.monto_2 and abono.monto_2 > 0:
+        detalle = (
+            f'Pago mixto: ${abono.monto - abono.monto_2:.2f} '
+            f'{abono.get_metodo_display()} {abono.get_banco_display()}; '
+            f'${abono.monto_2:.2f} {abono.get_metodo_2_display()} '
+            f'{abono.get_banco_2_display()}.'
+        )
+        observaciones = '\n'.join(filter(None, (observaciones, detalle)))
+    return observaciones
+
+
 def _snapshot_matricula(matricula, cierre, fecha_archivo=None):
     """Crea una MatriculaArchivada a partir de una Matricula viva."""
     est = matricula.estudiante
@@ -296,11 +314,11 @@ def _snapshot_matricula(matricula, cierre, fecha_archivo=None):
             numero_modulo=abono.numero_modulo,
             cuenta_para_saldo=abono.cuenta_para_saldo,
             metodo=abono.metodo or '',
-            metodo_label=abono.get_metodo_display() if abono.metodo else '',
+            metodo_label=('Pago mixto' if abono.monto_2 else abono.get_metodo_display()) if abono.metodo else '',
             banco=abono.banco or '',
             banco_label=abono.get_banco_display() if abono.banco else '',
             numero_recibo=abono.numero_recibo or '',
-            observaciones=abono.observaciones or '',
+            observaciones=_observaciones_pago_archivado(abono),
             registrado_por_nombre=(
                 abono.registrado_por.get_full_name() or abono.registrado_por.username
                 if abono.registrado_por_id else ''
@@ -402,6 +420,8 @@ def cierre_preview(request, curso_pk):
 
     jornada_id = request.GET.get('jornada', '').strip()
     jornada = None
+    if jornada_id and not jornada_id.isdigit():
+        raise BadRequest('Jornada inválida. No se realizó el cierre.')
     if jornada_id.isdigit():
         jornada = get_object_or_404(JornadaCurso, pk=int(jornada_id), curso=curso)
 
@@ -460,6 +480,7 @@ def cierre_preview(request, curso_pk):
 
 @admin_requerido
 @require_POST
+@transaction.atomic
 def cierre_ejecutar(request, curso_pk):
     """
     Ejecuta el cierre: archiva todo y borra las matrículas/abonos vivos.
@@ -482,6 +503,8 @@ def cierre_ejecutar(request, curso_pk):
         return redirect('academia:cierre_preview', curso_pk=curso.pk)
 
     jornada = None
+    if jornada_id and not jornada_id.isdigit():
+        raise BadRequest('Jornada inválida. No se realizó el cierre.')
     if jornada_id.isdigit():
         jornada = get_object_or_404(JornadaCurso, pk=int(jornada_id), curso=curso)
 
@@ -497,7 +520,7 @@ def cierre_ejecutar(request, curso_pk):
         return redirect('academia:cierre_preview', curso_pk=curso.pk)
 
     qs = _matriculas_a_cerrar(curso, jornada, anio=anio_sel, mes=mes_sel)
-    matriculas = list(qs)
+    matriculas = list(qs.select_for_update())
 
     if not matriculas:
         messages.warning(
@@ -573,10 +596,11 @@ def cierre_ejecutar(request, curso_pk):
             cierre.total_estudiantes_archivados = estudiantes_archivados
             cierre.save(update_fields=['limpio_directorio', 'total_estudiantes_archivados'])
 
-    except Exception as e:
+    except Exception:
+        logger.exception('Error durante el cierre de cursos')
         messages.error(
             request,
-            f'Ocurrió un error durante el cierre. No se modificó nada. Detalle: {e}'
+            'Ocurrió un error durante el cierre. No se modificó nada. Contacta al administrador.'
         )
         return redirect('academia:cursos_lista', modalidad='presencial')
 
@@ -613,6 +637,7 @@ def cierre_ejecutar(request, curso_pk):
 
 @admin_requerido
 @require_POST
+@transaction.atomic
 def cierre_manual_estudiante_ejecutar(request, curso_pk, matricula_pk):
     """
     Cierre manual de una sola matrícula del curso.
@@ -621,7 +646,7 @@ def cierre_manual_estudiante_ejecutar(request, curso_pk, matricula_pk):
     """
     curso = get_object_or_404(Curso, pk=curso_pk)
     matricula = get_object_or_404(
-        Matricula.objects.select_related(
+        Matricula.objects.select_for_update().select_related(
             'estudiante', 'curso', 'curso__categoria', 'jornada', 'registrado_por'
         ),
         pk=matricula_pk,
@@ -706,10 +731,11 @@ def cierre_manual_estudiante_ejecutar(request, curso_pk, matricula_pk):
             cierre.total_estudiantes_archivados = estudiantes_archivados
             cierre.save(update_fields=['limpio_directorio', 'total_estudiantes_archivados'])
 
-    except Exception as e:
+    except Exception:
+        logger.exception('Error durante el cierre de cursos')
         messages.error(
             request,
-            f'Ocurrió un error durante el cierre manual. No se modificó nada. Detalle: {e}'
+            'Ocurrió un error durante el cierre manual. No se modificó nada. Contacta al administrador.'
         )
         return redirect('academia:cierre_preview', curso_pk=curso.pk)
 
@@ -795,6 +821,7 @@ def cierre_global_preview(request, modalidad):
 
 @admin_requerido
 @require_POST
+@transaction.atomic
 def cierre_global_ejecutar(request, modalidad):
     """
     Ejecuta un cierre GLOBAL: archiva TODAS las matrículas de la modalidad
@@ -832,7 +859,7 @@ def cierre_global_ejecutar(request, modalidad):
     if modalidad in ('presencial', 'online'):
         qs = qs.filter(modalidad=modalidad)
 
-    matriculas_all = list(qs)
+    matriculas_all = list(qs.select_for_update())
     if not matriculas_all:
         messages.warning(
             request,
@@ -921,10 +948,11 @@ def cierre_global_ejecutar(request, modalidad):
                 cierre_ancla.total_estudiantes_archivados = estudiantes_archivados_total
                 cierre_ancla.save(update_fields=['total_estudiantes_archivados'])
 
-    except Exception as e:
+    except Exception:
+        logger.exception('Error durante el cierre de cursos')
         messages.error(
             request,
-            f'Ocurrió un error durante el cierre global. No se modificó nada. Detalle: {e}'
+            'Ocurrió un error durante el cierre global. No se modificó nada. Contacta al administrador.'
         )
         return redirect('academia:cursos_lista', modalidad=modalidad if modalidad != 'todas' else 'presencial')
 

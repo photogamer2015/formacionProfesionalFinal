@@ -654,7 +654,12 @@
                 </td>
                 <td>
                     <div class="row-actions">
+                        {% if m.puede_editar_registro %}
                         <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}" class="btn btn-warning btn-sm">Editar</a>
+                        {% else %}
+                        <span class="btn btn-secondary btn-sm"
+                            title="Solo puede editarla quien registró la matrícula o un administrador.">Bloqueado</span>
+                        {% endif %}
                         <a href="{% url 'academia:matricula_abonos' m.pk %}" class="btn btn-secondary btn-sm">Pagos</a>
                     </div>
                 </td>

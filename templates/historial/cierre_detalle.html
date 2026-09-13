@@ -355,7 +355,8 @@
                         {% for a in m.abonos_archivados.all %}
                             {% if a.metodo_label %}
                             <span class="payment-chip">
-                                {{ a.metodo_label }}{% if a.banco_label %} · {{ a.banco_label }}{% endif %}
+                                {{ a.metodo_label }}{% if a.banco_label and a.metodo_label != 'Pago mixto' %} · {{ a.banco_label }}{% endif %}
+                                {% if a.observaciones %}<details><summary>Detalle del pago</summary>{{ a.observaciones|linebreaksbr }}</details>{% endif %}
                                 <strong>${{ a.monto|floatformat:2 }}</strong>
                             </span>
                             {% endif %}

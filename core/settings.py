@@ -2,6 +2,7 @@
 Django settings for core project.
 """
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 import environ
 import sys
 
@@ -31,7 +32,13 @@ DEBUG = env('DEBUG')
 OPENAI_API_KEY = env('OPENAI_API_KEY')
 OPENAI_MODEL = env('OPENAI_MODEL')
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '[::1]'])
+if not DEBUG:
+    if SECRET_KEY.startswith(('django-insecure-', 'cambia-esto')) or len(SECRET_KEY) < 50:
+        raise ImproperlyConfigured('Configura una SECRET_KEY aleatoria de al menos 50 caracteres en producción.')
+    if not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
+        raise ImproperlyConfigured('Configura dominios explícitos en ALLOWED_HOSTS en producción.')
+
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 if not DEBUG and not CSRF_TRUSTED_ORIGINS:
     CSRF_TRUSTED_ORIGINS = [
@@ -145,11 +152,14 @@ ENROLLMENT_CONFIRMATION_EMAIL_ENABLED = env.bool(
 
 
 # ======== CONFIGURACIÓN DE SESIÓN ========
-# La sesión no se cierra por inactividad ni al cerrar el navegador.
-# El usuario sale manualmente desde el botón "Cerrar sesión".
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 365 * 10
+# Duración limitada para reducir la exposición de sesiones olvidadas.
+SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=60 * 60 * 12)
 SESSION_SAVE_EVERY_REQUEST = True
-SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_EXPIRE_AT_BROWSER_CLOSE = env.bool("SESSION_EXPIRE_AT_BROWSER_CLOSE", default=True)
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+SECURE_REFERRER_POLICY = "same-origin"
 
 
 # ======== SEGURIDAD EN PRODUCCIÓN (AWS / HTTPS) ========
