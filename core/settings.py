@@ -152,10 +152,11 @@ ENROLLMENT_CONFIRMATION_EMAIL_ENABLED = env.bool(
 
 
 # ======== CONFIGURACIÓN DE SESIÓN ========
-# Duración limitada para reducir la exposición de sesiones olvidadas.
-SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=60 * 60 * 12)
+# Sesión persistente para todos los roles: diez años renovables con cada
+# petición. El cierre explícito sigue invalidando la sesión en el servidor.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 365 * 10
 SESSION_SAVE_EVERY_REQUEST = True
-SESSION_EXPIRE_AT_BROWSER_CLOSE = env.bool("SESSION_EXPIRE_AT_BROWSER_CLOSE", default=True)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
