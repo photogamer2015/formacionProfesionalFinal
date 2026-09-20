@@ -280,11 +280,6 @@ cd /var/www/formacionProfesionalFinal
 ./scripts/update_aws.sh
 ```
 
-Ese script trae lo último de `main`, instala dependencias, valida Django, aplica
-migraciones, recolecta estáticos y reinicia el servicio `formacion` si existe.
-Para la corrección de sesiones persistentes no necesitas cambiar el `.env` del
-servidor.
-
 La guía completa está en [`DESPLIEGUE_AWS.md`](./DESPLIEGUE_AWS.md).
 
 ---

@@ -312,10 +312,10 @@
             </div>
             <div id="banco-container">
                 <label class="form-label" for="id_banco">
-                    🏦 Banco *
+                    💳 Tarjeta / App *
                 </label>
                 {{ mat_form.banco }}{{ mat_form.banco.errors }}
-                <small style="color: #666; display: block; margin-top: 5px;">Selecciona el banco usado para la transferencia.</small>
+                <small style="color: #666; display: block; margin-top: 5px;">Selecciona el tipo de tarjeta o app: Payphone o De una.</small>
             </div>
         </div>
 
@@ -331,7 +331,7 @@
                     {{ mat_form.metodo_pago_1 }}{{ mat_form.metodo_pago_1.errors }}
                 </div>
                 <div id="banco-1-container">
-                    <label class="form-label" for="id_banco_1">🏦 Banco 1 *</label>
+                    <label class="form-label" for="id_banco_1">💳 Tarjeta / App 1 *</label>
                     {{ mat_form.banco_1 }}{{ mat_form.banco_1.errors }}
                 </div>
             </div>
@@ -345,7 +345,7 @@
                     {{ mat_form.metodo_pago_2 }}{{ mat_form.metodo_pago_2.errors }}
                 </div>
                 <div id="banco-2-container">
-                    <label class="form-label" for="id_banco_2">🏦 Banco 2 *</label>
+                    <label class="form-label" for="id_banco_2">💳 Tarjeta / App 2 *</label>
                     {{ mat_form.banco_2 }}{{ mat_form.banco_2.errors }}
                 </div>
             </div>
@@ -903,6 +903,7 @@
     /* Estilos para campos requeridos dinámicos */
     .field-required { /* Se quitó el border-color rojo para evitar confusión con errores */ }
     .req-star { color: #c62828; margin-left:6px; font-weight:700; }
+
 </style>
 {% endblock %}
 
@@ -1626,7 +1627,6 @@
         const metodoPagoSelect = document.getElementById('id_metodo_pago');
         const bancoContainer = document.getElementById('banco-container');
         const bancoSelect = document.getElementById('id_banco');
-        
         const metodoPagoSelect1 = document.getElementById('id_metodo_pago_1');
         const bancoContainer1 = document.getElementById('banco-1-container');
         const bancoSelect1 = document.getElementById('id_banco_1');
@@ -1634,7 +1634,6 @@
         const metodoPagoSelect2 = document.getElementById('id_metodo_pago_2');
         const bancoContainer2 = document.getElementById('banco-2-container');
         const bancoSelect2 = document.getElementById('id_banco_2');
-
         function toggleBanco() {
             _aplicarToggleBanco(metodoPagoSelect, bancoContainer, bancoSelect);
         }

@@ -117,16 +117,8 @@ cd /var/www/formacionProfesionalFinal
 ./scripts/update_aws.sh
 ```
 
-Ese es el comando recomendado para aplicar cambios como la corrección de
-sesiones persistentes. El script hace `git pull --ff-only`, actualiza paquetes,
-valida la configuración de Django, ejecuta migraciones, recolecta estáticos y
-reinicia `formacion.service` si existe.
-
-Para este cambio de sesiones no hace falta editar el `.env` en AWS. Si el
-servidor todavía tiene `SESSION_COOKIE_AGE` o
-`SESSION_EXPIRE_AT_BROWSER_CLOSE`, el script mostrará un aviso; esas variables
-ya no controlan el cierre automático porque la sesión persistente queda definida
-directamente en `core/settings.py`.
+El script hace `git pull --ff-only`, actualiza paquetes, ejecuta migraciones,
+recolecta estáticos y reinicia `formacion.service` si existe.
 
 Opciones útiles:
 

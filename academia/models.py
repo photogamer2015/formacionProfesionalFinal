@@ -697,6 +697,8 @@ class Matricula(models.Model):
                   'monto inicial registrado en la sección de Abonos.'
     )
     fecha_matricula = models.DateField()
+    desfase_modulo_academico = models.IntegerField(null=True, blank=True)
+    ajuste_modulo_desde = models.DateField(null=True, blank=True)
     talla_camiseta = models.CharField(
         max_length=2, choices=TALLAS_CAMISETA, blank=True
     )

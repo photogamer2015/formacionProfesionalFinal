@@ -1330,6 +1330,18 @@
                 <div style="font-size:15px;font-weight:700;color:#176653;margin-bottom:4px;">Cambiar jornada</div>
                 <div style="font-size:13px;color:#397463;line-height:1.4;">Traslada a este estudiante a otra jornada del mismo curso y modalidad. El cambio quedará registrado en el historial.</div>
             </button>
+            <button type="button" data-editar-seccion="registro" style="padding:14px 16px;border-radius:12px;cursor:pointer;border:2px solid #c9c4ef;background:#f4f1ff;font-family:inherit;text-align:left;">
+                <div style="font-size:15px;font-weight:700;color:#51428a;margin-bottom:4px;">📋 Editar tipo de registro</div>
+                <div style="font-size:13px;color:#655a88;line-height:1.4;">Corrige el origen de la venta en su propio formulario.</div>
+            </button>
+            <button type="button" data-editar-seccion="vendedora" style="padding:14px 16px;border-radius:12px;cursor:pointer;border:2px solid #b6d4fe;background:#e7f1ff;font-family:inherit;text-align:left;">
+                <div style="font-size:15px;font-weight:700;color:#084298;margin-bottom:4px;">🛍️ Editar vendedora</div>
+                <div style="font-size:13px;color:#3d6db3;line-height:1.4;">Selecciona el asesor al que corresponde esta venta.</div>
+            </button>
+            <button type="button" data-editar-seccion="factura" style="padding:14px 16px;border-radius:12px;cursor:pointer;border:2px solid #b4ded3;background:#edf9f5;font-family:inherit;text-align:left;">
+                <div style="font-size:15px;font-weight:700;color:#176653;margin-bottom:4px;">🧾 Editar factura</div>
+                <div style="font-size:13px;color:#397463;line-height:1.4;">Actualiza la opción de factura, el titular, su cédula o RUC y el correo.</div>
+            </button>
             <!-- Opción 2: editar el pago inicial directamente -->
             <button type="button" id="btn-editar-pago" style="
                     padding:14px 16px; border-radius:12px; cursor:pointer;
@@ -1393,6 +1405,15 @@
             const url = new URL(_editarUrlBase, window.location.origin);
             url.searchParams.delete('editar_pago'); url.searchParams.delete('reiniciar_pago');
             url.searchParams.set('cambiar_jornada', '1'); window.location.href = url.href;
+        });
+        document.querySelectorAll('[data-editar-seccion]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (!_editarUrlBase) return;
+                const url = new URL(_editarUrlBase, window.location.origin);
+                ['editar_pago', 'reiniciar_pago', 'cambiar_jornada'].forEach(key => url.searchParams.delete(key));
+                url.searchParams.set('editar_seccion', button.dataset.editarSeccion);
+                window.location.href = url.href;
+            });
         });
         // Cerrar al hacer clic en el fondo
         document.getElementById('modal-editar-overlay')

@@ -1,12 +1,12 @@
 import json
 import logging
-import os
 from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -23,7 +23,7 @@ from .forms import (
 )
 from .models import (
     Abono, Categoria, Curso, Estudiante, JornadaCurso, Matricula,
-    AssistantQueryLog, Sede, EstudianteArchivado, MatriculaArchivada,
+    Sede, EstudianteArchivado, MatriculaArchivada,
     FORMA_PAGO_A_TIPO_ABONO, MONTO_RESERVA_MATRICULA,
 )
 from .permisos import (
@@ -148,300 +148,50 @@ def session_keepalive(request):
 @login_required
 @require_POST
 def assistant_simple_chat(request):
-    """Endpoint simple y basado en reglas para respuestas rápidas.
+    """Chat local; ambos endpoints comparten permisos, validación y sesión."""
+    from importlib import import_module
+    from .mercybot import STATE as MERCYBOT_STATE, respond
 
-    Espera JSON: { "message": "..." }
-    Responde JSON: { "reply": "..." }
-    """
     try:
         payload = json.loads(request.body.decode('utf-8') or '{}')
-    except Exception:
-        payload = {}
-    msg = (payload.get('message') or '').strip()
-
-    if not msg:
-        return JsonResponse({'reply': '¿En qué puedo ayudarte hoy?'})
-
-    if msg == '/clear':
-        request.session['mercybot_history'] = []
-        return JsonResponse({'reply': 'Memoria borrada'})
-
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'reply': 'Envía un mensaje de texto válido.'}, status=400)
+    if not isinstance(payload, dict) or not isinstance(payload.get('message'), str):
+        return JsonResponse({'reply': 'Envía un mensaje de texto válido.'}, status=400)
+    msg = payload['message'].strip()
+    if not msg or len(msg) > 4000:
+        return JsonResponse({'reply': 'Escribe entre 1 y 4000 caracteres.'}, status=400)
+    request_id = payload.get('request_id', '')
+    if not isinstance(request_id, str) or len(request_id) > 100:
+        return JsonResponse({'reply': 'Identificador de mensaje inválido.'}, status=400)
     try:
-        # ── MercyBot en modo LOCAL (sin API de ChatGPT) ──────────────────
-        # La integración con OpenAI fue desactivada intencionalmente. MercyBot
-        # responde con su motor de reglas local, sin llamar a ningún servicio
-        # externo ni consumir créditos. Toda la lógica de la API se conserva
-        # más abajo (inalcanzable) por si en el futuro se desea reactivar;
-        # para hacerlo, basta con volver a habilitar una clave de OpenAI y
-        # quitar este bloque de retorno anticipado.
-        reply = _assistant_rules_reply(msg)
-        session_messages = request.session.get('mercybot_history', [])
-        session_messages.append({"role": "user", "content": msg})
-        session_messages.append({"role": "assistant", "content": reply})
-        request.session['mercybot_history'] = session_messages[-15:]
-        request.session.modified = True
-        return JsonResponse({'reply': reply})
-
-    except Exception:
-        # Si por cualquier motivo fallan las reglas locales, respondemos algo neutro.
-        return JsonResponse({'reply': (
-            'Disculpa, no entendí bien. ¿Podrías intentar decírmelo de otra forma? '
-            'También puedes revisar la sección de ayuda en /ayuda/.'
-        )})
-
-    # ─────────────────────────────────────────────────────────────────────
-    # CÓDIGO LEGADO (OpenAI) — conservado pero inalcanzable tras el return
-    # anterior. No se ejecuta mientras MercyBot esté en modo local.
-    # ─────────────────────────────────────────────────────────────────────
-    try:
-        from openai import OpenAI
-        from django.conf import settings
-        from .ai_tools import MERCYBOT_TOOLS, execute_tool
-
-        OPENAI_API_KEY = getattr(settings, 'OPENAI_API_KEY', '') or ''
-
-        if not OPENAI_API_KEY:
-            reply = _assistant_rules_reply(msg)
-            session_messages = request.session.get('mercybot_history', [])
-            session_messages.append({"role": "user", "content": msg})
-            session_messages.append({"role": "assistant", "content": reply})
-            request.session['mercybot_history'] = session_messages[-15:]
-            request.session.modified = True
-            return JsonResponse({'reply': reply})
-
-        OPENAI_MODEL = getattr(settings, 'OPENAI_MODEL', '') or 'gpt-4o-mini'
-        client = OpenAI(api_key=OPENAI_API_KEY)
-
-        # Cargar historial de la sesión
-        session_messages = request.session.get('mercybot_history', [])
-        session_messages.append({"role": "user", "content": msg})
-
-        # Mantener solo los últimos 15 mensajes para no saturar tokens
-        if len(session_messages) > 15:
-            session_messages = session_messages[-15:]
-
-        usuario = request.user.get_full_name() or request.user.username
-        system_prompt = (
-            "Eres MercyBot, la asistente virtual de Formación Profesional EC, una academia "
-            f"de formación técnica en Ecuador. Estás hablando con {usuario} (personal administrativo). "
-            "Hablas español ecuatoriano, profesional, cálido y conciso. Los montos van con signo $.\n\n"
-            "TUS CAPACIDADES (usa SIEMPRE las herramientas, NUNCA inventes datos):\n"
-            "- Buscar estudiantes por nombre, apellido o cédula (la búsqueda tolera el orden de los nombres).\n"
-            "- Registrar nuevos estudiantes.\n"
-            "- Consultar cursos, deudores, pagos recientes, reporte financiero, adicionales y el resumen del día.\n"
-            "- Abrir/navegar a secciones del sistema.\n\n"
-            "REGLAS:\n"
-            "1) Si te piden datos de un estudiante, llama a `buscar_estudiante` y resume de forma clara: "
-            "nombre completo, cédula, cursos, modalidad/jornada, lo pagado y la deuda. Si no aparece, dilo y "
-            "ofrece registrarlo; NO inventes que no existe sin haber buscado.\n"
-            "2) Para REGISTRAR una matrícula por chat, DEBES pedir SIEMPRE todos estos datos antes de hacer nada: cédula, nombres completos, celular, ciudad/sede, el curso, modalidad, el tipo de matrícula y el valor pagado. Una vez que tengas todos estos datos, llama a la herramienta `registrar_matricula_completa`.\n"
-            "3) Para NAVEGAR o si el usuario pide 'abrir', 'ir a', 'mostrar' (ej. 'abre registro de matricula', 'cursos disponibles'), llama a `abrir_pagina` con la sección solicitada. NO pidas datos si solo te piden abrir la página. Cuando la herramienta te devuelva un texto con el formato "
-            "`[REDIRECT: /url/...]`, tu respuesta hacia el usuario DEBE INCLUIR EXACTAMENTE ESE TEXTO `[REDIRECT: /url/...]` CON SUS CORCHETES. ¡ES VITAL! No lo conviertas en un enlace markdown [aquí](url). Solo pega el texto tal cual para que el sistema lo intercepte.\n"
-            "4) NO tienes permiso para modificar pagos, anular registros ni borrar nada. Si te lo piden, "
-            "explica amablemente que esas acciones debe hacerlas una persona desde el sistema, e indícale "
-            "en qué sección hacerlo.\n"
-            "5) Si NO sabes algo o falta información para usar una herramienta, PREGÚNTALE al usuario en lugar "
-            "de adivinar. Es preferible una pregunta corta a una respuesta inventada."
-        )
-
-        messages = [{"role": "system", "content": system_prompt}] + session_messages
-
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-            tools=MERCYBOT_TOOLS,
-            tool_choice="auto",
-        )
-        
-        response_message = response.choices[0].message
-        
-        # Check if GPT wanted to call a function
-        if response_message.tool_calls:
-            messages.append(response_message)
-            for tool_call in response_message.tool_calls:
-                function_name = tool_call.function.name
-                function_args = tool_call.function.arguments
-                function_response = execute_tool(function_name, function_args, user=request.user)
-                
-                messages.append({
-                    "tool_call_id": tool_call.id,
-                    "role": "tool",
-                    "name": function_name,
-                    "content": function_response,
-                })
-            
-            # Second API call to get the final answer with the tool results
-            second_response = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=messages
+        with transaction.atomic():
+            # Serializa mensajes del mismo usuario y recarga el estado más reciente.
+            User.objects.select_for_update().get(pk=request.user.pk)
+            request.session = import_module(settings.SESSION_ENGINE).SessionStore(
+                session_key=request.session.session_key,
             )
-            reply = second_response.choices[0].message.content
-        else:
-            reply = response_message.content
-
-        # Guardar respuesta en el historial de sesión
-        session_messages.append({"role": "assistant", "content": reply})
-        request.session['mercybot_history'] = session_messages
-        request.session.modified = True
-
-    except Exception as e:
-        from django.conf import settings as _s
-        if getattr(_s, 'DEBUG', False):
-            reply = f"Tuve un problema técnico: {e}. Revisa que la clave de OpenAI sea válida."
-        else:
-            reply = ("Disculpa, no entendí bien o tuve una pequeña confusión en mis procesos. "
-                     "¿Podrías intentar decírmelo de otra forma?")
-
-    # Guardar log mínimo
-    try:
-        AssistantQueryLog.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            path=payload.get('path','') if isinstance(payload, dict) else '',
-            message=msg,
-            reply=reply,
-            metadata={'source':'local'}
+            previous = request.session.get('mercybot_last_response', {})
+            if request_id and previous.get('id') == request_id:
+                return JsonResponse(previous['result'])
+            result = respond(request, msg)
+            # El widget usa este indicador para ofrecer «Cancelar registro».
+            result['pending'] = bool(request.session.get(MERCYBOT_STATE))
+            if request_id:
+                request.session['mercybot_last_response'] = {'id': request_id, 'result': result}
+            request.session.save()
+        return JsonResponse(result)
+    except Exception:
+        logger.exception('Error en el asistente local MercyBot')
+        # Evita guardar en middleware un estado de conversación revertido.
+        request.session = import_module(settings.SESSION_ENGINE).SessionStore(
+            session_key=request.session.session_key,
         )
-    except Exception:
-        pass
-
-    return JsonResponse({'reply': reply})
+        return JsonResponse({'reply': 'No pude completar la operación. No se guardaron cambios de este mensaje. Intenta nuevamente.'}, status=500)
 
 
-def _assistant_rules_reply(msg: str) -> str:
-    """Reglas simples reutilizables para respuestas cuando no hay LLM disponible."""
-    if not msg:
-        return 'Escribe tu pregunta y te ayudo con el sistema. Por ejemplo: "¿Cómo registro una matrícula?"'
-    low = msg.lower()
-    if 'matric' in low or 'registr' in low:
-        return ('Para registrar una matrícula: en el menú Matrícula selecciona la modalidad, '
-                'completa los datos del estudiante y la jornada, y pulsa "Registrar matrícula". '
-                'Si la cédula ya existe, los datos se autocompletan.')
-    if 'factur' in low:
-        return ('Si seleccionas "¿Factura realizada? = Sí", completa los campos de factura '
-                'Nombres, Apellidos, Cédula/RUC y Correo; el formulario bloqueará el envío hasta que estén completos.')
-    if 'recuper' in low:
-        return ('Las clases en recuperación se marcan desde la sección Recuperaciones. '
-                'Puedes marcar, cobrar (crear un abono tipo "recuperacion") o eliminar si no está pagada.')
-    if 'abono' in low or 'pago' in low or 'cobrar' in low:
-        return ('Para registrar pagos usa la vista de Abonos desde la matrícula del estudiante. '
-                'Los abonos pueden asignarse a módulos o a recuperación según corresponda.')
-    if 'curso' in low:
-        return ('Los cursos se añaden desde Cursos → Nuevo Curso (solo administradores). '
-                'Asegúrate de configurar jornadas y los valores para presencial/online.')
-    if 'jornada' in low:
-        return ('Selecciona la jornada que corresponda en el formulario de matrícula; la jornada define la modalidad final.')
-    if 'vended' in low or 'vendedora' in low:
-        return ('La vendedora se asigna automáticamente al usuario que registra la matrícula. Aparece en la sección Vendedora del formulario.')
-    if 'imprimir' in low or 'ficha' in low:
-        return ('Puedes exportar listados a PDF/Excel desde las vistas de lista. La ficha de matrícula actualmente se puede imprimir desde la página de la matrícula — si quieres, puedo añadir un botón que genere la ficha imprimible.')
-    return ('No estoy seguro. Puedes consultar la sección de ayuda en /ayuda/ o escribir una pregunta más específica, por ejemplo "¿Cómo cobro una recuperación?"')
-
-
-@login_required
-@require_POST
-def assistant_llm_chat(request):
-    """Endpoint que usa un LLM externo (OpenAI) cuando hay clave, y registra logs.
-
-    Request JSON: { message: str, path?: str }
-    Response JSON: { reply: str }
-    """
-    try:
-        payload = json.loads(request.body.decode('utf-8') or '{}')
-    except Exception:
-        payload = {}
-    msg = (payload.get('message') or '').strip()
-    page = payload.get('path') or request.META.get('PATH_INFO','')
-
-    reply = ''
-    used_model = None
-    # ── Modo LOCAL: la API de ChatGPT fue desactivada intencionalmente. ──
-    # Siempre respondemos con la búsqueda local (README/templates) y, si no
-    # hay coincidencias, con el motor de reglas. No se llama a OpenAI ni se
-    # consumen créditos externos.
-    reply = None
-    try:
-        reply = _assistant_local_search(msg)
-    except Exception:
-        reply = None
-    if not reply:
-        reply = _assistant_rules_reply(msg)
-
-    # Guardar log
-    try:
-        AssistantQueryLog.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            path=page,
-            message=msg,
-            reply=reply,
-            metadata={'model': used_model}
-        )
-    except Exception:
-        pass
-
-    return JsonResponse({'reply': reply})
-
-
-def _assistant_local_search(query: str) -> str:
-    """Busca palabras clave en README.md y archivos de templates para dar una respuesta contextual local.
-
-    Retorna un texto breve con hasta 3 fragmentos encontrados, o cadena vacía si no hay matches.
-    """
-    import glob
-    if not query or not query.strip():
-        return ''
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    files = []
-    # Priorizar README y templates
-    candidates = [os.path.join(root, 'README.md')]
-    candidates += glob.glob(os.path.join(root, 'templates', '**', '*.html'), recursive=True)
-    candidates += glob.glob(os.path.join(root, '**', '*.md'), recursive=True)
-
-    tokens = [t.lower() for t in query.split() if len(t) > 2]
-    if not tokens:
-        return ''
-
-    hits = []
-    for fp in candidates:
-        try:
-            with open(fp, 'r', encoding='utf-8', errors='ignore') as fh:
-                text = fh.read()
-        except Exception:
-            continue
-        low = text.lower()
-        score = sum(low.count(tok) for tok in tokens)
-        if score <= 0:
-            continue
-        # extract short snippets around first occurrences
-        snippets = []
-        for tok in tokens:
-            idx = low.find(tok)
-            if idx >= 0:
-                start = max(0, idx - 80)
-                end = min(len(text), idx + 160)
-                snippet = text[start:end].replace('\n', ' ').strip()
-                snippets.append(snippet)
-        hits.append((score, fp, snippets[:2]))
-
-    if not hits:
-        return ''
-
-    # ordenar por score y devolver hasta 3 fragmentos
-    hits.sort(reverse=True, key=lambda x: x[0])
-    parts = []
-    taken = 0
-    for score, fp, snippets in hits[:3]:
-        rel = os.path.relpath(fp, root)
-        parts.append(f'Encontrado en {rel}:')
-        for s in snippets:
-            parts.append(f'• {s}')
-            taken += 1
-            if taken >= 3:
-                break
-        if taken >= 3:
-            break
-
-    parts.append('\nSi quieres más detalle, escribe una pregunta más concreta o activa la API.')
-    return '\n'.join(parts)
+# Compatibilidad con la URL anterior: tampoco llama a servicios de IA.
+assistant_llm_chat = assistant_simple_chat
 
 
 # ─────────────────────────────────────────────────────────
@@ -783,6 +533,26 @@ def _registrar_pago_inicial(matricula, usuario, mat_form=None,
     return abono
 
 
+@transaction.atomic
+def _guardar_matricula_formularios(est_form, mat_form, asesor, usuario):
+    """Guardado común del formulario y MercyBot: estudiante, matrícula y abono."""
+    if not est_form.is_valid() or not mat_form.is_valid() or asesor is None:
+        raise ValueError('La matrícula debe validarse antes de guardarla.')
+    estudiante = est_form.save(commit=False)
+    if not estudiante.pk:
+        estudiante.registrado_por = usuario
+    estudiante.save()
+    matricula = mat_form.save(commit=False)
+    matricula.estudiante = estudiante
+    matricula.modalidad = matricula.jornada.modalidad if matricula.jornada else mat_form.modalidad
+    matricula.vendedora = asesor
+    matricula.registrado_por = usuario
+    matricula.save()
+    _registrar_pago_inicial(matricula, usuario, mat_form)
+    _programar_confirmacion_matricula(matricula)
+    return matricula
+
+
 @matricula_requerida
 @transaction.atomic
 def matricula_registrar(request, modalidad):
@@ -823,58 +593,17 @@ def matricula_registrar(request, modalidad):
             est_form_kwargs['instance'] = estudiante_existente
         est_form = EstudianteForm(request.POST, **est_form_kwargs)
 
-        if not error_vendedora:
-            if estudiante_existente:
-                if est_form.is_valid() and mat_form.is_valid():
-                    estudiante = est_form.save(commit=False)
-                    estudiante.save()
-                    matricula = mat_form.save(commit=False)
-                    matricula.estudiante = estudiante
-                    # La modalidad final la define la jornada elegida.
-                    # save() sincroniza modalidad <- jornada.modalidad si hay jornada.
-                    matricula.modalidad = matricula.jornada.modalidad if matricula.jornada else modalidad
-                    matricula.vendedora = asesor
-                    if not matricula.pk:
-                        matricula.registrado_por = request.user
-                    matricula.save()
-                    _registrar_pago_inicial(matricula, request.user, mat_form)
-                    _programar_confirmacion_matricula(matricula)
-                    messages.success(
-                        request,
-                        f'Matrícula registrada para '
-                        f'{estudiante.nombre_completo} '
-                        f'({matricula.get_modalidad_display()}).'
-                    )
-                    # Redirigimos a la lista de la modalidad final
-                    return redirect(
-                        'academia:matricula_lista',
-                        modalidad=matricula.modalidad,
-                    )
-            else:
-                if est_form.is_valid() and mat_form.is_valid():
-                    estudiante = est_form.save(commit=False)
-                    if not estudiante.pk:
-                        estudiante.registrado_por = request.user
-                    estudiante.save()
-                    matricula = mat_form.save(commit=False)
-                    matricula.estudiante = estudiante
-                    matricula.modalidad = matricula.jornada.modalidad if matricula.jornada else modalidad
-                    matricula.vendedora = asesor
-                    if not matricula.pk:
-                        matricula.registrado_por = request.user
-                    matricula.save()
-                    _registrar_pago_inicial(matricula, request.user, mat_form)
-                    _programar_confirmacion_matricula(matricula)
-                    messages.success(
-                        request,
-                        f'Matrícula registrada para '
-                        f'{estudiante.nombre_completo} '
-                        f'({matricula.get_modalidad_display()}).'
-                    )
-                    return redirect(
-                        'academia:matricula_lista',
-                        modalidad=matricula.modalidad,
-                    )
+        if not error_vendedora and est_form.is_valid() and mat_form.is_valid():
+            matricula = _guardar_matricula_formularios(
+                est_form, mat_form, asesor, request.user,
+            )
+            messages.success(
+                request,
+                f'Matrícula registrada para {matricula.estudiante.nombre_completo} '
+                f'({matricula.get_modalidad_display()}).'
+            )
+            return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
+
 
     else:
         est_form = EstudianteForm(prefix='est', documento_flexible=True)
@@ -944,6 +673,26 @@ def matricula_editar(request, modalidad, pk):
             request.GET.get('editar_pago', '') == '1'
             or request.GET.get('reiniciar_pago', '') == '1'
         )
+
+    seccion_venta = (request.POST if request.method == 'POST' else request.GET).get('editar_seccion')
+    if seccion_venta:
+        from .forms_edicion_venta import EdicionVentaForm, SECCIONES_VENTA
+        from django.http import HttpResponseBadRequest
+        if seccion_venta not in SECCIONES_VENTA:
+            return HttpResponseBadRequest('Opción de edición inválida.')
+        form = EdicionVentaForm(
+            request.POST if request.method == 'POST' else None,
+            instance=matricula, seccion=seccion_venta,
+        )
+        if request.method == 'POST' and form.is_valid():
+            actualizada = form.save(commit=False)
+            actualizada.save(update_fields=form.campos_editables)
+            messages.success(request, 'Datos de venta actualizados correctamente.')
+            return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
+        return render(request, 'matricula/editar_venta.html', {
+            'form': form, 'matricula': matricula, 'seccion': seccion_venta,
+            'titulo': SECCIONES_VENTA[seccion_venta][0],
+        })
 
     if request.GET.get('cambiar_jornada') == '1':
         return redirect('academia:matricula_cambiar_jornada', pk=matricula.pk)

@@ -61,6 +61,7 @@ class ResumenImpresionTests(SimpleTestCase):
         matricula = SimpleNamespace(
             abonos=Mock(), estudiante=SimpleNamespace(nombre_completo='Estudiante de prueba'),
             pk=1, observaciones='', talla_camiseta='', jornada=None, registrado_por_id=None,
+            saldo=Decimal('50'),
         )
         matricula.abonos.filter.return_value = abonos
         plan = {'modulo': 1, 'cuota_sugerida': Decimal('25'), 'saldo_modulo': Decimal('50')}

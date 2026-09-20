@@ -14,6 +14,8 @@ app_name = 'academia'
 #   /cursos/online/
 
 urlpatterns = [
+    path('pagos/<int:pk>/ajustar-modulo/', views_pagos.matricula_ajustar_modulo,
+         name='matricula_ajustar_modulo'),
     path('cambios-jornada/', views_jornadas_estudiante.historial, name='cambios_jornada'),
     path('matricula/cambiar-jornada/<int:pk>/', views_jornadas_estudiante.cambiar_jornada, name='matricula_cambiar_jornada'),
     path('bienvenida/', views.bienvenida, name='bienvenida'),

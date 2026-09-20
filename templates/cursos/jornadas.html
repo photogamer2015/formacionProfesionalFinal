@@ -25,6 +25,21 @@
             <span class="badge badge-online">Online ${{ curso.valor_online }}</span>
             {% endif %}
         </p>
+        {% if puede_agregar_jornada %}
+        <div style="margin-bottom:20px;">
+            {% if modalidad_activa == 'presencial' and curso.ofrece_online %}
+            <a href="{% url 'academia:curso_jornadas' curso.pk %}?modalidad=online"
+               class="btn btn-secondary">
+                + Agregar fecha online de este curso
+            </a>
+            {% elif modalidad_activa == 'online' and curso.ofrece_presencial %}
+            <a href="{% url 'academia:curso_jornadas' curso.pk %}?modalidad=presencial"
+               class="btn btn-secondary">
+                + Agregar fecha presencial de este curso
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
 
     {% if es_admin %}

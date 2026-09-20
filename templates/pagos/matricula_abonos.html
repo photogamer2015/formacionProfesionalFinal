@@ -2,6 +2,40 @@
 
 {% block title %}Pagos — {{ matricula.estudiante.nombre_completo }}{% endblock %}
 
+{% block extra_head %}
+{{ block.super }}
+<style>
+    .academic-card, #ajustar-modulo-dialog { --ac-ink:#1d2b50; --ac-muted:#66738a; --ac-soft:#f4f7fc; --ac-line:#dfe6f1; --ac-bg:#fff; color:var(--ac-ink); }
+    .academic-card { display:flex; align-items:center; flex-wrap:wrap; gap:22px; padding:24px; margin-bottom:20px; border:1px solid var(--ac-line); border-left:4px solid #dca747; border-radius:16px; background:var(--ac-bg); box-shadow:0 8px 28px #1d2b5008; }
+    .academic-card__icon { display:grid; place-items:center; width:52px; height:52px; flex-shrink:0; border-radius:14px; background:#fff5df; color:#946819; font-size:25px; }
+    .academic-card__content { flex:1; min-width:220px; }
+    .academic-eyebrow { display:block; font-size:11px; letter-spacing:1.2px; text-transform:uppercase; font-weight:700; color:var(--ac-muted); margin-bottom:7px; }
+    .academic-card h3 { font-size:20px; line-height:1.4; margin:0 0 8px; color:var(--ac-ink); }
+    .academic-card__meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+    .academic-pill { display:inline-block; border-radius:20px; padding:5px 10px; font-size:11px; font-weight:600; background:var(--ac-soft); color:var(--ac-ink); }
+    .academic-pill--paid { background:#eaf6ed; color:#28753a; }
+    .academic-card p { color:var(--ac-muted); font-size:13px; line-height:1.6; }
+    .academic-adjust { display:flex; align-items:center; gap:10px; cursor:pointer; border:1px solid var(--ac-line); border-radius:10px; padding:13px 16px; background:var(--ac-soft); font-size:13px; font-weight:600; color:var(--ac-ink); }
+    .academic-adjust:hover { border-color:#97a9c9; }
+    .academic-adjust input { width:17px; height:17px; accent-color:#1d2b50; flex-shrink:0; }
+    #ajustar-modulo-dialog { position:fixed; inset:0; margin:auto; width:min(540px, calc(100vw - 32px)); max-width:540px; max-height:calc(100dvh - 40px); padding:0; border:1px solid var(--ac-line); border-radius:20px; background:var(--ac-bg); box-shadow:0 24px 90px #0c19354d; overflow:auto; }
+    #ajustar-modulo-dialog::backdrop { background:rgba(13,24,46,.55); backdrop-filter:blur(4px); }
+    .academic-modal__header { position:relative; padding:28px 58px 22px 28px; border-bottom:1px solid var(--ac-line); background:var(--ac-soft); }
+    #ajustar-modulo-dialog h3 { font-size:23px; line-height:1.3; margin:0 0 9px; color:var(--ac-ink); }
+    .academic-modal__header p { color:var(--ac-muted); font-size:13px; line-height:1.6; }
+    .academic-modal__close { position:absolute; top:18px; right:18px; width:32px; height:32px; border:1px solid var(--ac-line); border-radius:50%; background:var(--ac-bg); color:var(--ac-muted); font-size:23px; cursor:pointer; }
+    .academic-modal__body { padding:24px 28px; }
+    .academic-modal__body label { display:block; font-size:13px; font-weight:700; margin-bottom:9px; }
+    #ajustar-modulo-dialog select { display:block; width:100%; min-height:48px; padding:11px 12px; border:1px solid var(--ac-line); border-radius:10px; background:var(--ac-bg); color:var(--ac-ink); font:inherit; font-size:14px; }
+    #ajustar-modulo-dialog select:focus-visible, .academic-adjust:focus-within { outline:3px solid #9bb8ed; outline-offset:3px; }
+    #modulo-academico-campo { margin-top:22px; }
+    .academic-modal__note { display:flex; gap:10px; padding:14px; margin-top:22px; border-radius:10px; background:var(--ac-soft); color:var(--ac-muted); font-size:12px; line-height:1.65; }
+    .academic-modal__footer { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; padding:18px 28px; border-top:1px solid var(--ac-line); }
+    body.dark-mode .academic-card, body.dark-mode #ajustar-modulo-dialog { --ac-bg:#1b263b; --ac-ink:#e5ecf9; --ac-muted:#b3bfd3; --ac-soft:#243149; --ac-line:#3b4963; }
+    @media(max-width:600px) { .academic-card { padding:20px; gap:14px; } .academic-adjust { width:100%; justify-content:center; } .academic-modal__header { padding:24px 52px 20px 20px; } .academic-modal__body { padding:20px; } .academic-modal__footer { padding:16px 20px; } .academic-modal__footer .btn { flex:1; text-align:center; } }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
@@ -151,6 +185,72 @@
         </div>
     </div>
 </div>
+
+{% if saldo_pendiente <= 0 and matricula.estado != 'retiro_voluntario' %}
+<div class="academic-card">
+    <div class="academic-card__icon" aria-hidden="true">▤</div>
+    <div class="academic-card__content">
+        <span class="academic-eyebrow">Avance académico</span>
+        <h3>{{ modulo_academico_label }}</h3>
+        <div class="academic-card__meta">
+            <span class="academic-pill">{% if matricula.desfase_modulo_academico != None %}Secuencia personalizada{% else %}Secuencia de su jornada{% endif %}</span>
+            <span class="academic-pill academic-pill--paid">✓ Curso pagado</span>
+        </div>
+        <p>Módulo que está cursando. Se refleja en la hoja de recaudación y avanza con su jornada.</p>
+    </div>
+    {% if puede_editar_matricula %}
+    <label class="academic-adjust"><input type="checkbox" id="ajustar-modulo-check" aria-controls="ajustar-modulo-dialog"> Ajustar módulo que está cursando</label>
+    <dialog id="ajustar-modulo-dialog" aria-labelledby="ajustar-modulo-titulo" aria-describedby="ajustar-modulo-descripcion">
+        <form method="post" action="{% url 'academia:matricula_ajustar_modulo' matricula.pk %}">
+            {% csrf_token %}
+            <div class="academic-modal__header">
+                <span class="academic-eyebrow">Avance académico</span>
+                <h3 id="ajustar-modulo-titulo">Ajustar módulo del estudiante</h3>
+                <p id="ajustar-modulo-descripcion">{{ matricula.estudiante.nombre_completo }}<br>{{ matricula.curso.nombre }}</p>
+                <button type="button" id="cerrar-ajuste-modulo" class="academic-modal__close" aria-label="Cerrar ventana">×</button>
+            </div>
+            <div class="academic-modal__body">
+            <label for="secuencia-academica">Secuencia</label>
+            <select name="secuencia" id="secuencia-academica">
+                <option value="jornada" {% if matricula.desfase_modulo_academico == None %}selected{% endif %}>Seguir la secuencia de su jornada</option>
+                <option value="manual" {% if matricula.desfase_modulo_academico != None %}selected{% endif %}>Elegir el módulo que cursa hoy</option>
+            </select>
+            <div id="modulo-academico-campo">
+                <label for="modulo-academico">Módulo de hoy</label>
+                <select name="modulo" id="modulo-academico">
+                    {% for numero, etiqueta in opciones_modulo_academico %}
+                    <option value="{{ numero }}" {% if numero == modulo_academico %}selected{% endif %}>{{ etiqueta }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="academic-modal__note"><span aria-hidden="true">ⓘ</span><p>El módulo seguirá avanzando al ritmo de la jornada. Este ajuste solo cambia el avance académico; tus pagos y recibos se mantienen.</p></div>
+            </div>
+            <div class="academic-modal__footer">
+                <button type="button" id="cancelar-ajuste-modulo" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar secuencia</button>
+            </div>
+        </form>
+    </dialog>
+    <script>
+    (() => {
+        const check = document.getElementById('ajustar-modulo-check');
+        const dialog = document.getElementById('ajustar-modulo-dialog');
+        const secuencia = document.getElementById('secuencia-academica');
+        const actualizar = () => {
+            document.getElementById('modulo-academico-campo').hidden = secuencia.value !== 'manual';
+        };
+        check.addEventListener('change', () => {
+            if (check.checked) { actualizar(); dialog.showModal(); }
+        });
+        secuencia.addEventListener('change', actualizar);
+        document.getElementById('cancelar-ajuste-modulo').addEventListener('click', () => dialog.close());
+        document.getElementById('cerrar-ajuste-modulo').addEventListener('click', () => dialog.close());
+        dialog.addEventListener('close', () => { check.checked = false; });
+    })();
+    </script>
+    {% endif %}
+</div>
+{% endif %}
 
 {# ─── Examen(es) Supletorio(s) registrado(s) — desde Adicional ───────────────── #}
 {% if matricula.adicionales_supletorios.exists %}

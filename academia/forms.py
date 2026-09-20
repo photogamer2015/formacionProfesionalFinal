@@ -602,7 +602,7 @@ class MatriculaForm(forms.ModelForm):
             banco_val = self.initial.get('banco')
             if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
                 banco_val = getattr(self.instance, 'banco')
-            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('interbancario', 'Interbancario')]
+            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
             if banco_val and banco_val not in dict(bancos_list) and banco_val != 'OTRO':
                 bancos_list.append((banco_val, banco_val))
             bancos_list.append(('OTRO', 'Otro banco...'))
@@ -998,7 +998,7 @@ class AbonoForm(forms.ModelForm):
             banco_val = self.initial.get('banco')
             if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
                 banco_val = getattr(self.instance, 'banco')
-            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('interbancario', 'Interbancario')]
+            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
             if banco_val and banco_val not in dict(bancos_list) and banco_val != 'OTRO':
                 bancos_list.append((banco_val, banco_val))
             bancos_list.append(('OTRO', 'Otro banco...'))
@@ -1376,7 +1376,7 @@ class ComprobanteForm(forms.ModelForm):
             banco_val = self.initial.get('banco')
             if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
                 banco_val = getattr(self.instance, 'banco')
-            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('interbancario', 'Interbancario')]
+            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
             if banco_val and banco_val not in dict(bancos_list) and banco_val != 'OTRO':
                 bancos_list.append((banco_val, banco_val))
             bancos_list.append(('OTRO', 'Otro banco...'))
@@ -1805,7 +1805,7 @@ class _AdicionalBaseForm(forms.ModelForm):
         self.fields['metodo_pago_1'].choices = [('', '— Método 1 —')] + metodos
         self.fields['metodo_pago_2'].choices = [('', '— Método 2 —')] + metodos
 
-        bancos_list_1 = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('interbancario', 'Interbancario')]
+        bancos_list_1 = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
         bancos_list_2 = list(bancos_list_1)
         
         if 'banco_1' in self.fields:
@@ -2201,6 +2201,7 @@ class AdicionalSupletorioRapidoForm(forms.Form):
             ('produbanco', 'Produbanco'),
             ('banco_pacifico', 'Banco del Pacífico'),
             ('payphone', 'Payphone'),
+            ('deuna', 'De una'),
             ('interbancario', 'Interbancario'),
             ('OTRO', 'Otro banco...'),
         ]

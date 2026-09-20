@@ -1687,6 +1687,15 @@
                 <!-- El contenido se llenará por JS -->
             </div>
             
+            <!-- Aviso de registro en curso -->
+            <div id="assistant-pending" style="display:none; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 16px; background:#fff8e1; border-top:1px solid #ffe6a3; font-size:12px; color:#8a6d1a;">
+                <span style="flex:1; min-width:120px;">Registro en curso. Nada se guarda hasta completarlo.</span>
+                <span style="display:flex; gap:8px; flex-shrink:0;">
+                    <button id="assistant-back" title="Volver al paso anterior y corregir el último dato" style="background:#ffffff; color:#8a6d1a; border:1px solid #e6cd86; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">← Atrás</button>
+                    <button id="assistant-cancel" title="Descartar el registro pendiente" style="background:#e53935; color:#fff; border:none; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer;">Cancelar registro</button>
+                </span>
+            </div>
+
             <!-- Input Area -->
             <div style="padding:14px 16px; background:#ffffff; border-top:1px solid #f0f0f0; display:flex; align-items:center; gap:12px;">
                 <button id="assistant-mic" style="background:#1e1e1e; border:none; border-radius:50%; width:48px; height:48px; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all 0.2s; color:#ffffff; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.1);" title="Hablar con MercyBot" onmouseover="if(!this.classList.contains('listening')) this.style.background='#333333'; this.style.transform='scale(1.05)';" onmouseout="if(!this.classList.contains('listening')) this.style.background='#1e1e1e'; this.style.transform='scale(1)';">
@@ -1789,14 +1798,37 @@
                 }
             });
 
-            const STORAGE_KEY = 'mercybot_chat_history';
+            const pendingBar = document.getElementById('assistant-pending');
+            const cancelRegistroBtn = document.getElementById('assistant-cancel');
+            const backRegistroBtn = document.getElementById('assistant-back');
+            const STORAGE_KEY = 'mercybot_chat_v2_{{ request.user.pk }}';
+            const PENDING_KEY = STORAGE_KEY + '_pendiente';
+            const chatStorage = sessionStorage;
+
+            // Refleja si el servidor tiene un registro a medias, para poder
+            // descartarlo con un clic además de escribir «cancelar».
+            function setPending(on) {
+                pendingBar.style.display = on ? 'flex' : 'none';
+                try { chatStorage.setItem(PENDING_KEY, on ? '1' : '0'); } catch (e) {}
+            }
+            try { setPending(chatStorage.getItem(PENDING_KEY) === '1'); } catch (e) {}
+            function enviarComando(texto) {
+                if (input.disabled) return;
+                input.value = texto;
+                sendQuery();
+            }
+            cancelRegistroBtn.addEventListener('click', function () { enviarComando('cancelar'); });
+            backRegistroBtn.addEventListener('click', function () { enviarComando('atrás'); });
+            localStorage.removeItem('mercybot_chat_history');
             
             function saveChatHistory() {
-                localStorage.setItem(STORAGE_KEY, msgs.innerHTML);
+                const clean = msgs.cloneNode(true);
+                clean.querySelectorAll('#mercy-typing-bubble').forEach(node => node.remove());
+                chatStorage.setItem(STORAGE_KEY, clean.innerHTML);
             }
             
             function loadChatHistory() {
-                const history = localStorage.getItem(STORAGE_KEY);
+                const history = chatStorage.getItem(STORAGE_KEY);
                 if (history) {
                     msgs.innerHTML = history;
                     msgs.scrollTop = msgs.scrollHeight;
@@ -1813,7 +1845,7 @@
                     <div style="display:flex; align-items:flex-end; gap:8px;">
                         <div style="width:28px; height:28px; background:#f0f4ff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">🤖</div>
                         <div style="background:#ffffff; border:1px solid #eaeaea; padding:12px 16px; border-radius:16px; border-bottom-left-radius:4px; font-size:13px; color:#444; line-height:1.5; box-shadow:0 2px 5px rgba(0,0,0,0.02); max-width:85%;">
-                            Hola, soy Mercy. ¿En qué te puedo ayudar hoy?
+                            Hola, soy Mercy. Puedo registrar matrículas completas, mostrar cursos y fechas disponibles, consultar pagos y gestionar recuperaciones. Escribe «ayuda» para ver ejemplos o «cancelar» para detener un registro.
                         </div>
                     </div>
                 `;
@@ -1864,16 +1896,29 @@
         restartBtn.addEventListener('click', openModal);
         cancelBtn.addEventListener('click', closeModal);
 
-        confirmBtn.addEventListener('click', () => {
-            closeModal();
-            localStorage.removeItem(STORAGE_KEY);
-            renderWelcomeMessage();
-            // Limpiar memoria en el servidor
-            fetch('{% url "academia:assistant_simple_chat" %}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                body: JSON.stringify({ message: '/clear' })
-            });
+        confirmBtn.addEventListener('click', async () => {
+            confirmBtn.disabled = true;
+            input.disabled = true;
+            sendBtn.disabled = true;
+            try {
+                const response = await fetch('{% url "academia:assistant_simple_chat" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                    body: JSON.stringify({ message: '/clear' })
+                });
+                if (!response.ok) throw new Error('No se pudo reiniciar');
+                chatStorage.removeItem(STORAGE_KEY);
+                setPending(false);
+                renderWelcomeMessage();
+            } catch (error) {
+                appendMessage('MercyBot', 'No pude reiniciar la conversación. Intenta nuevamente.');
+            } finally {
+                closeModal();
+                confirmBtn.disabled = false;
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
         });
 
             // Web Speech API
@@ -1960,74 +2005,90 @@
                 }
             });
 
-            function speakText(text) {
-                if (isMuted) return;  // Mercy silenciada por el usuario
-                if ('speechSynthesis' in window) {
-                    window.speechSynthesis.cancel();
-                    const utterance = new SpeechSynthesisUtterance(text);
-                    utterance.lang  = 'es-MX'; // Español latino: más dulce y cercano
-                    utterance.rate  = 0.96;    // Un poco más pausada para que suene cálida
-                    utterance.pitch = 1.15;    // Tono moderado, voz femenina suave y acogedora
-                    utterance.volume = 1.0;
+            // ── Voz de Mercy ──────────────────────────────────────────
+            // Cálida, en español y con las voces ya cargadas: el navegador las
+            // entrega de forma asíncrona y por eso el primer mensaje solía
+            // leerse con la voz robótica por defecto.
+            let vocesDisponibles = [];
+            const VOCES_CALIDAS = ['dalia', 'salome', 'salomé', 'paloma', 'monica', 'mónica',
+                'paulina', 'sabina', 'helena', 'elena', 'isabela', 'lupe', 'camila', 'luciana'];
+            const VOCES_MASCULINAS = ['jorge', 'diego', 'pablo', 'carlos', 'juan', 'miguel',
+                'male', 'masculin', 'hombre'];
 
-                    const voices = window.speechSynthesis.getVoices();
-
-                    // Voces FEMENINAS naturales preferidas (Mac, Windows, Google, Edge)
-                    // Mónica/Paulina/Sabina (Mac), Helena/Sabina (Windows),
-                    // Google español (Android/Chrome), Microsoft online "Dalia/Salomé/Paloma"
-                    const vocesFemeninas = [
-                        'dalia', 'salome', 'salomé', 'paloma', 'mónica', 'monica',
-                        'paulina', 'sabina', 'helena', 'elena', 'isabela', 'femenina', 'female'
-                    ];
-
-                    let bestVoice = null;
-
-                    // 1. Buscar una voz femenina en español por nombre
-                    for (let nombre of vocesFemeninas) {
-                        bestVoice = voices.find(v =>
-                            v.lang.toLowerCase().startsWith('es') &&
-                            v.name.toLowerCase().includes(nombre)
-                        );
-                        if (bestVoice) break;
-                    }
-
-                    // 2. Google español (suele ser voz femenina clara y agradable)
-                    if (!bestVoice) {
-                        bestVoice = voices.find(v =>
-                            v.name.toLowerCase().includes('google') &&
-                            v.lang.toLowerCase().startsWith('es')
-                        );
-                    }
-
-                    // 3. Cualquier voz que NO sea claramente masculina, en español
-                    if (!bestVoice) {
-                        const masculinas = ['jorge', 'diego', 'pablo', 'carlos', 'juan', 'male', 'masculin'];
-                        bestVoice = voices.find(v =>
-                            v.lang.toLowerCase().startsWith('es') &&
-                            !masculinas.some(m => v.name.toLowerCase().includes(m))
-                        );
-                    }
-
-                    // 4. Fallback final: primera voz en español que exista
-                    if (!bestVoice) {
-                        bestVoice = voices.find(v => v.lang.toLowerCase().startsWith('es'));
-                    }
-
-                    if (bestVoice) {
-                        utterance.voice = bestVoice;
-                    }
-
-                    window.speechSynthesis.speak(utterance);
-                }
+            function cargarVoces() {
+                if (!('speechSynthesis' in window)) return [];
+                const voces = window.speechSynthesis.getVoices() || [];
+                if (voces.length) vocesDisponibles = voces;
+                return vocesDisponibles;
             }
+
+            function elegirVoz() {
+                const voces = cargarVoces().filter(v => (v.lang || '').toLowerCase().startsWith('es'));
+                if (!voces.length) return null;
+                function puntaje(v) {
+                    const nombre = (v.name || '').toLowerCase();
+                    const idioma = (v.lang || '').toLowerCase();
+                    let p = 0;
+                    if (nombre.includes('natural') || nombre.includes('neural')) p += 6;
+                    if (VOCES_CALIDAS.some(x => nombre.includes(x))) p += 5;
+                    if (nombre.includes('google')) p += 3;
+                    if (VOCES_MASCULINAS.some(x => nombre.includes(x))) p -= 8;
+                    if (/^es-(mx|us|419|ec|co|pe)/.test(idioma)) p += 2;
+                    return p;
+                }
+                return voces.slice().sort((a, b) => puntaje(b) - puntaje(a))[0];
+            }
+
+            // Lee los importes y los separadores como los diría una persona.
+            function textoParaVoz(texto) {
+                return String(texto)
+                    .replace(/\$\s?(\d+(?:[.,]\d{3})*)(?:[.,](\d{2}))?/g, function (m, entero, centavos) {
+                        const limpio = entero.replace(/[.,]/g, '');
+                        const base = limpio + (limpio === '1' ? ' dólar' : ' dólares');
+                        return (centavos && centavos !== '00') ? base + ' con ' + centavos : base;
+                    })
+                    .replace(/[«»•#*]/g, ' ')
+                    .replace(/·/g, ', ')
+                    .replace(/_/g, ' ')
+                    .replace(/\s{2,}/g, ' ')
+                    .replace(/\s+([,.;:])/g, '$1')
+                    .trim();
+            }
+
+            function speakText(text) {
+                if (isMuted || !text || !('speechSynthesis' in window)) return;
+                let yaHablo = false;
+                function decir() {
+                    if (yaHablo) return;
+                    yaHablo = true;
+                    window.speechSynthesis.cancel();
+                    const frase = new SpeechSynthesisUtterance(textoParaVoz(text));
+                    const voz = elegirVoz();
+                    if (voz) { frase.voice = voz; frase.lang = voz.lang; } else { frase.lang = 'es-MX'; }
+                    frase.rate = 0.95;    // pausada: se entiende sin sonar lenta
+                    frase.pitch = 1.05;   // cálida, sin volverse aguda
+                    frase.volume = 1.0;
+                    window.speechSynthesis.speak(frase);
+                }
+                if (!cargarVoces().length) {
+                    // Las voces aún no llegan: hablar en cuanto estén listas.
+                    window.speechSynthesis.addEventListener('voiceschanged', decir, { once: true });
+                    setTimeout(decir, 700);
+                    return;
+                }
+                decir();
+            }
+
             window.mercySpeakText = speakText; // Exponer globalmente
 
-            function appendMessage(who, text) {
+            function appendMessage(who, text, links = []) {
                 const el = document.createElement('div');
                 el.style.marginBottom = '8px';
                 
                 // Formatear negritas simples
-                let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                const safeText = document.createElement('span');
+                safeText.textContent = text;
+                let formattedText = safeText.innerHTML.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
                 
                 if (who === 'MercyBot') {
                     const avatarSvg = `<svg viewBox="0 0 100 100" width="100%" height="100%"><defs><linearGradient id="mGradMsg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1a237e"/><stop offset="100%" stop-color="#3949ab"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#mGradMsg)"/><path d="M28 65 L28 40 L50 60 L72 40 L72 65" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
@@ -2044,6 +2105,15 @@
                         </div>
                     `;
                 }
+                for (const item of links) {
+                    if (!item.url || !item.url.startsWith('/') || item.url.startsWith('//') || item.url.includes('\\')) continue;
+                    const a = document.createElement('a');
+                    a.href = item.url;
+                    a.textContent = item.label;
+                    a.className = 'btn btn-secondary';
+                    a.style.cssText = 'display:block;margin:8px 0 0 36px;white-space:normal;font-size:12px;';
+                    el.appendChild(a);
+                }
                 msgs.appendChild(el);
                 msgs.scrollTop = msgs.scrollHeight;
                 saveChatHistory();
@@ -2057,7 +2127,7 @@
 
             async function sendQuery() {
                 const q = input.value.trim();
-                if (!q) return;
+                if (!q || input.disabled) return;
                 appendMessage('Tú', q);
                 input.value = '';
                 
@@ -2065,6 +2135,8 @@
                 statusIndicator.style.display = 'inline-block';
                 input.disabled = true;
                 sendBtn.disabled = true;
+                micBtn.disabled = true;
+                restartBtn.disabled = true;
 
                 // Añadir burbuja de "Escribiendo..."
                 const avatarSvg = `<svg viewBox="0 0 100 100" width="100%" height="100%"><defs><linearGradient id="mGradMsg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1a237e"/><stop offset="100%" stop-color="#3949ab"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#mGradMsg)"/><path d="M28 65 L28 40 L50 60 L72 40 L72 65" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
@@ -2085,43 +2157,42 @@
                     const res = await fetch('{% url "academia:assistant_simple_chat" %}', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                        body: JSON.stringify({ message: q, path: window.location.pathname })
+                        body: JSON.stringify({ message: q, request_id: (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)), path: window.location.pathname })
                     });
                     const data = await res.json();
                     let reply = data.reply || 'No hay respuesta';
                     
-                    // Interceptar comando mágico de redirección
-                    let redirectUrl = null;
-                    const redirectMatch = reply.match(/\[REDIRECT:\s*(.+?)\]/);
-                    if (redirectMatch) {
-                        redirectUrl = redirectMatch[1];
-                        reply = reply.replace(redirectMatch[0], '').trim(); // Quitar de la vista y del habla
-                    }
+                    const redirectUrl = data.redirect;
+                    appendMessage('MercyBot', reply, data.links || []);
+                    setPending(!!data.pending);
 
-                    appendMessage('MercyBot', reply);
-                    
                     // Solo leer si no es un mensaje de error muy largo
                     if (!reply.includes("Error en la Inteligencia Artificial")) {
-                        // Limpiar markdown antes de hablar
+                        // Limpiar markdown y leer solo lo esencial: las listas de
+                        // cursos, jornadas u opciones se leen en pantalla.
                         const cleanText = reply.replace(/\*\*(.*?)\*\*/g, '$1').replace(/#/g, '');
-                        speakText(cleanText);
+                        const spoken = cleanText.split('\n').filter(l => l.trim() && !l.trim().startsWith('•'))
+                                                .slice(0, 2).join('. ').slice(0, 240);
+                        speakText(spoken || cleanText.slice(0, 240));
                     }
                     
                     // Si hubo redirección, ejecutarla después de dar tiempo a que empiece a hablar
-                    if (redirectUrl) {
+                    if (redirectUrl && redirectUrl.startsWith('/') && !redirectUrl.startsWith('//') && !redirectUrl.includes('\\')) {
                         setTimeout(() => {
                             window.location.href = redirectUrl;
                         }, 1500); // 1.5 segundos
                     }
 
                 } catch (err) {
-                    appendMessage('MercyBot', 'Hubo un error de conexión con mi cerebro artificial. Intenta nuevamente.');
+                    appendMessage('MercyBot', 'No pude conectar con el sistema. Revisa la conexión e intenta nuevamente.');
                 } finally {
                     const tb = document.getElementById('mercy-typing-bubble');
                     if (tb) tb.remove();
                     statusIndicator.style.display = 'none';
                     input.disabled = false;
                     sendBtn.disabled = false;
+                    micBtn.disabled = false;
+                    restartBtn.disabled = false;
                     input.focus();
                 }
             }
@@ -2131,9 +2202,8 @@
             
             // Cargar voces en background
             if ('speechSynthesis' in window) {
-                window.speechSynthesis.onvoiceschanged = function() {
-                    window.speechSynthesis.getVoices();
-                };
+                cargarVoces();
+                window.speechSynthesis.onvoiceschanged = cargarVoces;
             }
             
             // ── Lógica de sonido al cerrar sesión ──

@@ -2223,6 +2223,7 @@ def matricula_abonos(request, pk):
 
     # Saldo restante para el modal
     saldo_pendiente = matricula.saldo
+    modulo_academico = _modulo_academico_recaudacion(matricula)
 
     # Distribución por método (para mostrar resumen)
     dist_metodo = defaultdict(lambda: {'count': 0, 'total': Decimal('0.00')})
@@ -2248,10 +2249,53 @@ def matricula_abonos(request, pk):
         'pago_unico_online': matricula.tiene_pago_unico_online,
         'abonos': abonos,
         'saldo_pendiente': saldo_pendiente,
+        'modulo_academico_label': _modulo_recaudacion_label(matricula, modulo_academico),
+        'modulo_academico': modulo_academico,
+        'opciones_modulo_academico': [
+            (n, _modulo_recaudacion_label(matricula, n))
+            for n in range(1, (matricula.curso.get_numero_modulos(matricula.modalidad) or 1) + 1)
+        ],
         'dist_metodo': dict(dist_metodo),
         'form': form_inicial,
         'siguiente_recibo': Abono.generar_numero_recibo(matricula),
     })
+
+
+@matricula_requerida
+@require_POST
+@transaction.atomic
+def matricula_ajustar_modulo(request, pk):
+    matricula = get_object_or_404(
+        Matricula.objects.select_for_update().select_related('curso', 'jornada'), pk=pk,
+    )
+    if not puede_editar_matricula_registrada(request.user, matricula):
+        return HttpResponse('No tienes permiso para modificar esta matrícula.', status=403)
+    if matricula.estado == 'retiro_voluntario' or matricula.saldo > 0:
+        messages.error(request, 'Solo puedes ajustar el módulo de un curso completamente pagado y sin retiro voluntario.')
+        return redirect('academia:matricula_abonos', pk=pk)
+    modo = request.POST.get('secuencia')
+    if modo == 'jornada':
+        desfase = None
+        desde = None
+    elif modo == 'manual':
+        try:
+            numero = int(request.POST.get('modulo', ''))
+            total = matricula.curso.get_numero_modulos(matricula.modalidad) or 1
+            if not 1 <= numero <= total:
+                raise ValueError
+        except (TypeError, ValueError):
+            messages.error(request, 'Selecciona un módulo válido de este curso.')
+            return redirect('academia:matricula_abonos', pk=pk)
+        desde = timezone.localdate()
+        desfase = numero - _indice_modulo_jornada(matricula, desde)
+    else:
+        return HttpResponse('Selecciona una secuencia válida.', status=400)
+    # Actualizar solo estos campos evita ejecutar la sincronización financiera de save().
+    Matricula.objects.filter(pk=pk).update(
+        desfase_modulo_academico=desfase, ajuste_modulo_desde=desde,
+    )
+    messages.success(request, 'Módulo actualizado. La hoja de recaudación seguirá esta secuencia.')
+    return redirect('academia:matricula_abonos', pk=pk)
 
 
 def _sincronizar_recuperacion_desde_pago(
@@ -4064,6 +4108,13 @@ def _fecha_en_periodo_recaudacion(fecha, fecha_desde, fecha_hasta):
     return bool(fecha and fecha_desde <= fecha <= fecha_hasta)
 
 
+def _fecha_avance_recaudacion(fecha_desde, fecha_hasta):
+    hoy = timezone.localdate()
+    if fecha_desde <= hoy <= fecha_hasta:
+        return hoy
+    return fecha_hasta
+
+
 def _estado_recuperacion_para_hoja(matricula, fecha_desde, fecha_hasta):
     """Devuelve las recuperaciones que corresponden al período de la hoja.
 
@@ -4148,6 +4199,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
     if fecha_hasta_obj < fecha_obj:
         fecha_obj, fecha_hasta_obj = fecha_hasta_obj, fecha_obj
     es_rango = fecha_obj != fecha_hasta_obj
+    fecha_avance_obj = _fecha_avance_recaudacion(fecha_obj, fecha_hasta_obj)
 
     items = []
     total_efectivo = Decimal('0.00')
@@ -4178,7 +4230,8 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
         forma = ', '.join(metodos) if metodos else '—'
         banco_str = ', '.join(bancos) if bancos else '—'
 
-        plan_recaudacion = _plan_recaudacion_matricula(m, fecha_hasta_obj)
+        fecha_plan_obj = fecha_avance_obj if m.saldo <= 0 else fecha_hasta_obj
+        plan_recaudacion = _plan_recaudacion_matricula(m, fecha_plan_obj)
         modulo_actual = plan_recaudacion['modulo']
 
         recup_str = _recuperacion_recaudacion_label(m, abonos_dia)
@@ -4503,6 +4556,23 @@ def _semanas_calendario_restantes(matricula, fecha_recaudacion, total_semanas):
     return len(fechas)
 
 
+def _indice_modulo_jornada(matricula, fecha):
+    """Secuencia de clases sin limitar al último módulo, para conservar el desfase."""
+    inicio = matricula.jornada.fecha_inicio if matricula.jornada_id else matricula.fecha_matricula
+    intervalo = 14 if matricula.curso.pagos_cada_dos_semanas else 7
+    return max(0, (fecha - inicio).days // intervalo) + 1
+
+
+def _modulo_academico_recaudacion(matricula, fecha=None):
+    fecha = fecha or timezone.localdate()
+    numero = _indice_modulo_jornada(matricula, fecha)
+    if (matricula.desfase_modulo_academico is not None
+            and matricula.ajuste_modulo_desde and fecha >= matricula.ajuste_modulo_desde):
+        numero += matricula.desfase_modulo_academico
+    total = matricula.curso.get_numero_modulos(matricula.modalidad) or 1
+    return min(total, max(1, numero))
+
+
 def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None,
                                 aplicar_manual=True):
     """
@@ -4532,7 +4602,8 @@ def _plan_recaudacion_matricula(matricula, fecha_recaudacion=None,
     # Sin saldo no hay nada que recaudar.
     if saldo <= 0:
         return {
-            'modulo': total_semanas,
+            'modulo': (_modulo_academico_recaudacion(matricula, fecha_recaudacion)
+                       if matricula.estado != 'retiro_voluntario' else total_semanas),
             'saldo_pendiente': Decimal('0.00'),
             'saldo_modulo': Decimal('0.00'),
             'cuota_sugerida': Decimal('0.00'),
