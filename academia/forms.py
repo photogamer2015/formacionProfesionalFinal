@@ -1607,7 +1607,10 @@ class RecuperacionPendienteForm(forms.ModelForm):
                     ('laptops_computadora', 'Laptops / Computadora'),
                     ('celulares_tablet', 'Celulares / Tablet'),
                     ('impresora', 'Impresora'),
-                    ('consolas', 'Consolas de videojuegos'),
+                    # Debe coincidir con RecuperacionPendiente.TIPO_EQUIPO_RECUPERACION.
+                    # Usar un valor distinto permite seleccionar la opción en el
+                    # navegador, pero ModelForm la rechaza durante la validación.
+                    ('consolas_videojuegos', 'Consolas de videojuegos'),
                 ]
             elif 'blanca' in nombre_curso:
                 equipo_choices = [
