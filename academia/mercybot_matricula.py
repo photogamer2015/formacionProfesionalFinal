@@ -23,6 +23,12 @@ ACADEMIC_FIELDS = ['curso', 'jornada', 'estado', 'tipo_matricula', 'fecha_matric
                    'valor_curso', 'descuento', 'forma_pago', 'valor_pagado', 'tipo_cobro']
 PAYMENT_FIELDS = ['metodo_pago', 'banco', 'monto_pago_1', 'metodo_pago_1', 'banco_1',
                   'monto_pago_2', 'metodo_pago_2', 'banco_2']
+# Datos de cobro que no se preguntan según el tipo: «Otros» no tiene costo;
+# «Inscripción (gratis)» tiene valor, pero no lleva pago inicial.
+SKIPPED_FIELDS_BY_TYPE = {
+    'otros': {'valor_curso', 'descuento', 'forma_pago', 'valor_pagado', 'tipo_cobro'},
+    'inscripcion_gratis': {'forma_pago', 'valor_pagado', 'tipo_cobro'},
+}
 CLOSING_FIELDS = ['talla_camiseta', 'observaciones', 'tipo_registro', 'vendedora_id',
                   'factura_realizada', 'fact_nombres', 'fact_cedula', 'fact_correo', 'link_comprobante']
 LABELS = {
@@ -123,7 +129,9 @@ def field_value(name, value, field):
     if isinstance(field, forms.DecimalField):
         return value.replace('$', '').strip().replace(',', '.')
     aliases = {
-        'tipo_matricula': {'reserva': 'reserva_abono', 'abono': 'reserva_abono', 'completo': 'programa_completo'},
+        'tipo_matricula': {'reserva': 'reserva_abono', 'abono': 'reserva_abono', 'completo': 'programa_completo',
+                           'inscripcion gratis': 'inscripcion_gratis', 'inscripcion gratuita': 'inscripcion_gratis',
+                           'otro': 'otros'},
         'forma_pago': {'completo': 'pago_completo', 'contado': 'pago_completo'},
         'tipo_cobro': {'simple': 'un_solo_metodo', 'un solo': 'un_solo_metodo', 'pago mixto': 'mixto'},
     }
@@ -186,7 +194,10 @@ def net_amount(data):
 
 def active_fields(data, course):
     fields = STUDENT_FIELDS + ACADEMIC_FIELDS
-    if data.get('tipo_cobro') == 'mixto':
+    skipped = SKIPPED_FIELDS_BY_TYPE.get(data.get('tipo_matricula'))
+    if skipped:
+        fields = [name for name in fields if name not in skipped]
+    elif data.get('tipo_cobro') == 'mixto':
         for suffix in ('1', '2'):
             fields += ['monto_pago_' + suffix, 'metodo_pago_' + suffix]
             if data.get('metodo_pago_' + suffix) in ('transferencia', 'tarjeta'):
@@ -349,6 +360,8 @@ def enrollment_step(request, state, message):
                 lines.append('Usa DD/MM/AAAA o «hoy». Es la fecha del registro; la fecha de inicio la determina la jornada.')
             if name == 'valor_curso' and jornada:
                 lines.append(f'Precio del curso para {jornada.get_modalidad_display()}: ${course.valor_para(jornada.modalidad):.2f}. Escribe «usar valor» o indica el valor acordado.')
+            if name == 'valor_curso' and data.get('tipo_matricula') == 'inscripcion_gratis':
+                lines.append('Con la inscripción gratis se restan $10.00 de este valor y el resto se paga por módulos.')
             if name == 'forma_pago' and data.get('tipo_matricula') == 'reserva_abono':
                 lines.append('La matrícula con Reserva / Abono utiliza la forma de pago «abono».')
             if name == 'valor_pagado':
@@ -397,16 +410,26 @@ def enrollment_step(request, state, message):
         matricula = _guardar_matricula_formularios(student_form, enrollment_form, advisor, request.user)
     request.session.pop(STATE, None)
     request.session['mercybot_student'] = matricula.estudiante_id
+    if matricula.es_sin_costo:
+        charge = ['Tipo Otros: no se le cobra nada al estudiante.']
+        closing = 'La matrícula ya está en el sistema.'
+    elif matricula.es_inscripcion_gratis:
+        charge = [f'Valor: ${matricula.valor_curso:.2f} (ya sin los $10.00 de inscripción) · Descuento: ${matricula.descuento:.2f}',
+                  f'Inscripción gratis: sin pago inicial · Saldo a pagar por módulos: ${matricula.saldo:.2f}']
+        closing = 'La matrícula ya está en el sistema.'
+    else:
+        charge = [f'Valor: ${matricula.valor_curso:.2f} · Descuento: ${matricula.descuento:.2f}',
+                  f'Pago inicial registrado: ${matricula.valor_pagado:.2f} · Saldo: ${matricula.saldo:.2f}']
+        closing = 'La matrícula y su pago inicial ya están en el sistema.'
     summary = [f'Matrícula #{matricula.pk} registrada para {matricula.estudiante.nombres}.',
                f'Cédula: {matricula.estudiante.cedula}', f'Curso: {course.nombre}',
                'Jornada: ' + jornada_label(jornada, numbered=False),
                f'Inicio de clases: {jornada.fecha_inicio:%d/%m/%Y} · Modalidad: {matricula.get_modalidad_display()}',
                f'Fecha de matrícula: {matricula.fecha_matricula:%d/%m/%Y}',
                f'Estado: {matricula.get_estado_display()} · Tipo: {matricula.get_tipo_matricula_display()}',
-               f'Valor: ${matricula.valor_curso:.2f} · Descuento: ${matricula.descuento:.2f}',
-               f'Pago inicial registrado: ${matricula.valor_pagado:.2f} · Saldo: ${matricula.saldo:.2f}',
+               *charge,
                f'Asesora: {advisor.get_full_name() or advisor.username}',
                f'Origen: {matricula.get_tipo_registro_display()} · Factura con datos: {matricula.get_factura_realizada_display()}',
-               'La matrícula y su pago inicial ya están en el sistema.']
+               closing]
     return answer('\n'.join(summary), [link('Ver matrícula y pagos', 'matricula_abonos', pk=matricula.pk),
                                       link('Ver estudiante', 'estudiante_detalle', pk=matricula.estudiante_id)])

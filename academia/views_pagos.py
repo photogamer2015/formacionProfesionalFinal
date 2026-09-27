@@ -2689,13 +2689,16 @@ def abono_recibo(request, abono_pk):
 # Pagos por Módulo (control semanal del avance del curso)
 # ═════════════════════════════════════════════════════════════════
 
-# Tipos de matrícula que SÍ implican una reserva inicial (los únicos que
-# hacen sentido para el control de morosidad por módulo).
-TIPOS_CON_RESERVA = ('reserva_abono', 'reserva_modulo_1')
+# Tipos de matrícula que se cobran por módulo (los únicos que hacen sentido
+# para el control de morosidad por módulo): con reserva inicial o con la
+# inscripción gratis, que no cobra la reserva y deja todo en los módulos.
+TIPOS_COBRO_POR_MODULO = ('reserva_abono', 'reserva_modulo_1', 'inscripcion_gratis')
 
 TIPOS_MATRICULA_FILTRO_PAGOS_MODULO = (
     ('reserva_abono', 'Reserva / Abono'),
+    ('inscripcion_gratis', 'Inscripción (gratis)'),
     ('programa_completo', 'Programa Completo'),
+    ('otros', 'Otros'),
 )
 
 
@@ -6034,9 +6037,10 @@ def _calcular_alertas_pago(
     usuario_actual=None, *, fecha_actual=None, excluir_revisadas=True,
 ):
     """
-    Devuelve la lista de alertas activas: matrículas tipo "Reserva/Abono" o
-    "Reserva + Módulo 1" con saldo pendiente cuya fecha de aviso ya llegó
-    según el calendario semanal del panel (ver _calendario_alertas_pago).
+    Devuelve la lista de alertas activas: matrículas tipo "Reserva/Abono",
+    "Reserva + Módulo 1" o "Inscripción (gratis)" con saldo pendiente cuya
+    fecha de aviso ya llegó según el calendario semanal del panel (ver
+    _calendario_alertas_pago).
 
     Siempre muestra el primer módulo que todavía no está cubierto. Cuando se
     paga, la alerta se oculta hasta que llegue la fecha del siguiente módulo.
@@ -6050,7 +6054,7 @@ def _calcular_alertas_pago(
 
     # Online entra al panel un día antes; presencial conserva el día exacto.
     qs = Matricula.objects.filter(
-        tipo_matricula__in=TIPOS_CON_RESERVA,
+        tipo_matricula__in=TIPOS_COBRO_POR_MODULO,
     ).filter(
         Q(
             modalidad='online',

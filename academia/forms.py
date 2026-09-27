@@ -6,6 +6,7 @@ from .models import (
     Abono, Adicional, CategoriaEgreso, Categoria, Comprobante, Curso, Egreso,
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
     MONTO_RESERVA_MATRICULA, PersonaExterna, RecuperacionPendiente, Sede,
+    TIPOS_SIN_COBRO_INICIAL,
 )
 
 
@@ -465,7 +466,8 @@ class MatriculaForm(forms.ModelForm):
     - Acepta TODOS los cursos activos (no filtra por modalidad de URL).
       La modalidad final se infiere de la jornada elegida.
     - Acepta TODAS las jornadas activas del curso (presenciales + online).
-    - Incluye `tipo_matricula` (Reserva/Abono y Programa Completo).
+    - Incluye `tipo_matricula` (Reserva/Abono, Inscripción gratis, Programa
+      Completo y Otros).
     - Incluye los datos de Comprobante: tipo_registro, factura, datos de factura,
       link al comprobante. La vendedora se asigna automáticamente desde
       request.user en la vista (no es un campo del form).
@@ -689,6 +691,18 @@ class MatriculaForm(forms.ModelForm):
         self.fields['tipo_registro'].required = True
         self.fields['factura_realizada'].required = True
 
+        # «Otros» no tiene costo e «Inscripción (gratis)» no cobra los $10 de
+        # inscripción: ninguno cobra al matricular, así que la forma de pago y
+        # el pago inicial dejan de ser obligatorios (clean los fija en $0).
+        tipo_enviado = self.data.get(self.add_prefix('tipo_matricula'))
+        self.es_sin_costo = tipo_enviado == 'otros'
+        self.sin_cobro_inicial = tipo_enviado in TIPOS_SIN_COBRO_INICIAL
+        if self.sin_cobro_inicial:
+            self.fields['forma_pago'].required = False
+            self.fields['valor_pagado'].required = False
+        if self.es_sin_costo:
+            self.fields['valor_curso'].required = False
+
         # Forma de pago: obligar elección manual (opción vacía al inicio).
         self.fields['forma_pago'].initial = ''
         self.fields['forma_pago'].label = 'Forma de pago'
@@ -735,7 +749,7 @@ class MatriculaForm(forms.ModelForm):
 
     def clean_valor_pagado(self):
         valor = self.cleaned_data.get('valor_pagado')
-        if self.captura_pago:
+        if self.captura_pago and not self.sin_cobro_inicial:
             if valor is None or valor <= 0:
                 raise forms.ValidationError("Para registrar una matrícula es obligatorio realizar un pago inicial mayor a $0.")
         return valor
@@ -753,6 +767,8 @@ class MatriculaForm(forms.ModelForm):
     def clean_descuento(self):
         """El descuento no puede ser negativo ni mayor al valor del curso."""
         from decimal import Decimal
+        if self.es_sin_costo:
+            return Decimal('0.00')
         desc = self.cleaned_data.get('descuento') or Decimal('0.00')
         if desc < 0:
             raise forms.ValidationError('El descuento no puede ser negativo.')
@@ -767,10 +783,44 @@ class MatriculaForm(forms.ModelForm):
         from decimal import Decimal
         cleaned = super().clean()
 
+        if self.captura_pago:
+            jornada = cleaned.get('jornada')
+            if not jornada:
+                self.add_error('jornada', 'Debes seleccionar una jornada con sede o plataforma.')
+            elif jornada.modalidad == 'presencial' and not jornada.sede_id:
+                self.add_error('jornada', 'La jornada presencial seleccionada debe tener sede.')
+
         # ── Coherencia entre forma de pago y el monto pagado ──────────────
         # Solo aplica al registrar (captura_pago=True). En edición el valor
         # pagado lo determinan los Abonos ya existentes.
-        if self.captura_pago:
+        if self.captura_pago and self.sin_cobro_inicial:
+            # No se cobra nada al matricular: no se valida ningún pago y la
+            # matrícula queda sin abono inicial.
+            if self.es_sin_costo:
+                # Otros: sin valor ni saldo.
+                cleaned.update(
+                    valor_curso=Decimal('0.00'), descuento=Decimal('0.00'),
+                )
+            elif not self.instance.pk and cleaned.get('valor_curso') is not None:
+                # Inscripción gratis: los $10 de inscripción se restan del
+                # valor del curso (solo al registrar, para no restarlos dos
+                # veces) y el resto se paga por módulos.
+                valor_curso = cleaned['valor_curso']
+                desc = cleaned.get('descuento') or Decimal('0.00')
+                if valor_curso - desc <= MONTO_RESERVA_MATRICULA:
+                    self.add_error(
+                        'valor_curso',
+                        'Con la inscripción gratis de $10.00 no queda valor '
+                        'por pagar en módulos. Si no se cobra nada, usa «Otros».'
+                    )
+                else:
+                    cleaned['valor_curso'] = valor_curso - MONTO_RESERVA_MATRICULA
+            cleaned.update(
+                forma_pago='',
+                valor_pagado=Decimal('0.00'),
+                tipo_cobro='un_solo_metodo',
+            )
+        elif self.captura_pago:
             forma = cleaned.get('forma_pago')
             valor_curso = cleaned.get('valor_curso') or Decimal('0.00')
             desc = cleaned.get('descuento') or Decimal('0.00')
@@ -790,11 +840,6 @@ class MatriculaForm(forms.ModelForm):
             metodo_pago_2 = cleaned.get('metodo_pago_2')
             banco_2 = cleaned.get('banco_2')
             modalidad = jornada.modalidad if jornada else self.modalidad
-
-            if not jornada:
-                self.add_error('jornada', 'Debes seleccionar una jornada con sede o plataforma.')
-            elif jornada.modalidad == 'presencial' and not jornada.sede_id:
-                self.add_error('jornada', 'La jornada presencial seleccionada debe tener sede.')
 
             if tipo_cobro != 'mixto':
                 if not metodo_pago:

@@ -2686,6 +2686,172 @@ class PagoInicialMatriculaTests(TestCase):
         matricula = Matricula.objects.get(estudiante=self.estudiante)
         self.assertEqual(matricula.vendedora, asesor)
 
+    def test_matricula_nueva_ofrece_otros_e_inscripcion_gratis(self):
+        form = MatriculaForm(prefix='mat')
+
+        tipos = dict(form.fields['tipo_matricula'].choices)
+
+        self.assertEqual(tipos['otros'], 'Otros')
+        self.assertEqual(tipos['inscripcion_gratis'], 'Inscripción (gratis)')
+        self.assertNotIn('gratis', tipos)
+
+    def test_matricula_otros_no_exige_pago_y_queda_en_cero(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-tipo_matricula': 'otros',
+                    'mat-forma_pago': '',
+                    'mat-descuento': '20.00',
+                    'mat-valor_pagado': '',
+                    'mat-metodo_pago': '',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['valor_curso'], Decimal('0.00'))
+        self.assertEqual(form.cleaned_data['descuento'], Decimal('0.00'))
+        self.assertEqual(form.cleaned_data['valor_pagado'], Decimal('0.00'))
+        self.assertEqual(form.cleaned_data['forma_pago'], '')
+
+    def _registrar_sin_pago_inicial(self, tipo_matricula, **overrides):
+        asesor = User.objects.create_superuser(username=f'admin_{tipo_matricula}')
+        self.client.force_login(asesor)
+        return self.client.post(
+            reverse(
+                'academia:matricula_registrar',
+                kwargs={'modalidad': 'presencial'},
+            ),
+            {
+                **self._estudiante_post_data(),
+                **self._matricula_form_data(
+                    **{
+                        'mat-tipo_matricula': tipo_matricula,
+                        'mat-forma_pago': '',
+                        'mat-valor_pagado': '',
+                        'mat-metodo_pago': '',
+                        **overrides,
+                    }
+                ),
+                'vendedora_id': str(asesor.pk),
+            },
+        )
+
+    def test_registro_otros_no_crea_abono_ni_saldo(self):
+        response = self._registrar_sin_pago_inicial('otros')
+
+        self.assertEqual(response.status_code, 302)
+        matricula = Matricula.objects.get(estudiante=self.estudiante)
+        self.assertEqual(matricula.tipo_matricula, 'otros')
+        self.assertEqual(matricula.valor_curso, Decimal('0.00'))
+        self.assertEqual(matricula.valor_pagado, Decimal('0.00'))
+        self.assertEqual(matricula.saldo, Decimal('0.00'))
+        self.assertFalse(matricula.abonos.exists())
+
+    def test_inscripcion_gratis_resta_diez_y_no_exige_pago_inicial(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-tipo_matricula': 'inscripcion_gratis',
+                    'mat-forma_pago': '',
+                    'mat-valor_pagado': '',
+                    'mat-metodo_pago': '',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['valor_curso'], Decimal('105.00'))
+        self.assertEqual(form.cleaned_data['valor_pagado'], Decimal('0.00'))
+        self.assertEqual(form.cleaned_data['forma_pago'], '')
+
+    def test_inscripcion_gratis_exige_saldo_para_los_modulos(self):
+        form = MatriculaForm(
+            self._matricula_form_data(
+                **{
+                    'mat-tipo_matricula': 'inscripcion_gratis',
+                    'mat-valor_curso': '10.00',
+                    'mat-forma_pago': '',
+                    'mat-valor_pagado': '',
+                    'mat-metodo_pago': '',
+                }
+            ),
+            prefix='mat',
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('valor_curso', form.errors)
+
+    def test_registro_inscripcion_gratis_cobra_solo_los_modulos(self):
+        response = self._registrar_sin_pago_inicial('inscripcion_gratis')
+
+        self.assertEqual(response.status_code, 302)
+        matricula = Matricula.objects.get(estudiante=self.estudiante)
+        self.assertEqual(matricula.tipo_matricula, 'inscripcion_gratis')
+        # Curso de $115: los $10 de inscripción no se cobran.
+        self.assertEqual(matricula.valor_curso, Decimal('105.00'))
+        self.assertEqual(matricula.valor_pagado, Decimal('0.00'))
+        self.assertEqual(matricula.saldo, Decimal('105.00'))
+        self.assertFalse(matricula.abonos.exists())
+        # Los módulos valen lo mismo que en Reserva / Abono, sin la reserva.
+        reserva = Matricula(
+            curso=self.curso, modalidad='presencial',
+            tipo_matricula='reserva_abono', valor_curso=Decimal('115.00'),
+        )
+        self.assertEqual(matricula.reserva_inicial_plan, Decimal('0.00'))
+        self.assertEqual(
+            matricula.cuotas_modulos_objetivo(),
+            reserva.cuotas_modulos_objetivo(),
+        )
+
+    def test_tipos_sin_cobro_inicial_no_abren_edicion_de_pago_inicial(self):
+        admin = User.objects.create_superuser(username='admin_pago_sin_cobro')
+        self.client.force_login(admin)
+        for tipo in ('otros', 'inscripcion_gratis'):
+            with self.subTest(tipo=tipo):
+                matricula = Matricula.objects.create(
+                    estudiante=self.estudiante,
+                    curso=self.curso,
+                    jornada=self.jornada,
+                    modalidad='presencial',
+                    tipo_matricula=tipo,
+                    forma_pago='pago_completo',
+                    fecha_matricula=date(2026, 7, 5),
+                    valor_curso=Decimal('105.00'),
+                    registrado_por=admin,
+                )
+
+                response = self.client.get(
+                    reverse(
+                        'academia:matricula_editar',
+                        kwargs={'modalidad': 'presencial', 'pk': matricula.pk},
+                    ),
+                    {'editar_pago': '1'},
+                )
+
+                self.assertRedirects(
+                    response,
+                    reverse('academia:matricula_lista', kwargs={'modalidad': 'presencial'}),
+                    fetch_redirect_response=False,
+                )
+
+    def test_modelo_otros_nunca_guarda_valor_ni_forma_de_pago(self):
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='otros',
+            forma_pago='pago_completo',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+        )
+
+        self.assertEqual(matricula.valor_curso, Decimal('0.00'))
+        self.assertEqual(matricula.forma_pago, '')
+
     def test_matricula_mixta_rechaza_metodos_vacios(self):
         form = MatriculaForm(
             self._matricula_form_data(
@@ -6391,6 +6557,25 @@ class AlertasPagoPorJornadaTests(TestCase):
         self.assertEqual(alerta['numero_modulo'], 2)
         self.assertEqual(alerta['fecha_vencimiento'], date(2026, 7, 8))
         self.assertEqual(alerta['dias_atraso'], 0)
+        self.assertEqual(alerta['saldo_m1'], Decimal('18.00'))
+
+    def test_inscripcion_gratis_alerta_los_mismos_modulos_sin_reserva(self):
+        # Curso de $80: los $10 de inscripción se restaron al registrar.
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso_presencial,
+            jornada=self.jornada_presencial,
+            modalidad='presencial',
+            tipo_matricula='inscripcion_gratis',
+            fecha_matricula=date(2026, 6, 30),
+            valor_curso=Decimal('70.00'),
+        )
+
+        alerta = self._alerta_de(matricula, date(2026, 7, 8))
+
+        self.assertEqual(alerta['numero_modulo'], 1)
+        self.assertEqual(alerta['saldo_total'], Decimal('70.00'))
+        # Igual que el Módulo 1 de la Reserva / Abono del mismo curso.
         self.assertEqual(alerta['saldo_m1'], Decimal('18.00'))
 
     def test_alerta_identifica_pago_de_recuperacion(self):

@@ -528,6 +528,10 @@
                         <span style="background:#fff3e0; color:#e65100; padding:3px 8px; border-radius:6px; font-weight:600;">Reserva / Abono</span>
                     {% elif row.tipo_matricula_codigo == 'reserva_modulo_1' %}
                         <span style="background:#e8f5e9; color:#2e7d32; padding:3px 8px; border-radius:6px; font-weight:600;">Reserva + Mód. 1</span>
+                    {% elif row.tipo_matricula_codigo == 'inscripcion_gratis' %}
+                        <span style="background:#ede7f6; color:#4527a0; padding:3px 8px; border-radius:6px; font-weight:600;">Inscripción gratis</span>
+                    {% elif row.tipo_matricula_codigo == 'otros' %}
+                        <span style="background:#e8f5e9; color:#2e7d32; padding:3px 8px; border-radius:6px; font-weight:600;">Otros</span>
                     {% else %}
                         <span style="background:#e3f2fd; color:#0d47a1; padding:3px 8px; border-radius:6px; font-weight:600;">Programa Completo</span>
                     {% endif %}
@@ -582,6 +586,10 @@
                         ✓ Programa<br>Completo
                     </div>
                 </td>
+                {% elif row.tipo_matricula_codigo == 'otros' %}
+                <td style="padding:8px; text-align:center; background:#e8f5e9;">
+                    <div style="color:#2e7d32; font-weight:700; font-size:11px;">✓ Otros</div>
+                </td>
                 {% else %}
                 <td style="padding:8px; text-align:center;
                     {% if mod.estado == 'Pendiente' %}background:#ffebee;
@@ -633,6 +641,7 @@
     <strong>Leyenda:</strong>
     <span style="background:#e8f5e9; padding:2px 8px; border-radius:6px; color:#2e7d32; font-weight:600;">✓ Pagado</span> ·
     <span style="background:#e8f5e9; padding:2px 8px; border-radius:6px; color:#2e7d32; font-weight:600;">✓ Programa Completo</span> ·
+    <span style="background:#e8f5e9; padding:2px 8px; border-radius:6px; color:#2e7d32; font-weight:600;">✓ Otros</span> ·
     <span style="background:#ffebee; padding:2px 8px; border-radius:6px; color:#c62828; font-weight:600;">○ Sin pagar</span> ·
     <span style="background:#fff3cd; border:1px solid #f0c36d; padding:2px 8px; border-radius:6px; color:#8a5a00; font-weight:700;">✱ Recuperación</span>
     <br><br>
@@ -644,6 +653,9 @@
         Cuando el tipo de matrícula es <strong>Programa Completo</strong> y el saldo
         está en $0, los módulos se marcan como pagados aunque no haya un abono
         individual por módulo, porque el estudiante canceló el curso de una sola vez.
+        En <strong>Inscripción (gratis)</strong> no se cobró la reserva: los $10 se
+        restaron del valor del curso y todo el saldo se reparte entre los módulos.
+        En <strong>Otros</strong> no se cobra nada.
         La reserva y los abonos libres no aparecen aquí pero sí en el saldo
         total y en el historial de pagos del estudiante.
     </em>

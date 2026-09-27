@@ -699,6 +699,15 @@ def matricula_editar(request, modalidad, pk):
     if not editar_pago:
         from .views_jornadas_estudiante import editar_datos_estudiante
         return editar_datos_estudiante(request, matricula)
+    if matricula.sin_cobro_inicial:
+        aviso = (
+            f'La matrícula de tipo «{matricula.get_tipo_matricula_display()}» '
+            'no tiene pago inicial que editar.'
+        )
+        if matricula.es_inscripcion_gratis:
+            aviso += ' Los módulos se cobran desde Gestionar Pagos.'
+        messages.info(request, aviso)
+        return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
 
     # Campos del formulario que SÍ pertenecen al pago inicial. Todo lo demás
     # se fuerza al valor original en el modo "editar el pago".

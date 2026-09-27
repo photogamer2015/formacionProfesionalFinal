@@ -253,6 +253,17 @@
             {{ mat_form.fecha_matricula }}{{ mat_form.fecha_matricula.errors }}
         </div>
         {% if modo != 'editar' or editar_pago %}
+        <div id="otros-aviso" style="display:none; grid-column: 1 / -1; padding:12px 16px; background:#E8F5E9; border-left:4px solid #2E7D32; border-radius:4px; color:#1B5E20; font-size:14px;">
+            🎁 <strong>Otros:</strong> al estudiante no se le cobra nada.
+            No se pide valor, forma ni método de pago, y no se registra ningún abono.
+        </div>
+        <div id="inscripcion-gratis-aviso" style="display:none; grid-column: 1 / -1; padding:12px 16px; background:#EDE7F6; border-left:4px solid #4527A0; border-radius:4px; color:#311B92; font-size:14px;">
+            🎓 <strong>Inscripción (gratis):</strong> no se cobran los $10 de inscripción;
+            se restan del valor del curso y el estudiante solo paga los módulos.
+            Hoy no se registra ningún pago.
+        </div>
+        <!-- Valor del curso: se oculta en «Otros» (no tiene costo). -->
+        <div id="valor-campos" style="display: contents;">
         <div>
             <label class="form-label" for="id_valor_curso">Valor del curso (USD) *</label>
             {{ mat_form.valor_curso }}{{ mat_form.valor_curso.errors }}
@@ -274,11 +285,18 @@
             <input type="text" id="id_valor_neto_display" class="form-input"
                    readonly style="background:#fff8e1; font-weight:700; color:#1a237e;"
                    value="$0.00">
-            <small style="color: #666; display: block; margin-top: 5px;">
+            <small id="valor-neto-hint" style="color: #666; display: block; margin-top: 5px;">
                 Solo se llena si aplicas un descuento (valor del curso − descuento). Si no hay descuento, queda en $0.00.
+            </small>
+            <small id="valor-neto-hint-inscripcion" style="color: #666; display: none; margin-top: 5px;">
+                Valor del curso − $10 de inscripción − descuento: es lo que se paga en los módulos.
             </small>
             <div id="descuento-aplicado-label" style="display:none; font-size:12px; color:#e65100; font-weight:600; margin-top:4px;"></div>
         </div>
+        </div>
+        <!-- Cobro inicial: se oculta en «Otros» e «Inscripción (gratis)»
+             (no se cobra nada al matricular). -->
+        <div id="cobro-campos" style="display: contents;">
         <div>
             <label class="form-label" for="id_forma_pago">
                 Forma de pago *
@@ -354,6 +372,8 @@
                 ⚠️ La suma del Monto 1 y Monto 2 debe ser exactamente igual al "Valor pagado (USD)".
             </small>
         </div>
+        </div>
+        <!-- /Cobro inicial -->
         {% endif %}
     </div>
 
@@ -929,6 +949,25 @@
             'programa_completo': 'pago_completo',
         };
         const formaPagoHint = document.getElementById('forma-pago-hint');
+        const valorCampos = document.getElementById('valor-campos');
+        const cobroCampos = document.getElementById('cobro-campos');
+        const otrosAviso = document.getElementById('otros-aviso');
+        const inscripcionGratisAviso = document.getElementById('inscripcion-gratis-aviso');
+        // «Otros» no tiene costo; «Inscripción (gratis)» no cobra los $10 de
+        // inscripción (se restan del curso). Ninguno cobra al matricular.
+        const TIPOS_SIN_COBRO_INICIAL = ['inscripcion_gratis', 'otros'];
+        function tipoMatriculaActual() {
+            return tipoMatriculaSelect ? tipoMatriculaSelect.value : '';
+        }
+        function esSinCosto() {
+            return tipoMatriculaActual() === 'otros';
+        }
+        function esInscripcionGratis() {
+            return tipoMatriculaActual() === 'inscripcion_gratis';
+        }
+        function sinCobroInicial() {
+            return TIPOS_SIN_COBRO_INICIAL.includes(tipoMatriculaActual());
+        }
         // N.º de módulos del curso seleccionado (por modalidad). Se llenan al
         // cargar el curso desde la API y se usan para calcular el valor de un módulo.
         let cursoNumModulos = { presencial: 1, online: 1 };
@@ -1157,26 +1196,30 @@
             // un descuento real. Si no hay descuento, queda en $0.00 (no se
             // está aplicando ningún descuento). El total a pagar real es el
             // valor del curso.
+            // En «Inscripción (gratis)» siempre muestra lo que se pagará en
+            // módulos: valor del curso − $10 de inscripción − descuento.
+            const inscripcionGratis = esInscripcionGratis();
             const hayDescuento = desc > 0 && desc <= valor;
-            const displayNeto = hayDescuento ? (valor - desc) : 0;
+            const displayNeto = inscripcionGratis
+                ? Math.max(valor - MONTO_RESERVA - desc, 0)
+                : (hayDescuento ? (valor - desc) : 0);
             valorNetoDisplay.value = '$' + displayNeto.toFixed(2);
             // Etiqueta explícita de descuento (igual que en el listado)
             const descLabel = document.getElementById('descuento-aplicado-label');
             if (descLabel) {
-                if (desc > 0 && desc <= valor) {
-                    descLabel.textContent = 'Descuento: $' + desc.toFixed(2);
-                    descLabel.style.display = 'block';
-                } else {
-                    descLabel.style.display = 'none';
-                }
+                const etiquetas = [];
+                if (inscripcionGratis) etiquetas.push('Inscripción gratis: −$' + MONTO_RESERVA.toFixed(2));
+                if (hayDescuento) etiquetas.push('Descuento: $' + desc.toFixed(2));
+                descLabel.textContent = etiquetas.join(' · ');
+                descLabel.style.display = etiquetas.length ? 'block' : 'none';
             }
             // Resaltar visualmente si hay descuento
-            if (desc > 0 && desc <= valor) {
-                valorNetoDisplay.style.background = '#fff8e1';
-                valorNetoDisplay.style.color = '#1a237e';
-            } else if (desc > valor) {
+            if (desc > valor) {
                 valorNetoDisplay.style.background = '#ffebee';
                 valorNetoDisplay.style.color = '#c62828';
+            } else if (hayDescuento || inscripcionGratis) {
+                valorNetoDisplay.style.background = '#fff8e1';
+                valorNetoDisplay.style.color = '#1a237e';
             } else {
                 valorNetoDisplay.style.background = '#f5f5f5';
                 valorNetoDisplay.style.color = '#1a237e';
@@ -1214,6 +1257,7 @@
                     validarCamposPrincipales();
                 }
                 actualizarModulosAPagar(true);
+                aplicarTipoSinCobro();
             });
         }
         // Inicial
@@ -1254,6 +1298,34 @@
                     CAMPOS_REQUERIDOS.splice(i, 1);
                 }
             }
+        }
+
+        // ── Tipos sin cobro al matricular ──
+        // «Otros» oculta todos los campos de pago; «Inscripción (gratis)»
+        // conserva el valor del curso pero no pide forma, monto ni método de
+        // pago. El servidor guarda ambas sin abono inicial.
+        function camposRequeridosActivos() {
+            const omitir = [];
+            if (sinCobroInicial()) omitir.push('forma_pago');
+            if (esSinCosto()) omitir.push('valor_curso');
+            return CAMPOS_REQUERIDOS.filter(c => !omitir.includes(c.name));
+        }
+
+        function aplicarTipoSinCobro() {
+            const sinCosto = esSinCosto();
+            const inscripcionGratis = esInscripcionGratis();
+            if (valorCampos) valorCampos.style.display = sinCosto ? 'none' : 'contents';
+            if (cobroCampos) cobroCampos.style.display = sinCobroInicial() ? 'none' : 'contents';
+            if (otrosAviso) otrosAviso.style.display = sinCosto ? 'block' : 'none';
+            if (inscripcionGratisAviso) {
+                inscripcionGratisAviso.style.display = inscripcionGratis ? 'block' : 'none';
+            }
+            const netoHint = document.getElementById('valor-neto-hint');
+            const netoHintInscripcion = document.getElementById('valor-neto-hint-inscripcion');
+            if (netoHint) netoHint.style.display = inscripcionGratis ? 'none' : 'block';
+            if (netoHintInscripcion) netoHintInscripcion.style.display = inscripcionGratis ? 'block' : 'none';
+            actualizarValorNeto();
+            if (typeof toggleSubmitBtn === 'function') toggleSubmitBtn();
         }
 
         // Función auxiliar para encontrar el campo con o sin prefijo
@@ -1359,6 +1431,20 @@
         }
 
         function datosPagoResumen() {
+            if (esSinCosto()) {
+                return [['Cobro', 'Otros: no se cobra nada']];
+            }
+            if (esInscripcionGratis()) {
+                const valor = parseFloat(valorCampo('valor_curso')) || 0;
+                const desc = parseFloat(valorCampo('descuento')) || 0;
+                return [
+                    ['Valor curso', '$' + valor.toFixed(2)],
+                    ['Inscripción gratis', '−$' + MONTO_RESERVA.toFixed(2)],
+                    ['Descuento', '$' + desc.toFixed(2)],
+                    ['A pagar en módulos', '$' + Math.max(valor - MONTO_RESERVA - desc, 0).toFixed(2)],
+                    ['Cobro hoy', '$0.00 (sin pago inicial)'],
+                ];
+            }
             const tipoCobro = textoSeleccion('tipo_cobro');
             const rows = [
                 ['Valor curso', '$' + (valorCampo('valor_curso') || '0.00')],
@@ -1491,7 +1577,7 @@
                 });
 
                 // Verificar campos
-                for (const { name, label } of CAMPOS_REQUERIDOS) {
+                for (const { name, label } of camposRequeridosActivos()) {
                     if (campoEstaVacio(name)) {
                         const el = obtenerElementoCampo(name);
                         if (el) {
@@ -2373,9 +2459,12 @@
                     faltantes.push(mensaje);
                 }
             };
+            // Otros e Inscripción (gratis) no cobran al matricular: se omiten
+            // las validaciones del pago inicial.
+            const sinCobro = sinCobroInicial();
 
             // 0. Campos principales obligatorios.
-            CAMPOS_REQUERIDOS.forEach(({ name, label }) => {
+            camposRequeridosActivos().forEach(({ name, label }) => {
                 if (campoEstaVacio(name)) {
                     agregarFaltante(label);
                 }
@@ -2389,7 +2478,7 @@
             }
 
             // 1. Valor pagado debe ser mayor a 0.00 (solo en modo registrar)
-            if (valorPagadoInput && MODO !== 'editar') {
+            if (valorPagadoInput && MODO !== 'editar' && !sinCobro) {
                 const valStr = (valorPagadoInput.value || '').replace(',', '.');
                 const val = parseFloat(valStr);
                 if (isNaN(val) || val <= 0) {
@@ -2422,14 +2511,14 @@
             const metodoPagoSelect = document.getElementById('id_metodo_pago');
             const metodoPagoSelect1 = document.getElementById('id_metodo_pago_1');
             const metodoPagoSelect2 = document.getElementById('id_metodo_pago_2');
-            if (!SOLO_DATOS && tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
+            if (!SOLO_DATOS && !sinCobro && tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
                 const monto1 = parseFloat((document.getElementById('id_monto_pago_1') || {}).value || 0);
                 const monto2 = parseFloat((document.getElementById('id_monto_pago_2') || {}).value || 0);
                 if (!monto1 || monto1 <= 0) agregarFaltante('Monto 1');
                 if (!monto2 || monto2 <= 0) agregarFaltante('Monto 2');
                 if (!metodoPagoSelect1 || !metodoPagoSelect1.value) agregarFaltante('Método de pago 1');
                 if (!metodoPagoSelect2 || !metodoPagoSelect2.value) agregarFaltante('Método de pago 2');
-            } else if (!SOLO_DATOS && metodoPagoSelect && !metodoPagoSelect.value) {
+            } else if (!SOLO_DATOS && !sinCobro && metodoPagoSelect && !metodoPagoSelect.value) {
                 agregarFaltante('Método de pago');
             }
 
@@ -2437,21 +2526,21 @@
             //    (método de pago: Transferencia bancaria o Tarjeta / App)
             const bancoCont = document.getElementById('banco-container');
             const bancoSel = document.getElementById('id_banco');
-            if (bancoCont && bancoSel && bancoCont.style.display !== 'none') {
+            if (!sinCobro && bancoCont && bancoSel && bancoCont.style.display !== 'none') {
                 if (!bancoSel.value) {
                     agregarFaltante('Banco');
                 }
             }
             const bancoCont1 = document.getElementById('banco-1-container');
             const bancoSel1 = document.getElementById('id_banco_1');
-            if (bancoCont1 && bancoSel1 && bancoCont1.style.display !== 'none') {
+            if (!sinCobro && bancoCont1 && bancoSel1 && bancoCont1.style.display !== 'none') {
                 if (!bancoSel1.value) {
                     agregarFaltante('Banco 1');
                 }
             }
             const bancoCont2 = document.getElementById('banco-2-container');
             const bancoSel2 = document.getElementById('id_banco_2');
-            if (bancoCont2 && bancoSel2 && bancoCont2.style.display !== 'none') {
+            if (!sinCobro && bancoCont2 && bancoSel2 && bancoCont2.style.display !== 'none') {
                 if (!bancoSel2.value) {
                     agregarFaltante('Banco 2');
                 }
@@ -2465,7 +2554,7 @@
             }
 
             // 8. Mixto sum validation
-            if (tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
+            if (!sinCobro && tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
                 const total = parseFloat(valorPagadoInput.value) || 0;
                 const m1 = parseFloat(document.getElementById('id_monto_pago_1').value) || 0;
                 const m2 = parseFloat(document.getElementById('id_monto_pago_2').value) || 0;
@@ -2581,6 +2670,10 @@
                 }
             });
         }
+
+        // Al recargar con errores, «Otros» o «Inscripción (gratis)» pueden
+        // venir ya seleccionados.
+        aplicarTipoSinCobro();
 
         // ── Estado inicial del botón con TODAS las validaciones ──
         setTimeout(toggleSubmitBtn, 150);

@@ -119,6 +119,47 @@ class MercyBotMatriculaTests(TestCase):
         self.assertEqual(Matricula.objects.count(), 1)
         self.assertEqual(Abono.objects.count(), 1)
 
+    def answer_until_done(self, data):
+        """Responde solo lo que el bot pregunta; falla si pide otro dato."""
+        self.chat('quiero agregar un nuevo estudiante')
+        asked, result = [], None
+        for _ in range(50):
+            state = self.client.session.get(STATE)
+            if not state:
+                break
+            waiting = state['waiting']
+            self.assertIn(waiting, data)
+            asked.append(waiting)
+            result = self.chat(data[waiting])
+        return asked, result
+
+    def test_otros_enrollment_never_asks_for_payment(self):
+        payment = {'valor_curso', 'descuento', 'forma_pago', 'valor_pagado',
+                   'tipo_cobro', 'metodo_pago', 'banco'}
+        data = {k: v for k, v in self.data.items() if k not in payment}
+        data['tipo_matricula'] = 'Otros'
+        _, result = self.answer_until_done(data)
+        self.assertIn('no se le cobra nada', result['reply'])
+        m = Matricula.objects.get()
+        self.assertEqual(m.tipo_matricula, 'otros')
+        self.assertEqual(m.valor_curso, Decimal('0'))
+        self.assertEqual(m.saldo, Decimal('0'))
+        self.assertFalse(Abono.objects.exists())
+
+    def test_free_registration_asks_price_but_no_initial_payment(self):
+        payment = {'forma_pago', 'valor_pagado', 'tipo_cobro', 'metodo_pago', 'banco'}
+        data = {k: v for k, v in self.data.items() if k not in payment}
+        data['tipo_matricula'] = 'inscripción gratis'
+        asked, result = self.answer_until_done(data)
+        self.assertIn('valor_curso', asked)
+        self.assertIn('Inscripción gratis', result['reply'])
+        m = Matricula.objects.get()
+        self.assertEqual(m.tipo_matricula, 'inscripcion_gratis')
+        # $100 del curso − $10 de inscripción; el descuento de $10 se aplica aparte.
+        self.assertEqual(m.valor_curso, Decimal('90'))
+        self.assertEqual(m.saldo, Decimal('80'))
+        self.assertFalse(Abono.objects.exists())
+
     def test_missing_final_field_never_creates_student_or_payment(self):
         values = dict(self.data); values.pop('link_comprobante')
         self.register(values)

@@ -214,9 +214,17 @@ def distribuir_monto_en_cuotas_enteras(monto, cantidad):
 
 TIPO_MATRICULA = [
     ('reserva_abono', 'Reserva / Abono'),
+    # Inscripción gratis: los $10 de inscripción no se cobran (se restan del
+    # valor del curso al registrar) y el estudiante solo paga los módulos.
+    ('inscripcion_gratis', 'Inscripción (gratis)'),
     ('reserva_modulo_1', 'Reserva + Módulo 1'),
     ('programa_completo', 'Programa Completo'),
+    # Otros: al estudiante no se le cobra nada (valor $0, sin pagos).
+    ('otros', 'Otros'),
 ]
+
+# Tipos que no cobran nada al matricular (no llevan pago inicial).
+TIPOS_SIN_COBRO_INICIAL = ('inscripcion_gratis', 'otros')
 
 # Forma de pago elegida al registrar la matrícula.
 # Define CÓMO se cobra el curso y, por lo tanto, qué monto inicial se
@@ -774,6 +782,21 @@ class Matricula(models.Model):
         return neto if neto > 0 else Decimal('0.00')
 
     @property
+    def es_sin_costo(self):
+        """Tipo «Otros»: al estudiante no se le cobra nada."""
+        return self.tipo_matricula == 'otros'
+
+    @property
+    def es_inscripcion_gratis(self):
+        """Los $10 de inscripción no se cobran; solo se pagan los módulos."""
+        return self.tipo_matricula == 'inscripcion_gratis'
+
+    @property
+    def sin_cobro_inicial(self):
+        """Al matricular no se cobró nada (Otros o Inscripción gratis)."""
+        return self.tipo_matricula in TIPOS_SIN_COBRO_INICIAL
+
+    @property
     def tiene_descuento(self):
         return (self.descuento or Decimal('0.00')) > 0
 
@@ -1022,7 +1045,13 @@ class Matricula(models.Model):
             except JornadaCurso.DoesNotExist:
                 pass
 
-        if not self.valor_curso and self.curso_id:
+        if self.es_sin_costo:
+            # Otros: sin valor ni forma de pago, así el saldo siempre es $0
+            # y ningún reporte la cuenta como deuda o como venta cobrada.
+            self.valor_curso = Decimal('0.00')
+            self.descuento = Decimal('0.00')
+            self.forma_pago = ''
+        elif not self.valor_curso and self.curso_id:
             self.valor_curso = self.curso.valor_para(self.modalidad)
         super().save(*args, **kwargs)
 
