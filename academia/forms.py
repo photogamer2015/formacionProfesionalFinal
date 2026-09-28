@@ -1598,27 +1598,15 @@ class RecuperacionPendienteForm(forms.ModelForm):
         # El tipo_equipo no es obligatorio por defecto porque no todos los cursos lo usan.
         self.fields['tipo_equipo'].required = False
         
-        # Filtramos las opciones según el curso
+        # Filtramos las opciones según el curso. Se toman del modelo para que
+        # el valor enviado siempre sea uno que RecuperacionPendiente acepta.
         equipo_choices = []
         if self.matricula and self.matricula.curso:
             nombre_curso = (self.matricula.curso.nombre or '').lower()
             if 'servicio t' in nombre_curso:
-                equipo_choices = [
-                    ('laptops_computadora', 'Laptops / Computadora'),
-                    ('celulares_tablet', 'Celulares / Tablet'),
-                    ('impresora', 'Impresora'),
-                    # Debe coincidir con RecuperacionPendiente.TIPO_EQUIPO_RECUPERACION.
-                    # Usar un valor distinto permite seleccionar la opción en el
-                    # navegador, pero ModelForm la rechaza durante la validación.
-                    ('consolas_videojuegos', 'Consolas de videojuegos'),
-                ]
+                equipo_choices = RecuperacionPendiente.TIPO_EQUIPO_SERVICIO_TECNICO
             elif 'blanca' in nombre_curso:
-                equipo_choices = [
-                    ('lavadora', 'Lavadora'),
-                    ('nevera', 'Nevera'),
-                    ('secadora', 'Secadora'),
-                    ('cocina', 'Cocina'),
-                ]
+                equipo_choices = RecuperacionPendiente.TIPO_EQUIPO_LINEA_BLANCA
         self.fields['tipo_equipo'].choices = equipo_choices
 
     def clean(self):

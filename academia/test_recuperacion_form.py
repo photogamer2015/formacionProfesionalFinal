@@ -46,6 +46,44 @@ class RecuperacionPendienteFormTests(TestCase):
             form.fields['tipo_equipo'].choices,
         )
 
+    def test_todas_las_clases_ofrecidas_se_pueden_guardar(self):
+        linea_blanca = Curso.objects.create(
+            nombre='Línea Blanca - prueba recuperación',
+            numero_modulos=4,
+        )
+        matricula_linea_blanca = Matricula.objects.create(
+            estudiante=Estudiante.objects.create(
+                cedula='9999999998',
+                nombres='Estudiante de Línea Blanca',
+            ),
+            curso=linea_blanca,
+            modalidad='presencial',
+            fecha_matricula=date(2026, 9, 1),
+            valor_curso=0,
+        )
+
+        for matricula in (self.matricula, matricula_linea_blanca):
+            opciones = [
+                valor for valor, _ in RecuperacionPendienteForm(
+                    matricula=matricula,
+                ).fields['tipo_equipo'].choices
+                if valor
+            ]
+            self.assertTrue(opciones)
+            for valor in opciones:
+                with self.subTest(curso=matricula.curso.nombre, tipo_equipo=valor):
+                    form = RecuperacionPendienteForm(
+                        data={
+                            'numero_modulo': '2',
+                            'fecha_marcada': '2026-09-26',
+                            'fecha_programada': '2026-10-24',
+                            'tipo_equipo': valor,
+                            'observaciones': '',
+                        },
+                        matricula=matricula,
+                    )
+                    self.assertTrue(form.is_valid(), form.errors.as_text())
+
     def test_fecha_de_recuperacion_no_puede_ser_anterior_a_la_falta(self):
         form = RecuperacionPendienteForm(
             data={

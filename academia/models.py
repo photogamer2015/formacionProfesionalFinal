@@ -1324,16 +1324,23 @@ class AssistantQueryLog(models.Model):
 class RecuperacionPendiente(models.Model):
     """Clase marcada como recuperación (falta de clase) pendiente de cobro/recuperación."""
 
-    TIPO_EQUIPO_RECUPERACION = [
+    # Opciones de "¿Qué clase va a recuperar?" según el curso. El formulario
+    # usa estas mismas listas, así nunca ofrece un valor que el modelo rechace.
+    TIPO_EQUIPO_SERVICIO_TECNICO = [
         ('laptops_computadora', 'Laptops / Computadora'),
         ('celulares_tablet', 'Celulares / Tablet'),
         ('impresora', 'Impresora'),
         ('consolas_videojuegos', 'Consolas de videojuegos'),
+    ]
+    TIPO_EQUIPO_LINEA_BLANCA = [
         ('lavadora', 'Lavadora'),
         ('nevera', 'Nevera'),
         ('secadora', 'Secadora'),
         ('cocina', 'Cocina'),
     ]
+    TIPO_EQUIPO_RECUPERACION = (
+        TIPO_EQUIPO_SERVICIO_TECNICO + TIPO_EQUIPO_LINEA_BLANCA
+    )
 
     matricula = models.ForeignKey(
         Matricula, on_delete=models.CASCADE, related_name='recuperaciones_pendientes'
