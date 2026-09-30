@@ -567,8 +567,11 @@
                     aplican se muestran como "Programa Completo" en verde,
                     porque el estudiante pagó todo de una sola vez.
                   - Pagado (verde) → el módulo recibió al menos un pago directo,
-                    sin importar si cubre el valor esperado o solo parte.
+                    sin importar si cubre el valor esperado o solo parte, o
+                    quedó cubierto con lo pagado de más en el módulo anterior.
                   - Sin pagar (rojo) → no se ha registrado ningún pago al módulo.
+                    Si lo pagado de más en el módulo anterior cubre solo una
+                    parte, se indica como «Abonado».
                 Los estados internos siguen siendo 3 (Pagado/Parcial/Pendiente)
                 para reportes y filtros, pero el render colapsa los casos.
                 {% endcomment %}
@@ -596,6 +599,9 @@
                     {% else %}background:#e8f5e9;{% endif %}">
                     {% if mod.estado == 'Pendiente' %}
                         <div style="color:#c62828; font-weight:700;">○ Sin pagar</div>
+                        {% if mod.pagado %}
+                        <div style="font-size:10px; color:#c62828; margin-top:2px;">Abonado: ${{ mod.pagado|floatformat:2 }}</div>
+                        {% endif %}
                     {% else %}
                         <div style="color:#2e7d32; font-weight:700;">✓ ${{ mod.pagado|floatformat:2 }}</div>
                         {% if mod.fecha_pago %}
@@ -647,9 +653,10 @@
     <br><br>
     <em>
         Valor sugerido por módulo = Valor neto del curso / N° de módulos.
-        Cada módulo se paga de forma independiente: solo cuentan en la matriz
-        los pagos asignados explícitamente a un módulo y los pagos de recuperación
-        que afectan el saldo del curso.
+        Solo cuentan en la matriz los pagos asignados explícitamente a un módulo
+        y los pagos de recuperación que afectan el saldo del curso. Si un módulo
+        recibió más de su valor (por ejemplo, se pagó antes de bajar el precio
+        del curso), el excedente se abona al módulo siguiente.
         Cuando el tipo de matrícula es <strong>Programa Completo</strong> y el saldo
         está en $0, los módulos se marcan como pagados aunque no haya un abono
         individual por módulo, porque el estudiante canceló el curso de una sola vez.

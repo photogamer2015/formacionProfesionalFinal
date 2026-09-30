@@ -13,6 +13,7 @@ from .models import (
     Abono, Categoria, Comprobante, Curso, Estudiante, JornadaCurso, Matricula,
     Sede,
 )
+from .views_pagos import _detalle_modulo_pago, _plan_recaudacion_matricula
 
 
 class AplicarPrecioActualAdminTests(TestCase):
@@ -216,3 +217,79 @@ class AplicarPrecioActualAdminTests(TestCase):
         self._confirmar(m)
         m.refresh_from_db()
         self.assertEqual(m.valor_curso, Decimal('110.00'))
+
+
+class ExcedenteModuloTests(TestCase):
+    """Un módulo cobrado a $25 antes de bajar el curso a módulos de $20."""
+
+    def setUp(self):
+        self.usuario = User.objects.create_superuser(username='admin_excedente')
+        sede = Sede.objects.create(nombre='Guayaquil', orden=1)
+        self.curso = Curso.objects.create(
+            nombre='Servicio Técnico (prueba excedente)', ofrece_presencial=True,
+            valor_presencial=Decimal('90.00'), numero_modulos=4,
+        )
+        self.jornada = JornadaCurso.objects.create(
+            curso=self.curso, modalidad='presencial', descripcion='sabados_intensivos',
+            fecha_inicio=date(2026, 10, 3), sede=sede,
+        )
+        estudiante = Estudiante.objects.create(cedula='1600000001', nombres='Estudiante Excedente')
+        self.m = Matricula.objects.create(
+            estudiante=estudiante, curso=self.curso, jornada=self.jornada,
+            modalidad='presencial', tipo_matricula='reserva_abono',
+            fecha_matricula=date(2026, 9, 20), valor_curso=Decimal('90.00'),
+            tipo_registro='central_ia',
+        )
+        self._pagar('10.00', 'abono', None)
+
+    def _pagar(self, monto, tipo='por_modulo', modulo=1):
+        Abono.objects.create(
+            matricula=self.m, fecha=date(2026, 10, 3), monto=Decimal(monto),
+            tipo_pago=tipo, numero_modulo=modulo, metodo='efectivo',
+        )
+        self.m.refresh_from_db()
+
+    def _modulos(self):
+        return [(d['pagado'], d['estado']) for d in self.m.desglose_pagos_por_modulo()]
+
+    def test_excedente_pasa_al_siguiente_modulo_como_en_la_hoja(self):
+        self._pagar('25.00', modulo=1)
+
+        self.assertEqual(self._modulos(), [
+            (Decimal('20.00'), 'Pagado'), (Decimal('5.00'), 'Pendiente'),
+            (Decimal('0.00'), 'Pendiente'), (Decimal('0.00'), 'Pendiente'),
+        ])
+        self.assertEqual(self.m.desglose_pagos_por_modulo()[0]['pagado_directo'], Decimal('25.00'))
+        self.assertEqual(_detalle_modulo_pago(self.m, 2)['saldo'], Decimal('15.00'))
+        plan = _plan_recaudacion_matricula(self.m, date(2026, 10, 10))
+        self.assertEqual((plan['modulo'], plan['cuota_sugerida']), (2, Decimal('15.00')))
+
+        self._pagar('15.00', modulo=2)
+
+        self.assertEqual(self._modulos()[1], (Decimal('20.00'), 'Pagado'))
+        self.assertEqual(_detalle_modulo_pago(self.m, 2)['saldo'], Decimal('0.00'))
+        plan = _plan_recaudacion_matricula(self.m, date(2026, 10, 10))
+        self.assertEqual((plan['modulo'], plan['cuota_sugerida']), (3, Decimal('20.00')))
+
+    def test_excedente_grande_cubre_modulos_completos(self):
+        self._pagar('50.00', modulo=1)
+
+        self.assertEqual(self._modulos(), [
+            (Decimal('20.00'), 'Pagado'), (Decimal('20.00'), 'Pagado'),
+            (Decimal('10.00'), 'Pendiente'), (Decimal('0.00'), 'Pendiente'),
+        ])
+
+    def test_ultimo_modulo_conserva_lo_pagado_de_mas(self):
+        self._pagar('30.00', modulo=4)
+
+        self.assertEqual(self._modulos()[3], (Decimal('30.00'), 'Pagado'))
+
+    def test_matriz_indica_lo_abonado_en_el_modulo_pendiente(self):
+        self._pagar('25.00', modulo=1)
+        self.client.force_login(self.usuario)
+
+        response = self.client.get(
+            reverse('academia:pagos_por_modulo'), {'curso': self.curso.pk},
+        )
+
+        self.assertContains(response, 'Abonado: $5,00')

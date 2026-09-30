@@ -988,16 +988,27 @@ class Matricula(models.Model):
         # siga apareciendo como "Pendiente".
         curso_pagado_total = self.saldo <= 0 and self.estado != 'retiro_voluntario'
 
+        # Lo pagado de más en un módulo (p. ej. un módulo cobrado a $25 antes
+        # de bajar el precio del curso a módulos de $20) se abona al módulo
+        # siguiente, igual que en la hoja de recaudación.
+        excedente = Decimal('0.00')
         for n in range(1, n_mod + 1):
-            pagado = aplicado[n]
+            directo = aplicado[n]
             esperado = cuotas_objetivo[n - 1]
+            pagado = directo + excedente
+            excedente = Decimal('0.00')
+            if n < n_mod and esperado > 0 and pagado > esperado:
+                excedente = pagado - esperado
+                pagado = esperado
             if curso_pagado_total:
                 estado = 'Pagado'
             elif pagado >= esperado and esperado > 0:
                 estado = 'Pagado'
-            elif pagado > 0:
+            elif directo > 0:
                 estado = 'Parcial'
             else:
+                # Un excedente que no alcanza a cubrir el módulo no cuenta
+                # como pago del módulo: sigue pendiente de cobro.
                 estado = 'Pendiente'
             desglose.append({
                 'numero': n,
@@ -1006,6 +1017,7 @@ class Matricula(models.Model):
                     if self.tiene_pago_unico_online else f'Módulo {n}'
                 ),
                 'pagado': pagado,
+                'pagado_directo': directo,
                 'esperado': esperado,
                 'estado': estado,
                 'fecha_ultimo_pago': fecha_ultimo[n],

@@ -2827,10 +2827,10 @@ def _construir_matriz_pagos(curso_sel, modalidad='', ciudad='',
         # Desglose por módulo: SOLO cuenta los abonos asignados explícitamente
         # a un módulo (tipo_pago='por_modulo' o 'recuperacion' con
         # numero_modulo). La reserva y los abonos libres NO entran a la matriz
-        # (suman al saldo total pero no se asignan a ningún módulo). Cada
-        # módulo se cobra de forma independiente. Toda la lógica está
-        # centralizada en `Matricula.desglose_pagos_por_modulo()` para que
-        # haya un solo lugar de verdad.
+        # (suman al saldo total pero no se asignan a ningún módulo). Lo
+        # pagado de más en un módulo se abona al siguiente. Toda la lógica
+        # está centralizada en `Matricula.desglose_pagos_por_modulo()` para
+        # que haya un solo lugar de verdad.
         desglose = m.desglose_pagos_por_modulo()
 
         modulos_data = []
@@ -3119,7 +3119,7 @@ def pagos_por_modulo(request):
     Reglas del control por módulo:
     - En la matriz SOLO se cuentan los abonos asignados explícitamente a
       un módulo (tipo "Por Módulo" o "Recuperación" con número de módulo).
-      Cada módulo se paga de forma independiente.
+      Lo pagado de más en un módulo se abona al módulo siguiente.
     - La reserva y los abonos libres (tipo "Abono" o "Pago Completo" sin
       número de módulo) NO aparecen en la matriz, pero sí suman al valor
       pagado total y al saldo del curso. Quedan visibles como
