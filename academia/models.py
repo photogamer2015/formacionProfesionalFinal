@@ -1127,6 +1127,30 @@ class Matricula(models.Model):
 # Abonos / Pagos
 # ─────────────────────────────────────────────────────────
 
+# Bancos y apps que se eligen al registrar un pago. Es la única lista: de aquí
+# salen las opciones de los formularios y los nombres que se muestran.
+BANCOS_PAGO = [
+    ('pichincha', 'Pichincha'),
+    ('guayaquil', 'Guayaquil'),
+    ('produbanco', 'Produbanco'),
+    ('banco_pacifico', 'Banco del Pacífico'),
+    ('payphone', 'Payphone'),
+    ('deuna', 'De una'),
+    ('interbancario', 'Interbancario'),
+]
+
+
+def nombre_banco(valor):
+    """Nombre visible de un banco guardado en un pago.
+
+    Los que se escribieron a mano con "Otro banco..." se muestran como
+    "Otro banco - <nombre>".
+    """
+    if not valor:
+        return ''
+    return dict(BANCOS_PAGO).get(valor, f'Otro banco - {valor}')
+
+
 class Abono(models.Model):
     """Registro de un pago/abono realizado por un estudiante.
 
@@ -1149,14 +1173,7 @@ class Abono(models.Model):
         ('tarjeta', 'Tarjeta'),
     ]
 
-    BANCOS = [
-        ('pichincha', 'Pichincha'),
-        ('guayaquil', 'Guayaquil'),
-        ('produbanco', 'Produbanco'),
-        ('banco_pacifico', 'Banco del Pacífico'),
-        ('payphone', 'Payphone'),
-        ('interbancario', 'Interbancario'),
-    ]
+    BANCOS = BANCOS_PAGO
 
     matricula = models.ForeignKey(
         Matricula, on_delete=models.CASCADE, related_name='abonos'
@@ -1209,30 +1226,10 @@ class Abono(models.Model):
 
 
     def get_banco_display(self):
-        if not self.banco:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco, f"Otro banco - {self.banco}")
+        return nombre_banco(self.banco)
 
     def get_banco_2_display(self):
-        if not self.banco_2:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco_2, f"Otro banco - {self.banco_2}")
+        return nombre_banco(self.banco_2)
 
     class Meta:
         verbose_name = 'Abono'
@@ -1350,8 +1347,13 @@ class RecuperacionPendiente(models.Model):
         ('secadora', 'Secadora'),
         ('cocina', 'Cocina'),
     ]
+    # Se ofrece al final de ambas listas cuando aún no se sabe la clase.
+    TIPO_EQUIPO_NO_ESPECIFICAR = [
+        ('no_especificar', 'No especificar'),
+    ]
     TIPO_EQUIPO_RECUPERACION = (
         TIPO_EQUIPO_SERVICIO_TECNICO + TIPO_EQUIPO_LINEA_BLANCA
+        + TIPO_EQUIPO_NO_ESPECIFICAR
     )
 
     matricula = models.ForeignKey(
@@ -1549,17 +1551,7 @@ class Comprobante(models.Model):
 
 
     def get_banco_display(self):
-        if not self.banco:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco, f"Otro banco - {self.banco}")
+        return nombre_banco(self.banco)
     class Meta:
         verbose_name = 'Comprobante'
         verbose_name_plural = 'Comprobantes'
@@ -2014,30 +2006,10 @@ class Adicional(models.Model):
 
 
     def get_banco_display(self):
-        if not self.banco:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco, f"Otro banco - {self.banco}")
+        return nombre_banco(self.banco)
 
     def get_banco_2_display(self):
-        if not self.banco_2:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco_2, f"Otro banco - {self.banco_2}")
+        return nombre_banco(self.banco_2)
 
     def get_metodo_pago_2_display(self):
         if not self.metodo_pago_2:
@@ -2419,17 +2391,7 @@ class AbonoArchivado(models.Model):
 
 
     def get_banco_display(self):
-        if not self.banco:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco, f"Otro banco - {self.banco}")
+        return nombre_banco(self.banco)
     class Meta:
         verbose_name = 'Abono archivado'
         verbose_name_plural = 'Abonos archivados'
@@ -2555,30 +2517,10 @@ class AdicionalArchivado(models.Model):
 
 
     def get_banco_display(self):
-        if not self.banco:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco, f"Otro banco - {self.banco}")
+        return nombre_banco(self.banco)
 
     def get_banco_1_display(self):
-        if not self.banco_1:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco_1, f"Otro banco - {self.banco_1}")
+        return nombre_banco(self.banco_1)
 
     def get_metodo_pago_1_display(self):
         if not self.metodo_pago_1:
@@ -2591,17 +2533,7 @@ class AdicionalArchivado(models.Model):
         return metodos_map.get(self.metodo_pago_1, self.metodo_pago_1)
 
     def get_banco_2_display(self):
-        if not self.banco_2:
-            return ''
-        bancos_map = {
-            'pichincha': 'Pichincha',
-            'guayaquil': 'Guayaquil',
-            'produbanco': 'Produbanco',
-            'banco_pacifico': 'Banco del Pacífico',
-            'payphone': 'Payphone',
-            'interbancario': 'Interbancario',
-        }
-        return bancos_map.get(self.banco_2, f"Otro banco - {self.banco_2}")
+        return nombre_banco(self.banco_2)
 
     def get_metodo_pago_2_display(self):
         if not self.metodo_pago_2:

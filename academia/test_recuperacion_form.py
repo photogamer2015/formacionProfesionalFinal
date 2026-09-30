@@ -84,6 +84,29 @@ class RecuperacionPendienteFormTests(TestCase):
                     )
                     self.assertTrue(form.is_valid(), form.errors.as_text())
 
+    def test_no_especificar_es_la_ultima_opcion_y_se_puede_guardar(self):
+        form = RecuperacionPendienteForm(matricula=self.matricula)
+        self.assertEqual(
+            form.fields['tipo_equipo'].choices[-1],
+            ('no_especificar', 'No especificar'),
+        )
+
+        form = RecuperacionPendienteForm(
+            data={
+                'numero_modulo': '2',
+                'fecha_marcada': '2026-09-26',
+                'fecha_programada': '2026-10-24',
+                'tipo_equipo': 'no_especificar',
+                'observaciones': '',
+            },
+            matricula=self.matricula,
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_text())
+        recuperacion = form.save(commit=False)
+        recuperacion.matricula = self.matricula
+        recuperacion.save()
+        self.assertEqual(recuperacion.get_tipo_equipo_display(), 'No especificar')
+
     def test_fecha_de_recuperacion_no_puede_ser_anterior_a_la_falta(self):
         form = RecuperacionPendienteForm(
             data={

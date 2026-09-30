@@ -1,0 +1,202 @@
+{% comment %}
+JS del cobro de una recuperación (includes/recuperacion_pago_campos.html).
+Recibe `form` (AbonoForm) para ubicar sus campos aunque tengan prefijo. Si la
+página tiene #id_registrar_pago en "despues", el cobro se oculta y no se valida.
+{% endcomment %}
+<script>
+    (function () {
+        const bloquePago = document.getElementById('recuperacion-pago');
+        const formulario = bloquePago ? bloquePago.closest('form') : null;
+        if (!formulario) return;
+        const botonGuardar = formulario.querySelector('button[type="submit"]');
+        // Si el servidor dejó el botón deshabilitado, el JS no lo reactiva.
+        const botonBloqueado = !!(botonGuardar && botonGuardar.disabled);
+        const selectorRegistro = document.getElementById('id_registrar_pago');
+        const metodoSel = document.getElementById('{{ form.metodo.id_for_label }}');
+        const bloqueBanco = document.getElementById('bloque-banco');
+        const bancoSel = document.getElementById('{{ form.banco.id_for_label }}');
+        const metodoSel1 = document.getElementById('{{ form.metodo_pago_1.id_for_label }}');
+        const bloqueBanco1 = document.getElementById('bloque-banco-1');
+        const bancoSel1 = document.getElementById('{{ form.banco_1.id_for_label }}');
+        const metodoSel2 = document.getElementById('{{ form.metodo_pago_2.id_for_label }}');
+        const bloqueBanco2 = document.getElementById('bloque-banco-2');
+        const bancoSel2 = document.getElementById('{{ form.banco_2.id_for_label }}');
+        const distribucionSel = document.getElementById('{{ form.tipo_cobro.id_for_label }}');
+        const bloqueUnMetodo = document.getElementById('un-solo-metodo-recuperacion');
+        const bloqueMixto = document.getElementById('pago-mixto-recuperacion');
+        const montoTotal = document.getElementById('{{ form.monto.id_for_label }}');
+        const monto1 = document.getElementById('{{ form.monto_pago_1.id_for_label }}');
+        const monto2 = document.getElementById('{{ form.monto_pago_2.id_for_label }}');
+        const resumenMixto = bloqueMixto ? bloqueMixto.querySelector('[data-pago-mixto-resumen]') : null;
+        const errorMixto = document.getElementById('recuperacion-mixta-error');
+        const errorMonto = document.getElementById('recuperacion-monto-error');
+        // El aviso del monto solo aparece después del primer intento de guardar.
+        let montoIntentado = false;
+
+        function pagoActivo() {
+            return !selectorRegistro || selectorRegistro.value !== 'despues';
+        }
+
+        function numero(input) {
+            return parseFloat(((input && input.value) || '').replace(',', '.')) || 0;
+        }
+
+        function habilitarBoton(habilitado) {
+            if (!botonGuardar) return;
+            const activo = habilitado && !botonBloqueado;
+            botonGuardar.disabled = !activo;
+            botonGuardar.style.opacity = activo ? '1' : '.55';
+            botonGuardar.style.cursor = activo ? 'pointer' : 'not-allowed';
+        }
+
+        function validarMonto() {
+            const valido = !pagoActivo() || numero(montoTotal) > 0;
+            const mostrarError = montoIntentado && !valido;
+            if (errorMonto) errorMonto.style.display = mostrarError ? 'block' : 'none';
+            if (montoTotal) montoTotal.style.borderColor = mostrarError ? '#d32f2f' : '';
+            return valido;
+        }
+
+        function requiereBanco(metodo) {
+            return metodo === 'transferencia' || metodo === 'tarjeta';
+        }
+
+        function configurarBanco(metodoSelect, contenedor, bancoSelect) {
+            if (!metodoSelect || !contenedor || !bancoSelect) return;
+            const metodo = metodoSelect.value;
+            const etiqueta = contenedor.querySelector('label');
+            const visible = requiereBanco(metodo);
+            contenedor.style.display = visible ? 'block' : 'none';
+            bancoSelect.required = visible;
+
+            if (!visible) {
+                bancoSelect.value = '';
+                return;
+            }
+
+            if (metodo === 'tarjeta') {
+                if (etiqueta) etiqueta.textContent = '💳 Tarjeta / App *';
+                Array.from(bancoSelect.options).forEach((opcion) => {
+                    opcion.hidden = !['', 'payphone'].includes(opcion.value);
+                });
+                bancoSelect.value = 'payphone';
+            } else {
+                if (etiqueta) etiqueta.textContent = '🏦 Banco *';
+                Array.from(bancoSelect.options).forEach((opcion) => {
+                    opcion.hidden = opcion.value === 'payphone';
+                });
+                if (bancoSelect.value === 'payphone') bancoSelect.value = '';
+            }
+        }
+
+        function validarMixto() {
+            const esMixto = pagoActivo() && distribucionSel && distribucionSel.value === 'mixto';
+            if (!esMixto) {
+                if (errorMixto) errorMixto.style.display = 'none';
+                habilitarBoton(true);
+                return true;
+            }
+
+            const total = numero(montoTotal);
+            const parte1 = numero(monto1);
+            const parte2 = numero(monto2);
+            const suma = parte1 + parte2;
+            const diferencia = total - suma;
+            const sumaCoincide = total > 0 && parte1 > 0 && parte2 > 0
+                && Math.abs(diferencia) < 0.005;
+            const metodosCompletos = !!(
+                metodoSel1 && metodoSel1.value
+                && metodoSel2 && metodoSel2.value
+            );
+            const bancosCompletos = !(
+                (metodoSel1 && requiereBanco(metodoSel1.value) && !bancoSel1.value)
+                || (metodoSel2 && requiereBanco(metodoSel2.value) && !bancoSel2.value)
+            );
+            const valido = sumaCoincide && metodosCompletos && bancosCompletos;
+
+            if (window.PagoMixtoUI) {
+                window.PagoMixtoUI.actualizar(resumenMixto, total, suma, sumaCoincide);
+            }
+            [monto1, monto2].forEach((input) => {
+                if (!input) return;
+                input.style.borderColor = sumaCoincide ? '#2e7d32' : '#d32f2f';
+            });
+            if (errorMixto) {
+                if (!sumaCoincide) {
+                    errorMixto.textContent = '⚠️ Monto 1 + Monto 2 debe coincidir exactamente con el Monto (USD).';
+                } else if (!metodosCompletos || !bancosCompletos) {
+                    errorMixto.textContent = '⚠️ Completa los dos métodos de pago y sus bancos o apps cuando correspondan.';
+                }
+                errorMixto.style.display = valido ? 'none' : 'block';
+            }
+            habilitarBoton(valido);
+            return valido;
+        }
+
+        function actualizarDistribucion() {
+            const esMixto = distribucionSel && distribucionSel.value === 'mixto';
+            if (bloqueUnMetodo) bloqueUnMetodo.style.display = esMixto ? 'none' : 'block';
+            if (bloqueMixto) bloqueMixto.style.display = esMixto ? 'block' : 'none';
+            if (metodoSel) metodoSel.required = !esMixto;
+            validarMixto();
+        }
+
+        function actualizarRegistro() {
+            const activo = pagoActivo();
+            bloquePago.style.display = activo ? '' : 'none';
+            if (botonGuardar && botonGuardar.dataset.textoCobrar) {
+                botonGuardar.textContent = activo
+                    ? botonGuardar.dataset.textoCobrar
+                    : botonGuardar.dataset.textoMarcar;
+            }
+            validarMonto();
+            validarMixto();
+        }
+
+        [
+            [metodoSel, bloqueBanco, bancoSel],
+            [metodoSel1, bloqueBanco1, bancoSel1],
+            [metodoSel2, bloqueBanco2, bancoSel2],
+        ].forEach(([metodo, bloque, banco]) => {
+            if (!metodo) return;
+            metodo.addEventListener('change', function () {
+                configurarBanco(metodo, bloque, banco);
+                validarMixto();
+            });
+            configurarBanco(metodo, bloque, banco);
+        });
+
+        [montoTotal, monto1, monto2, bancoSel1, bancoSel2].forEach((campo) => {
+            if (!campo) return;
+            campo.addEventListener('input', validarMixto);
+            campo.addEventListener('change', validarMixto);
+        });
+        if (montoTotal) {
+            montoTotal.addEventListener('input', validarMonto);
+            montoTotal.addEventListener('change', validarMonto);
+            // Con 0.00 en el campo, lo que se escriba reemplaza el valor.
+            montoTotal.addEventListener('focus', function () {
+                if (numero(montoTotal) === 0) montoTotal.select();
+            });
+        }
+        if (distribucionSel) distribucionSel.addEventListener('change', actualizarDistribucion);
+        if (selectorRegistro) selectorRegistro.addEventListener('change', actualizarRegistro);
+        formulario.addEventListener('submit', function (evento) {
+            // Si la recuperación queda pendiente, solo se valida la marca.
+            if (!pagoActivo()) return;
+            montoIntentado = true;
+            if (!validarMonto()) {
+                evento.preventDefault();
+                if (montoTotal) montoTotal.focus();
+                return;
+            }
+            if (!validarMixto()) {
+                evento.preventDefault();
+                if (monto2) monto2.focus();
+            }
+        });
+
+        actualizarDistribucion();
+        actualizarRegistro();
+    })();
+</script>

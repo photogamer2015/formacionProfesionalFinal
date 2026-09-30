@@ -12,8 +12,17 @@
         max-width: none !important;
         margin-top: 0 !important;
     }
+    .recup-fechas-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+    }
     @media (max-width: 640px) {
         .recup-layout { max-width: 100%; }
+    }
+    @media (max-width: 520px) {
+        .recup-fechas-grid { grid-template-columns: 1fr; }
     }
 </style>
 {% endblock %}
@@ -45,8 +54,8 @@
         {% if modo_edicion %}
         Corrige el módulo, la fecha o las observaciones de esta recuperación.
         {% else %}
-        Indica qué módulo perdió el estudiante. La recuperación quedará pendiente
-        hasta que se registre su pago desde el apartado de recuperaciones.
+        Indica qué módulo perdió el estudiante y, si paga en este momento,
+        registra también el cobro aquí mismo.
         {% endif %}
     </p>
 
@@ -70,7 +79,7 @@
         {% endif %}
 
         <div style="margin-bottom:14px;">
-            <label class="form-label">{{ form.numero_modulo.label }} *</label>
+            <label class="form-label" for="{{ form.numero_modulo.id_for_label }}">{{ form.numero_modulo.label }} *</label>
             {{ form.numero_modulo }}
             {{ form.numero_modulo.errors }}
             {% if not modo_edicion and not form.modulos_pendientes %}
@@ -92,18 +101,19 @@
         </div>
         {% endif %}
 
-        <div style="margin-bottom:14px;">
-            <label class="form-label">{{ form.fecha_marcada.label }} *</label>
-            {{ form.fecha_marcada }}
-            {{ form.fecha_marcada.errors }}
-        </div>
-
-        <div style="margin-bottom:14px;">
-            <label class="form-label">{{ form.fecha_programada.label }}</label>
-            {{ form.fecha_programada }}
-            {{ form.fecha_programada.errors }}
-            <div style="font-size:12px; color:#666; margin-top:6px;">
-                Fecha acordada para que el estudiante recupere la clase.
+        <div class="recup-fechas-grid">
+            <div>
+                <label class="form-label" for="{{ form.fecha_marcada.id_for_label }}">{{ form.fecha_marcada.label }} *</label>
+                {{ form.fecha_marcada }}
+                {{ form.fecha_marcada.errors }}
+            </div>
+            <div>
+                <label class="form-label" for="{{ form.fecha_programada.id_for_label }}">{{ form.fecha_programada.label }}</label>
+                {{ form.fecha_programada }}
+                {{ form.fecha_programada.errors }}
+                <div style="font-size:12px; color:#666; margin-top:6px;">
+                    Fecha acordada para que el estudiante recupere la clase.
+                </div>
             </div>
         </div>
 
@@ -135,19 +145,42 @@
         {% endif %}
 
         <div style="margin-bottom:18px;">
-            <label class="form-label">Observaciones</label>
+            <label class="form-label" for="{{ form.observaciones.id_for_label }}">Observaciones de la falta</label>
             {{ form.observaciones }}
         </div>
+
+        {# ── Cobro en el mismo paso (solo al marcar una recuperación nueva) ── #}
+        {% if pago_form and form.modulos_pendientes %}
+        <div style="border-top:1px solid #e3e8f0; padding-top:16px; margin-bottom:16px;">
+            <label class="form-label" for="id_registrar_pago">¿El estudiante paga la recuperación ahora? *</label>
+            <select name="registrar_pago" id="id_registrar_pago" class="form-input">
+                <option value="ahora"{% if registrar_pago %} selected{% endif %}>Sí — registrar el pago ahora</option>
+                <option value="despues"{% if not registrar_pago %} selected{% endif %}>No — dejarla pendiente y cobrar después</option>
+            </select>
+            <small style="color:#666; font-size:12px; display:block; margin-top:6px;">
+                Si eliges “No”, la recuperación queda pendiente y se cobra después desde Clases en Recuperación.
+            </small>
+        </div>
+
+        {% include 'includes/recuperacion_pago_campos.html' with form=pago_form visible=registrar_pago %}
+        {% endif %}
 
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <a href="{% url 'academia:matricula_abonos' matricula.pk %}" class="btn btn-secondary">Cancelar</a>
             <button type="submit" class="btn btn-warning"
                 {% if not modo_edicion and not form.modulos_pendientes %}disabled{% endif %}
+                {% if pago_form %}data-texto-cobrar="💵 Marcar y cobrar recuperación" data-texto-marcar="✱ Marcar recuperación"{% endif %}
                 style="background:#f0ad4e; color:white; border:none;">
-                ✱ {% if modo_edicion %}Guardar cambios{% else %}Marcar recuperación{% endif %}
+                {% if modo_edicion %}✱ Guardar cambios{% elif pago_form and registrar_pago and form.modulos_pendientes %}💵 Marcar y cobrar recuperación{% else %}✱ Marcar recuperación{% endif %}
             </button>
         </div>
     </form>
 </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if pago_form and form.modulos_pendientes %}
+{% include 'includes/recuperacion_pago_js.html' with form=pago_form %}
+{% endif %}
 {% endblock %}

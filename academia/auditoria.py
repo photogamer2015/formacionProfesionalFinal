@@ -86,6 +86,16 @@ ACCIONES_POST = {
 }
 
 
+# Rutas cuya acción cambia según una opción del formulario enviado:
+# ruta -> (campo, valor, (categoría, acción)).
+ACCIONES_POST_POR_OPCION = {
+    'recuperacion_marcar': (
+        'registrar_pago', 'ahora',
+        ('pago', 'Marcó una clase para recuperación y registró su pago'),
+    ),
+}
+
+
 CONSULTAS = {
     'home': 'Abrió la página principal',
     'bienvenida': 'Consultó el panel de inicio',
@@ -244,6 +254,9 @@ def datos_actividad(request, response, user):
         categoria, accion = 'exportacion', 'Exportó información del sistema'
     elif metodo == 'POST' and nombre_ruta in ACCIONES_POST:
         categoria, accion = ACCIONES_POST[nombre_ruta]
+        variante = ACCIONES_POST_POR_OPCION.get(nombre_ruta)
+        if variante and request.POST.get(variante[0]) == variante[1]:
+            categoria, accion = variante[2]
     elif metodo == 'GET' and nombre_ruta in CONSULTAS:
         categoria, accion = 'consulta', CONSULTAS[nombre_ruta]
     else:

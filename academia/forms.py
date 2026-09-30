@@ -3,11 +3,25 @@ from decimal import Decimal
 from django import forms
 from django.db.models import Q
 from .models import (
-    Abono, Adicional, CategoriaEgreso, Categoria, Comprobante, Curso, Egreso,
+    Abono, Adicional, BANCOS_PAGO, CategoriaEgreso, Categoria, Comprobante,
+    Curso, Egreso,
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
     MONTO_RESERVA_MATRICULA, PersonaExterna, RecuperacionPendiente, Sede,
     TIPOS_SIN_COBRO_INICIAL,
 )
+
+
+def _opciones_banco(valor_actual=''):
+    """Opciones del selector de banco de los formularios de pago.
+
+    Incluye los bancos del sistema, el valor ya guardado si se escribió a
+    mano (para no perderlo al editar) y la opción para escribir otro.
+    """
+    opciones = [('', '— Selecciona un banco —')] + list(BANCOS_PAGO)
+    if valor_actual and valor_actual not in dict(opciones) and valor_actual != 'OTRO':
+        opciones.append((valor_actual, valor_actual))
+    opciones.append(('OTRO', 'Otro banco...'))
+    return opciones
 
 
 def es_ruc_ecuador(valor):
@@ -604,10 +618,7 @@ class MatriculaForm(forms.ModelForm):
             banco_val = self.initial.get('banco')
             if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
                 banco_val = getattr(self.instance, 'banco')
-            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
-            if banco_val and banco_val not in dict(bancos_list) and banco_val != 'OTRO':
-                bancos_list.append((banco_val, banco_val))
-            bancos_list.append(('OTRO', 'Otro banco...'))
+            bancos_list = _opciones_banco(banco_val)
             self.fields['banco'].widget.choices = bancos_list
             self.fields['banco_1'].widget.choices = bancos_list
             self.fields['banco_2'].widget.choices = bancos_list
@@ -942,6 +953,8 @@ class MatriculaForm(forms.ModelForm):
 
 class AbonoForm(forms.ModelForm):
     """Formulario para registrar/editar un pago (Abono / Pago Completo / Por Módulo / Recuperación)."""
+    # Los <input type="date"> solo aceptan AAAA-MM-DD; con el formato local
+    # (dd/mm/aaaa) el navegador descarta el valor y el campo se ve vacío.
     fecha_marcada = forms.DateField(
         required=False,
         label='Fecha de la falta',
@@ -949,7 +962,7 @@ class AbonoForm(forms.ModelForm):
             'class': 'form-input',
             'type': 'date',
             'id': 'id_fecha_marcada',
-        }),
+        }, format='%Y-%m-%d'),
     )
     fecha_programada = forms.DateField(
         required=False,
@@ -958,7 +971,7 @@ class AbonoForm(forms.ModelForm):
             'class': 'form-input',
             'type': 'date',
             'id': 'id_fecha_programada',
-        }),
+        }, format='%Y-%m-%d'),
     )
     tipo_cobro = forms.ChoiceField(
         choices=[('un_solo_metodo', 'Un solo método'), ('mixto', 'Pago Mixto')],
@@ -999,7 +1012,10 @@ class AbonoForm(forms.ModelForm):
             'numero_recibo', 'observaciones',
         ]
         widgets = {
-            'fecha': forms.DateInput(attrs={'class': 'form-input', 'type': 'date'}),
+            'fecha': forms.DateInput(
+                attrs={'class': 'form-input', 'type': 'date'},
+                format='%Y-%m-%d',
+            ),
             'monto': forms.NumberInput(attrs={
                 'class': 'form-input', 'step': '0.01', 'min': '0.01',
                 'placeholder': '0.00',
@@ -1043,10 +1059,7 @@ class AbonoForm(forms.ModelForm):
             banco_val = self.initial.get('banco')
             if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
                 banco_val = getattr(self.instance, 'banco')
-            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
-            if banco_val and banco_val not in dict(bancos_list) and banco_val != 'OTRO':
-                bancos_list.append((banco_val, banco_val))
-            bancos_list.append(('OTRO', 'Otro banco...'))
+            bancos_list = _opciones_banco(banco_val)
             self.fields['banco'].widget.choices = bancos_list
             self.fields['banco_1'].widget.choices = bancos_list
             self.fields['banco_2'].widget.choices = bancos_list
@@ -1421,10 +1434,7 @@ class ComprobanteForm(forms.ModelForm):
             banco_val = self.initial.get('banco')
             if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
                 banco_val = getattr(self.instance, 'banco')
-            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
-            if banco_val and banco_val not in dict(bancos_list) and banco_val != 'OTRO':
-                bancos_list.append((banco_val, banco_val))
-            bancos_list.append(('OTRO', 'Otro banco...'))
+            bancos_list = _opciones_banco(banco_val)
             self.fields['banco'].widget.choices = bancos_list
 
         self.fields['curso'].queryset = Curso.objects.filter(activo=True)
@@ -1526,12 +1536,13 @@ class RecuperacionPendienteForm(forms.ModelForm):
         ]
         widgets = {
             'numero_modulo': forms.Select(attrs={'class': 'form-input'}),
+            # AAAA-MM-DD: el único formato que acepta <input type="date">.
             'fecha_marcada': forms.DateInput(attrs={
                 'class': 'form-input', 'type': 'date',
-            }),
+            }, format='%Y-%m-%d'),
             'fecha_programada': forms.DateInput(attrs={
                 'class': 'form-input', 'type': 'date',
-            }),
+            }, format='%Y-%m-%d'),
             'tipo_equipo': forms.RadioSelect(attrs={'class': 'tipo-equipo-radio'}),
             'observaciones': forms.Textarea(attrs={
                 'class': 'form-input', 'rows': 2,
@@ -1607,6 +1618,10 @@ class RecuperacionPendienteForm(forms.ModelForm):
                 equipo_choices = RecuperacionPendiente.TIPO_EQUIPO_SERVICIO_TECNICO
             elif 'blanca' in nombre_curso:
                 equipo_choices = RecuperacionPendiente.TIPO_EQUIPO_LINEA_BLANCA
+            if equipo_choices:
+                equipo_choices = (
+                    equipo_choices + RecuperacionPendiente.TIPO_EQUIPO_NO_ESPECIFICAR
+                )
         self.fields['tipo_equipo'].choices = equipo_choices
 
     def clean(self):
@@ -1841,31 +1856,20 @@ class _AdicionalBaseForm(forms.ModelForm):
         self.fields['metodo_pago_1'].choices = [('', '— Método 1 —')] + metodos
         self.fields['metodo_pago_2'].choices = [('', '— Método 2 —')] + metodos
 
-        bancos_list_1 = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('deuna', 'De una'), ('interbancario', 'Interbancario')]
-        bancos_list_2 = list(bancos_list_1)
-        
         if 'banco_1' in self.fields:
-            b1 = self.initial.get('banco_1')
-            if b1 and b1 not in dict(bancos_list_1):
-                bancos_list_1.append((b1, b1))
-            bancos_list_1.append(('OTRO', 'Otro banco...'))
-            self.fields['banco_1'].widget.choices = bancos_list_1
-        
+            self.fields['banco_1'].widget.choices = _opciones_banco(
+                self.initial.get('banco_1')
+            )
+
         if 'banco_2' in self.fields:
-            b2 = self.initial.get('banco_2')
-            if b2 and b2 not in dict(bancos_list_2):
-                bancos_list_2.append((b2, b2))
-            bancos_list_2.append(('OTRO', 'Otro banco...'))
-            self.fields['banco_2'].widget.choices = bancos_list_2
+            self.fields['banco_2'].widget.choices = _opciones_banco(
+                self.initial.get('banco_2')
+            )
         if 'banco' in self.fields:
             banco_val = self.initial.get('banco')
             if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
                 banco_val = getattr(self.instance, 'banco')
-            bancos_list = [('', '— Selecciona un banco —'), ('pichincha', 'Pichincha'), ('guayaquil', 'Guayaquil'), ('produbanco', 'Produbanco'), ('banco_pacifico', 'Banco del Pacífico'), ('payphone', 'Payphone'), ('interbancario', 'Interbancario')]
-            if banco_val and banco_val not in dict(bancos_list) and banco_val != 'OTRO':
-                bancos_list.append((banco_val, banco_val))
-            bancos_list.append(('OTRO', 'Otro banco...'))
-            self.fields['banco'].widget.choices = bancos_list
+            self.fields['banco'].widget.choices = _opciones_banco(banco_val)
 
         # Solo cursos activos en el desplegable
         self.fields['curso'].queryset = Curso.objects.filter(activo=True).order_by('nombre')
@@ -2230,17 +2234,7 @@ class AdicionalSupletorioRapidoForm(forms.Form):
         metodos = list(Adicional.METODOS_PAGO)
         self.fields['metodo_pago_1'].choices = [('', '— Método 1 —')] + metodos
         self.fields['metodo_pago_2'].choices = [('', '— Método 2 —')] + metodos
-        bancos_list = [
-            ('', '— Selecciona un banco —'),
-            ('pichincha', 'Pichincha'),
-            ('guayaquil', 'Guayaquil'),
-            ('produbanco', 'Produbanco'),
-            ('banco_pacifico', 'Banco del Pacífico'),
-            ('payphone', 'Payphone'),
-            ('deuna', 'De una'),
-            ('interbancario', 'Interbancario'),
-            ('OTRO', 'Otro banco...'),
-        ]
+        bancos_list = _opciones_banco()
         self.fields['banco'].widget.choices = bancos_list
         self.fields['banco_1'].widget.choices = bancos_list
         self.fields['banco_2'].widget.choices = bancos_list

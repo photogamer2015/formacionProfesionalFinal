@@ -3659,35 +3659,164 @@ def recuperaciones_export_pdf(request):
     return response
 
 
+# Prefijo del cobro que se registra en la misma pantalla de "Marcar clase a
+# recuperación"; evita que sus campos choquen con los de la marca.
+PREFIJO_COBRO_RECUPERACION = 'pago'
+# Datos de la marca que el cobro también valida (módulo y fechas de la falta).
+CAMPOS_MARCA_EN_COBRO = ('numero_modulo', 'fecha_marcada', 'fecha_programada')
+
+
+def _datos_iniciales_cobro_recuperacion():
+    """Valores iniciales del cobro de una recuperación.
+
+    El monto arranca en 0.00, sin sugerencia: se escribe el valor cobrado y
+    AbonoForm.clean_monto no deja guardarlo en cero.
+    """
+    return {
+        'fecha': date.today(),
+        'monto': Decimal('0.00'),
+        'tipo_pago': 'recuperacion',
+        'cuenta_para_saldo': True,
+    }
+
+
+def _form_cobro_al_marcar_recuperacion(matricula, data=None):
+    """AbonoForm del cobro que se registra junto con la marca de recuperación.
+
+    El tipo de pago, el módulo y las fechas se copian de la marca para que
+    ambos formularios validen exactamente los mismos datos.
+    """
+    if data is None:
+        return AbonoForm(
+            prefix=PREFIJO_COBRO_RECUPERACION,
+            initial=_datos_iniciales_cobro_recuperacion(),
+            matricula=matricula,
+        )
+    datos = data.copy()
+    datos[f'{PREFIJO_COBRO_RECUPERACION}-tipo_pago'] = 'recuperacion'
+    for campo in CAMPOS_MARCA_EN_COBRO:
+        datos[f'{PREFIJO_COBRO_RECUPERACION}-{campo}'] = data.get(campo, '')
+    return AbonoForm(
+        datos, prefix=PREFIJO_COBRO_RECUPERACION, matricula=matricula
+    )
+
+
+def _mostrar_errores_del_cobro_en_la_marca(form, pago_form):
+    """Muestra en los campos visibles de la marca los errores que el cobro
+    encuentra en esos mismos datos (p. ej. un módulo que ya tiene un pago de
+    recuperación), sin repetir los que la marca ya señala."""
+    for campo in CAMPOS_MARCA_EN_COBRO:
+        if campo in pago_form.errors and campo not in form.errors:
+            for error in pago_form.errors[campo]:
+                form.add_error(campo, error)
+
+
+def _registrar_cobro_recuperacion(form, recup, usuario):
+    """Guarda el recibo de una recuperación y la deja marcada como pagada.
+
+    ``form`` es un AbonoForm ya validado. El recibo siempre queda como tipo
+    recuperación y en el módulo de la marca, sin importar lo que llegue en
+    el POST.
+    """
+    abono = form.save(commit=False)
+    abono.matricula = recup.matricula
+    abono.tipo_pago = 'recuperacion'
+    abono.numero_modulo = recup.numero_modulo
+    abono.registrado_por = usuario
+    if form.cleaned_data.get('tipo_cobro') == 'mixto':
+        # `monto` conserva el total. En el modelo `monto_2` guarda
+        # la segunda parte y la primera se obtiene como total - monto_2.
+        abono.monto = form.cleaned_data['monto']
+        abono.metodo = (
+            form.cleaned_data.get('metodo_pago_1') or 'efectivo'
+        )
+        abono.banco = form.cleaned_data.get('banco_1') or ''
+        abono.monto_2 = (
+            form.cleaned_data.get('monto_pago_2')
+            or Decimal('0.00')
+        )
+        abono.metodo_2 = (
+            form.cleaned_data.get('metodo_pago_2') or 'efectivo'
+        )
+        abono.banco_2 = form.cleaned_data.get('banco_2') or ''
+    else:
+        abono.monto_2 = None
+        abono.metodo_2 = ''
+        abono.banco_2 = ''
+    abono.save()
+    recup.pagada = True
+    recup.fecha_recuperacion = abono.fecha
+    recup.abono = abono
+    recup.save()
+    return abono
+
+
+def _nota_saldo_cobro_recuperacion(abono):
+    if abono.cuenta_para_saldo:
+        return '(Sumó al saldo del curso)'
+    return '(Cobrada aparte, no afecta saldo)'
+
+
 @matricula_requerida
 @transaction.atomic
 def recuperacion_marcar(request, matricula_pk):
     """
-    Marcar una clase como pendiente de recuperación para una matrícula.
+    Marcar una clase a recuperación para una matrícula. Si el estudiante
+    paga en ese momento, el cobro se registra en el mismo paso; si no, la
+    marca queda pendiente para cobrarla después desde Clases en Recuperación.
     Guarda automáticamente el saldo pendiente al momento.
     """
     matricula = get_object_or_404(Matricula, pk=matricula_pk)
     if request.method == 'POST':
+        # Sin la opción explícita se mantiene el comportamiento anterior:
+        # solo se marca la clase y no se crea ningún recibo.
+        registrar_pago = request.POST.get('registrar_pago') == 'ahora'
         form = RecuperacionPendienteForm(request.POST, matricula=matricula)
-        if form.is_valid():
+        pago_form = (
+            _form_cobro_al_marcar_recuperacion(matricula, request.POST)
+            if registrar_pago else None
+        )
+        # Se validan ambos para mostrar todos los errores de una sola vez.
+        marca_valida = form.is_valid()
+        cobro_valido = pago_form is None or pago_form.is_valid()
+        if marca_valida and cobro_valido:
             recup = form.save(commit=False)
             recup.matricula = matricula
             recup.saldo_pendiente_al_marcar = matricula.saldo
             recup.save()
-            messages.success(
-                request,
-                f'Clase de Módulo {recup.numero_modulo} marcada para recuperación. '
-                f'Saldo arrastrado: ${recup.saldo_pendiente_al_marcar:.2f}.'
-            )
+            if pago_form is None:
+                messages.success(
+                    request,
+                    f'Clase de Módulo {recup.numero_modulo} marcada para recuperación. '
+                    f'Saldo arrastrado: ${recup.saldo_pendiente_al_marcar:.2f}.'
+                )
+            else:
+                abono = _registrar_cobro_recuperacion(
+                    pago_form, recup, request.user
+                )
+                messages.success(
+                    request,
+                    f'Clase de Módulo {recup.numero_modulo} marcada para recuperación '
+                    f'y cobrada: {abono.numero_recibo} por ${abono.monto}. '
+                    f'{_nota_saldo_cobro_recuperacion(abono)}.'
+                )
             return redirect('academia:matricula_abonos', pk=matricula.pk)
+        if pago_form is None:
+            pago_form = _form_cobro_al_marcar_recuperacion(matricula)
+        else:
+            _mostrar_errores_del_cobro_en_la_marca(form, pago_form)
     else:
+        registrar_pago = True
         form = RecuperacionPendienteForm(
             initial={'fecha_marcada': date.today()},
             matricula=matricula,
         )
+        pago_form = _form_cobro_al_marcar_recuperacion(matricula)
 
     return render(request, 'pagos/recuperacion_marcar.html', {
         'form': form,
+        'pago_form': pago_form,
+        'registrar_pago': registrar_pago,
         'matricula': matricula,
         'modo_edicion': False,
     })
@@ -3788,51 +3917,18 @@ def recuperacion_cobrar(request, recup_pk):
         )
         form = AbonoForm(post, matricula=matricula)
         if form.is_valid():
-            abono = form.save(commit=False)
-            abono.matricula = matricula
-            abono.tipo_pago = 'recuperacion'
-            abono.numero_modulo = recup.numero_modulo
-            abono.registrado_por = request.user
-            if form.cleaned_data.get('tipo_cobro') == 'mixto':
-                # `monto` conserva el total. En el modelo `monto_2` guarda
-                # la segunda parte y la primera se obtiene como total - monto_2.
-                abono.monto = form.cleaned_data['monto']
-                abono.metodo = (
-                    form.cleaned_data.get('metodo_pago_1') or 'efectivo'
-                )
-                abono.banco = form.cleaned_data.get('banco_1') or ''
-                abono.monto_2 = (
-                    form.cleaned_data.get('monto_pago_2')
-                    or Decimal('0.00')
-                )
-                abono.metodo_2 = (
-                    form.cleaned_data.get('metodo_pago_2') or 'efectivo'
-                )
-                abono.banco_2 = form.cleaned_data.get('banco_2') or ''
-            else:
-                abono.monto_2 = None
-                abono.metodo_2 = ''
-                abono.banco_2 = ''
-            abono.save()
-            # Marcar recuperación como pagada
-            recup.pagada = True
-            recup.fecha_recuperacion = abono.fecha
-            recup.abono = abono
-            recup.save()
+            abono = _registrar_cobro_recuperacion(form, recup, request.user)
             messages.success(
                 request,
                 f'Recuperación cobrada: {abono.numero_recibo} por ${abono.monto}. '
-                f'{"(Sumó al saldo del curso)" if abono.cuenta_para_saldo else "(Cobrada aparte, no afecta saldo)"}.'
+                f'{_nota_saldo_cobro_recuperacion(abono)}.'
             )
             return redirect('academia:recuperaciones_lista')
     else:
         form = AbonoForm(
             initial={
-                'fecha': date.today(),
-                'monto': Decimal('25.00'),
-                'tipo_pago': 'recuperacion',
+                **_datos_iniciales_cobro_recuperacion(),
                 'numero_modulo': recup.numero_modulo,
-                'cuenta_para_saldo': True,
                 'fecha_marcada': recup.fecha_marcada,
                 'fecha_programada': recup.fecha_programada,
             },
@@ -5592,9 +5688,10 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
         formula1='"Efectivo,Transferencia,Tarjeta,N/A"',
         allow_blank=True,
     )
+    nombres_bancos = ','.join(nombre for _valor, nombre in Abono.BANCOS)
     dv_banco = DataValidation(
         type='list',
-        formula1='"Pichincha,Guayaquil,Produbanco,Banco del Pacífico,Payphone,Interbancario,N/A"',
+        formula1=f'"{nombres_bancos},N/A"',
         allow_blank=True,
     )
     dv_asistencia = DataValidation(

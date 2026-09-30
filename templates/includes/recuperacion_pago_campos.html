@@ -1,0 +1,153 @@
+{% comment %}
+Campos del cobro de una clase de recuperación. Recibe `form` (AbonoForm) y
+`visible` (False para mostrarlo oculto). Lo usan "Cobrar recuperación" y
+"Marcar clase a recuperación"; su JS está en includes/recuperacion_pago_js.html.
+{% endcomment %}
+<style>
+    .recuperacion-pago-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+    .recuperacion-mixta-grid {
+        display: grid;
+        grid-template-columns: minmax(110px, .8fr) minmax(160px, 1fr) minmax(170px, 1.1fr);
+        gap: 12px;
+        align-items: end;
+    }
+    @media (max-width: 700px) {
+        .recuperacion-mixta-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+        .recuperacion-pago-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div id="recuperacion-pago"{% if not visible %} style="display:none;"{% endif %}>
+    {% if form.non_field_errors %}
+        <div class="flash flash-error" style="margin-bottom:16px;">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+
+    {# ── ¿Suma al saldo o se cobra aparte? (clave del flujo) ── #}
+    <div style="background:#fff3e0; border:1px solid #f0ad4e; border-radius:8px; padding:14px; margin-bottom:18px;">
+        <label class="form-label" for="{{ form.cuenta_para_saldo.id_for_label }}" style="color:#c9a227; font-size:14px;">
+            ¿Cómo se cobra esta recuperación? *
+        </label>
+        {{ form.cuenta_para_saldo }}
+        {{ form.cuenta_para_saldo.errors }}
+        <small style="color:#666; font-size:12px; display:block; margin-top:8px;">
+            <strong>Sí, sumar al pago del curso:</strong> el monto se agrega al valor pagado y reduce el saldo. <br>
+            <strong>No, cobrar aparte:</strong> el monto se registra como ingreso adicional pero NO afecta el saldo del curso.
+        </small>
+    </div>
+
+    <div class="recuperacion-pago-grid">
+        <div>
+            <label class="form-label" for="{{ form.fecha.id_for_label }}">Fecha del pago *</label>
+            {{ form.fecha }}
+            {{ form.fecha.errors }}
+        </div>
+        <div>
+            <label class="form-label" for="{{ form.monto.id_for_label }}">Monto (USD) *</label>
+            {{ form.monto }}
+            {{ form.monto.errors }}
+            <small id="recuperacion-monto-error"
+                   style="display:none; color:#d32f2f; font-size:12px; font-weight:700; margin-top:4px;">
+                ⚠️ Ingresa un monto mayor a $0.00 para cobrar la recuperación.
+            </small>
+        </div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+        <label class="form-label" for="{{ form.tipo_cobro.id_for_label }}">Distribución de pago *</label>
+        {{ form.tipo_cobro }}
+        {{ form.tipo_cobro.errors }}
+        <small style="color:#666; font-size:11px; display:block; margin-top:4px;">
+            Selecciona si el pago se realiza con un solo método o combinando dos.
+        </small>
+    </div>
+
+    <div id="un-solo-metodo-recuperacion">
+        <div style="margin-bottom:14px;">
+            <label class="form-label" for="{{ form.metodo.id_for_label }}">Método de pago *</label>
+            {{ form.metodo }}
+            {{ form.metodo.errors }}
+        </div>
+
+        <div id="bloque-banco" style="margin-bottom:14px; display:none; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
+            <label class="form-label" for="{{ form.banco.id_for_label }}" style="color:#1a237e;">🏦 Banco *</label>
+            {{ form.banco }}
+            {{ form.banco.errors }}
+        </div>
+    </div>
+
+    <div id="pago-mixto-recuperacion"
+         style="display:none; margin-bottom:14px; background:#f8f9fa; padding:16px; border-radius:8px; border:1px solid #d8e0ea;">
+        <p style="margin:0 0 4px; font-weight:700; color:#1a237e; font-size:14px;">
+            Pago Mixto (Dividir el monto en dos)
+        </p>
+        <p style="margin:0 0 14px; font-size:11.5px; color:#666; line-height:1.45;">
+            💡 Ingresa arriba el <strong>Monto (USD)</strong> total de la recuperación y distribúyelo entre las dos formas de pago.
+        </p>
+
+        <div class="recuperacion-mixta-grid" style="margin-bottom:12px;">
+            <div>
+                <label class="form-label" for="{{ form.monto_pago_1.id_for_label }}">Monto 1 *</label>
+                {{ form.monto_pago_1 }}
+                {{ form.monto_pago_1.errors }}
+            </div>
+            <div>
+                <label class="form-label" for="{{ form.metodo_pago_1.id_for_label }}">Método 1 *</label>
+                {{ form.metodo_pago_1 }}
+                {{ form.metodo_pago_1.errors }}
+            </div>
+            <div id="bloque-banco-1" style="display:none;">
+                <label class="form-label" for="{{ form.banco_1.id_for_label }}">🏦 Banco 1 *</label>
+                {{ form.banco_1 }}
+                {{ form.banco_1.errors }}
+            </div>
+        </div>
+
+        <div class="recuperacion-mixta-grid">
+            <div>
+                <label class="form-label" for="{{ form.monto_pago_2.id_for_label }}">Monto 2 *</label>
+                {{ form.monto_pago_2 }}
+                {{ form.monto_pago_2.errors }}
+            </div>
+            <div>
+                <label class="form-label" for="{{ form.metodo_pago_2.id_for_label }}">Método 2 *</label>
+                {{ form.metodo_pago_2 }}
+                {{ form.metodo_pago_2.errors }}
+            </div>
+            <div id="bloque-banco-2" style="display:none;">
+                <label class="form-label" for="{{ form.banco_2.id_for_label }}">🏦 Banco 2 *</label>
+                {{ form.banco_2 }}
+                {{ form.banco_2.errors }}
+            </div>
+        </div>
+
+        {% include 'includes/pago_mixto_resumen.html' %}
+        <small id="recuperacion-mixta-error"
+               style="display:none; color:#d32f2f; margin-top:10px; font-weight:700; font-size:12px;">
+            ⚠️ La suma de Monto 1 y Monto 2 debe coincidir exactamente con el Monto (USD).
+        </small>
+    </div>
+
+    <div style="margin-bottom:14px;">
+        <label class="form-label" for="{{ form.numero_recibo.id_for_label }}">Nº de recibo (opcional, se autogenera)</label>
+        {{ form.numero_recibo }}
+        {{ form.numero_recibo.errors }}
+    </div>
+
+    <div style="margin-bottom:18px;">
+        <label class="form-label" for="{{ form.observaciones.id_for_label }}">Observaciones del pago</label>
+        {{ form.observaciones }}
+        {{ form.observaciones.errors }}
+        <small style="color:#666; font-size:11px; display:block; margin-top:4px;">
+            Se imprime en el recibo del estudiante.
+        </small>
+    </div>
+</div>

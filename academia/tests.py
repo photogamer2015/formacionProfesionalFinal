@@ -3361,6 +3361,362 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertContains(response, 'data-pago-mixto-resumen')
         self.assertContains(response, 'data-mixto-suma')
 
+    def test_cobrar_recuperacion_inicia_monto_en_cero_sin_sugerencia(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_monto_cero',
+            password='clave12345',
+        )
+        _matricula, recuperacion = self._crear_recuperacion_cobrable(admin)
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse(
+                'academia:recuperacion_cobrar',
+                kwargs={'recup_pk': recuperacion.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['form'].initial['monto'], Decimal('0.00')
+        )
+        self.assertContains(response, 'name="monto" value="0.00"')
+        self.assertNotContains(response, 'Sugerido $25')
+        self.assertContains(response, 'recuperacion-monto-error')
+
+    def test_cobrar_recuperacion_rechaza_monto_cero(self):
+        admin = User.objects.create_superuser(
+            username='admin_recuperacion_rechaza_cero',
+            password='clave12345',
+        )
+        matricula, recuperacion = self._crear_recuperacion_cobrable(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_cobrar',
+                kwargs={'recup_pk': recuperacion.pk},
+            ),
+            {
+                'fecha': '2026-08-01',
+                'monto': '0.00',
+                'cuenta_para_saldo': 'True',
+                'tipo_cobro': 'un_solo_metodo',
+                'metodo': 'efectivo',
+                'banco': '',
+                'numero_recibo': '',
+                'observaciones': '',
+            },
+        )
+
+        recuperacion.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('monto', response.context['form'].errors)
+        self.assertContains(response, 'El monto debe ser mayor a cero.')
+        self.assertFalse(recuperacion.pagada)
+        self.assertFalse(Abono.objects.filter(matricula=matricula).exists())
+
+    def _crear_matricula_para_marcar(self, usuario):
+        return Matricula.objects.create(
+            estudiante=self.estudiante,
+            curso=self.curso,
+            jornada=self.jornada,
+            modalidad='presencial',
+            tipo_matricula='reserva_abono',
+            forma_pago='abono',
+            fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'),
+            valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia',
+            registrado_por=usuario,
+        )
+
+    def _datos_marcar_y_cobrar(self, **overrides):
+        datos = {
+            'numero_modulo': '2',
+            'fecha_marcada': '2026-09-26',
+            'fecha_programada': '2026-10-03',
+            'observaciones': 'Faltó por viaje.',
+            'registrar_pago': 'ahora',
+            'pago-cuenta_para_saldo': 'True',
+            'pago-fecha': '2026-09-30',
+            'pago-monto': '20.00',
+            'pago-tipo_cobro': 'un_solo_metodo',
+            'pago-metodo': 'transferencia',
+            'pago-banco': 'deuna',
+            'pago-monto_pago_1': '',
+            'pago-metodo_pago_1': '',
+            'pago-banco_1': '',
+            'pago-monto_pago_2': '',
+            'pago-metodo_pago_2': '',
+            'pago-banco_2': '',
+            'pago-numero_recibo': '',
+            'pago-observaciones': 'Transferencia 123.',
+        }
+        datos.update(overrides)
+        return datos
+
+    def test_marcar_recuperacion_muestra_el_cobro_en_la_misma_pantalla(self):
+        admin = User.objects.create_superuser(
+            username='admin_marcar_muestra_cobro',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula_para_marcar(admin)
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['registrar_pago'])
+        pago_form = response.context['pago_form']
+        self.assertEqual(pago_form.prefix, 'pago')
+        self.assertEqual(pago_form.initial['monto'], Decimal('0.00'))
+        self.assertContains(response, 'name="registrar_pago"')
+        self.assertContains(response, 'Fecha del pago *')
+        self.assertContains(response, 'name="pago-monto" value="0.00"')
+        self.assertContains(response, 'Marcar y cobrar recuperación')
+        # <input type="date"> solo muestra la fecha si llega como AAAA-MM-DD.
+        hoy = date.today().isoformat()
+        self.assertIn(
+            f'value="{hoy}"', str(response.context['form']['fecha_marcada'])
+        )
+        self.assertIn(f'value="{hoy}"', str(pago_form['fecha']))
+
+    def test_marcar_recuperacion_y_cobrar_en_un_solo_paso(self):
+        admin = User.objects.create_superuser(
+            username='admin_marcar_y_cobrar',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula_para_marcar(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._datos_marcar_y_cobrar(),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('academia:matricula_abonos', kwargs={'pk': matricula.pk}),
+            fetch_redirect_response=False,
+        )
+        recuperacion = RecuperacionPendiente.objects.get(matricula=matricula)
+        self.assertEqual(recuperacion.numero_modulo, 2)
+        self.assertEqual(recuperacion.fecha_marcada, date(2026, 9, 26))
+        self.assertEqual(recuperacion.fecha_programada, date(2026, 10, 3))
+        self.assertEqual(recuperacion.observaciones, 'Faltó por viaje.')
+        # El saldo arrastrado es el que había antes de este cobro.
+        self.assertEqual(
+            recuperacion.saldo_pendiente_al_marcar, Decimal('115.00')
+        )
+        self.assertTrue(recuperacion.pagada)
+        self.assertEqual(recuperacion.fecha_recuperacion, date(2026, 9, 30))
+
+        abono = Abono.objects.get(matricula=matricula)
+        self.assertEqual(recuperacion.abono, abono)
+        self.assertEqual(abono.tipo_pago, 'recuperacion')
+        self.assertEqual(abono.numero_modulo, 2)
+        self.assertEqual(abono.fecha, date(2026, 9, 30))
+        self.assertEqual(abono.monto, Decimal('20.00'))
+        self.assertTrue(abono.cuenta_para_saldo)
+        self.assertEqual(abono.metodo, 'transferencia')
+        self.assertEqual(abono.banco, 'deuna')
+        self.assertIsNone(abono.monto_2)
+        self.assertEqual(abono.observaciones, 'Transferencia 123.')
+        self.assertEqual(abono.registrado_por, admin)
+        matricula.refresh_from_db()
+        self.assertEqual(matricula.valor_pagado, Decimal('20.00'))
+
+        actividad = ActividadUsuario.objects.filter(
+            usuario=admin, metodo_http='POST'
+        ).latest('pk')
+        self.assertEqual(actividad.categoria, 'pago')
+        self.assertEqual(
+            actividad.accion,
+            'Marcó una clase para recuperación y registró su pago',
+        )
+
+    def test_marcar_recuperacion_y_cobrar_con_pago_mixto(self):
+        admin = User.objects.create_superuser(
+            username='admin_marcar_cobro_mixto',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula_para_marcar(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._datos_marcar_y_cobrar(**{
+                'pago-monto': '25.00',
+                'pago-tipo_cobro': 'mixto',
+                'pago-metodo': '',
+                'pago-banco': '',
+                'pago-monto_pago_1': '10.00',
+                'pago-metodo_pago_1': 'efectivo',
+                'pago-monto_pago_2': '15.00',
+                'pago-metodo_pago_2': 'transferencia',
+                'pago-banco_2': 'pichincha',
+            }),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        recuperacion = RecuperacionPendiente.objects.get(matricula=matricula)
+        abono = recuperacion.abono
+        self.assertTrue(recuperacion.pagada)
+        self.assertEqual(abono.monto, Decimal('25.00'))
+        self.assertEqual(abono.metodo, 'efectivo')
+        self.assertEqual(abono.monto_2, Decimal('15.00'))
+        self.assertEqual(abono.metodo_2, 'transferencia')
+        self.assertEqual(abono.banco_2, 'pichincha')
+
+    def test_marcar_recuperacion_dejar_pendiente_no_crea_recibo(self):
+        admin = User.objects.create_superuser(
+            username='admin_marcar_pendiente',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula_para_marcar(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._datos_marcar_y_cobrar(registrar_pago='despues'),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        recuperacion = RecuperacionPendiente.objects.get(matricula=matricula)
+        self.assertFalse(recuperacion.pagada)
+        self.assertIsNone(recuperacion.abono)
+        self.assertEqual(recuperacion.fecha_programada, date(2026, 10, 3))
+        self.assertFalse(Abono.objects.filter(matricula=matricula).exists())
+        actividad = ActividadUsuario.objects.filter(
+            usuario=admin, metodo_http='POST'
+        ).latest('pk')
+        self.assertEqual(actividad.categoria, 'creacion')
+        self.assertEqual(actividad.accion, 'Marcó una clase para recuperación')
+
+    def test_marcar_recuperacion_con_cobro_en_cero_no_guarda_nada(self):
+        admin = User.objects.create_superuser(
+            username='admin_marcar_cobro_cero',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula_para_marcar(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._datos_marcar_y_cobrar(**{'pago-monto': '0.00'}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['registrar_pago'])
+        self.assertIn('monto', response.context['pago_form'].errors)
+        self.assertContains(response, 'El monto debe ser mayor a cero.')
+        self.assertFalse(
+            RecuperacionPendiente.objects.filter(matricula=matricula).exists()
+        )
+        self.assertFalse(Abono.objects.filter(matricula=matricula).exists())
+
+    def test_marcar_recuperacion_con_cobro_que_excede_saldo_no_guarda_nada(self):
+        admin = User.objects.create_superuser(
+            username='admin_marcar_cobro_excede',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula_para_marcar(admin)
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._datos_marcar_y_cobrar(**{'pago-monto': '200.00'}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['pago_form'].non_field_errors())
+        self.assertContains(response, 'El monto excede el saldo.')
+        self.assertFalse(
+            RecuperacionPendiente.objects.filter(matricula=matricula).exists()
+        )
+        self.assertFalse(Abono.objects.filter(matricula=matricula).exists())
+
+    def test_marcar_recuperacion_con_cobro_muestra_error_de_modulo_ya_cobrado(self):
+        admin = User.objects.create_superuser(
+            username='admin_marcar_modulo_cobrado',
+            password='clave12345',
+        )
+        matricula = self._crear_matricula_para_marcar(admin)
+        # Una recuperación cobrada aparte no bloquea marcar el módulo, pero
+        # el cobro sí lo rechaza porque ese módulo ya tiene un pago.
+        Abono.objects.create(
+            matricula=matricula,
+            fecha=date(2026, 9, 1),
+            monto=Decimal('20.00'),
+            tipo_pago='recuperacion',
+            numero_modulo=2,
+            cuenta_para_saldo=False,
+            metodo='efectivo',
+            registrado_por=admin,
+        )
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse(
+                'academia:recuperacion_marcar',
+                kwargs={'matricula_pk': matricula.pk},
+            ),
+            self._datos_marcar_y_cobrar(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('numero_modulo', response.context['form'].errors)
+        self.assertContains(response, 'ya se encuentra registrado')
+        self.assertFalse(
+            RecuperacionPendiente.objects.filter(matricula=matricula).exists()
+        )
+        self.assertEqual(Abono.objects.filter(matricula=matricula).count(), 1)
+
+    def test_editar_recuperacion_no_muestra_el_cobro(self):
+        admin = User.objects.create_superuser(
+            username='admin_editar_sin_cobro',
+            password='clave12345',
+        )
+        _matricula, recuperacion = self._crear_recuperacion_cobrable(admin)
+        self.client.force_login(admin)
+
+        response = self.client.get(
+            reverse(
+                'academia:recuperacion_editar',
+                kwargs={'recup_pk': recuperacion.pk},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('pago_form', response.context)
+        self.assertNotContains(response, 'name="registrar_pago"')
+        self.assertContains(response, 'Guardar cambios')
+        self.assertIn(
+            'value="2026-08-01"',
+            str(response.context['form']['fecha_marcada']),
+        )
+
     def test_cobrar_recuperacion_guarda_pago_mixto(self):
         admin = User.objects.create_superuser(
             username='admin_recuperacion_mixta',
