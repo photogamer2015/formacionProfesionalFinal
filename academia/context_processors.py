@@ -153,4 +153,9 @@ def perfil_usuario(request):
             archivo_predeterminado,
         ),
     }
-    
+
+
+def pagos(request):
+    """Bancos que admite cada método de pago, para los selectores de pago."""
+    from .models import BANCOS_POR_METODO
+    return {'bancos_por_metodo': BANCOS_POR_METODO}

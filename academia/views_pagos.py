@@ -30,6 +30,7 @@ from django.views.decorators.http import require_POST
 from .forms import AbonoForm, RecuperacionPendienteForm
 from .models import (
     Abono, Curso, Estudiante, JornadaCurso, Matricula, RecuperacionPendiente,
+    METODOS_CON_BANCO, METODOS_NO_EFECTIVO, METODOS_PAGO,
     distribuir_monto_en_cuotas_enteras,
 )
 from .permisos import (
@@ -718,7 +719,7 @@ def _resumen_abonos(abonos):
 
         # Primer método
         metodo_label = abono.get_metodo_display()
-        if abono.metodo in ('transferencia', 'tarjeta') and abono.banco:
+        if abono.metodo in METODOS_CON_BANCO and abono.banco:
             metodo_label = f'{metodo_label} · {abono.get_banco_display()}'
         metodo = metodos.setdefault(metodo_label, {'label': metodo_label, 'total': Decimal('0.00'), 'count': 0})
         metodo['total'] += monto_1
@@ -727,7 +728,7 @@ def _resumen_abonos(abonos):
         # Segundo método (si es mixto)
         if monto_2 > 0 and abono.metodo_2:
             metodo2_label = dict(Abono.METODOS).get(abono.metodo_2, abono.metodo_2)
-            if abono.metodo_2 in ('transferencia', 'tarjeta') and abono.banco_2:
+            if abono.metodo_2 in METODOS_CON_BANCO and abono.banco_2:
                 banco2_label = dict(Abono.BANCOS).get(abono.banco_2, abono.banco_2)
                 metodo2_label = f'{metodo2_label} · {banco2_label}'
             metodo2 = metodos.setdefault(metodo2_label, {'label': metodo2_label, 'total': Decimal('0.00'), 'count': 0})
@@ -2504,7 +2505,7 @@ def abonos_export(request):
         qs = qs.filter(fecha__year=int(anio))
     if mes.isdigit() and 1 <= int(mes) <= 12:
         qs = qs.filter(fecha__month=int(mes))
-    if metodo in ('efectivo', 'transferencia', 'tarjeta'):
+    if metodo in dict(METODOS_PAGO):
         qs = qs.filter(metodo=metodo)
 
     headers = [
@@ -2515,9 +2516,7 @@ def abonos_export(request):
 
     rows = []
     total_monto = Decimal('0.00')
-    total_efectivo = Decimal('0.00')
-    total_transf = Decimal('0.00')
-    total_tarjeta = Decimal('0.00')
+    totales_metodo = {codigo: Decimal('0.00') for codigo, _ in METODOS_PAGO}
 
     for a in qs:
         m = a.matricula
@@ -2536,12 +2535,8 @@ def abonos_export(request):
             a.observaciones or '',
         ])
         total_monto += a.monto
-        if a.metodo == 'efectivo':
-            total_efectivo += a.monto
-        elif a.metodo == 'transferencia':
-            total_transf += a.monto
-        elif a.metodo == 'tarjeta':
-            total_tarjeta += a.monto
+        if a.metodo in totales_metodo:
+            totales_metodo[a.metodo] += a.monto
 
     totals = {7: float(total_monto)}
 
@@ -2622,11 +2617,8 @@ def abonos_export(request):
     metodo_row = total_row + 2
     ws.cell(row=metodo_row, column=1, value='💵 Por método de pago:').font = method_font
     metodo_row += 1
-    for label, total in [
-        ('Efectivo', total_efectivo),
-        ('Transferencia', total_transf),
-        ('Tarjeta', total_tarjeta),
-    ]:
+    for codigo, label in METODOS_PAGO:
+        total = totales_metodo[codigo]
         ws.cell(row=metodo_row, column=1, value=label).font = method_font
         ws.cell(row=metodo_row, column=1).fill = method_fill
         ws.cell(row=metodo_row, column=1).border = thin
@@ -4388,7 +4380,7 @@ def _construir_hoja_recaudacion(curso, matriculas, fecha_obj, ciudad='',
                 total_payphone += parte['monto']
             if parte['metodo'] == 'efectivo':
                 total_efectivo += parte['monto']
-            elif parte['metodo'] in ('transferencia', 'tarjeta'):
+            elif parte['metodo'] in METODOS_NO_EFECTIVO:
                 total_transferencia += parte['monto']
 
         total_cuotas += cuota_sugerida
@@ -5683,9 +5675,12 @@ def _build_recaudacion_excel_response(filename, sheet_name, hojas):
         'RECUPERACIÓN',
     ]
 
+    nombres_metodos = ','.join(
+        _recaudacion_excel_metodo(nombre) for _valor, nombre in METODOS_PAGO
+    )
     dv_forma = DataValidation(
         type='list',
-        formula1='"Efectivo,Transferencia,Tarjeta,N/A"',
+        formula1=f'"{nombres_metodos},N/A"',
         allow_blank=True,
     )
     nombres_bancos = ','.join(nombre for _valor, nombre in Abono.BANCOS)

@@ -195,6 +195,24 @@ class MercyBotMatriculaTests(TestCase):
         self.assertEqual(p.metodo_2, 'tarjeta')
         self.assertEqual(p.banco_2, 'payphone')
 
+    def test_bank_question_lists_only_the_banks_of_the_method(self):
+        values = dict(self.data, metodo_pago='deposito')
+        values.pop('banco')
+        result = self.register(values)
+        self.assertEqual(self.client.session[STATE]['waiting'], 'banco')
+        for banco in ('Guayaquil', 'Pichincha', 'Banco del Pacífico', 'Produbanco'):
+            self.assertIn(banco, result['reply'])
+        for banco in ('Interbancario', 'Payphone', 'De una', 'Otro banco'):
+            self.assertNotIn(banco, result['reply'])
+        self.assertFalse(Matricula.objects.exists())
+        result = self.chat('de una')
+        self.assertIn('no corresponde', result['reply'])
+        self.assertFalse(Matricula.objects.exists())
+        result = self.chat('pacifico')
+        self.assertIn('Matrícula #', result['reply'])
+        p = Abono.objects.get()
+        self.assertEqual((p.metodo, p.banco), ('deposito', 'banco_pacifico'))
+
     def test_invoice_requires_student_contact_and_tax_fields(self):
         values = dict(self.data, celular='', ciudad='', fact_nombres='', fact_cedula='')
         self.register(values)

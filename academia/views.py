@@ -24,7 +24,7 @@ from .forms import (
 from .models import (
     Abono, Categoria, Curso, Estudiante, JornadaCurso, Matricula,
     Sede, EstudianteArchivado, MatriculaArchivada,
-    FORMA_PAGO_A_TIPO_ABONO, MONTO_RESERVA_MATRICULA,
+    FORMA_PAGO_A_TIPO_ABONO, METODOS_CON_BANCO, MONTO_RESERVA_MATRICULA,
 )
 from .permisos import (
     admin_requerido,
@@ -113,7 +113,7 @@ def _resumen_pagos_factura(abonos):
 
     def etiqueta_metodo(metodo, banco):
         etiqueta = metodos_map.get(metodo, metodo or 'Sin método')
-        if metodo in ('transferencia', 'tarjeta') and banco:
+        if metodo in METODOS_CON_BANCO and banco:
             etiqueta = f'{etiqueta} · {bancos_map.get(banco, banco)}'
         return etiqueta
 
@@ -386,6 +386,22 @@ def _ids_abonos_pago_inicial(matricula):
         else:
             break
     return ids
+
+
+def _metodo_y_banco_pago_inicial(ids_pago_inicial):
+    """Método y banco guardados del pago inicial, con los nombres de campo
+    de MatriculaForm (un solo método o mixto)."""
+    a0 = Abono.objects.filter(id__in=ids_pago_inicial).order_by('creado', 'id').first()
+    if a0 is None:
+        return {}
+    if (a0.monto_2 or Decimal('0.00')) > 0:
+        return {
+            'metodo_pago_1': a0.metodo,
+            'banco_1': a0.banco,
+            'metodo_pago_2': a0.metodo_2 or 'efectivo',
+            'banco_2': a0.banco_2 or '',
+        }
+    return {'metodo_pago': a0.metodo, 'banco': a0.banco}
 
 
 def _registrar_pago_inicial(matricula, usuario, mat_form=None,
@@ -749,6 +765,11 @@ def matricula_editar(request, modalidad, pk):
                 data, prefix='mat', instance=matricula, modalidad=modalidad,
                 captura_pago=True,
             )
+            # Con el pago guardado, un banco antiguo que hoy no corresponde a
+            # su método se conserva mientras no se cambie el método.
+            mat_form.initial.update(
+                _metodo_y_banco_pago_inicial(ids_pago_inicial)
+            )
             # Los campos que NO son de pago llegan forzados con los valores
             # originales de la matrícula, así que no tiene sentido validarlos
             # como obligatorios: si una matrícula antigua tiene alguno vacío
@@ -914,15 +935,12 @@ def matricula_editar(request, modalidad, pk):
                 if monto2 > 0:
                     mat_form.initial['tipo_cobro'] = 'mixto'
                     mat_form.initial['monto_pago_1'] = a0.monto - monto2
-                    mat_form.initial['metodo_pago_1'] = a0.metodo
-                    mat_form.initial['banco_1'] = a0.banco
                     mat_form.initial['monto_pago_2'] = monto2
-                    mat_form.initial['metodo_pago_2'] = getattr(a0, 'metodo_2', '') or 'efectivo'
-                    mat_form.initial['banco_2'] = getattr(a0, 'banco_2', '') or ''
                 else:
                     mat_form.initial['tipo_cobro'] = 'un_solo_metodo'
-                    mat_form.initial['metodo_pago'] = a0.metodo
-                    mat_form.initial['banco'] = a0.banco
+                mat_form.initial.update(
+                    _metodo_y_banco_pago_inicial(ids_pago_inicial)
+                )
                 # Si el pago inicial cubría k módulos, preseleccionar k.
                 mods = [a.numero_modulo for a in abonos_ini if a.numero_modulo]
                 if matricula.tipo_matricula == 'reserva_modulo_1' and mods:

@@ -3442,7 +3442,7 @@ class PagoInicialMatriculaTests(TestCase):
             'pago-fecha': '2026-09-30',
             'pago-monto': '20.00',
             'pago-tipo_cobro': 'un_solo_metodo',
-            'pago-metodo': 'transferencia',
+            'pago-metodo': 'tarjeta',
             'pago-banco': 'deuna',
             'pago-monto_pago_1': '',
             'pago-metodo_pago_1': '',
@@ -3527,7 +3527,7 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertEqual(abono.fecha, date(2026, 9, 30))
         self.assertEqual(abono.monto, Decimal('20.00'))
         self.assertTrue(abono.cuenta_para_saldo)
-        self.assertEqual(abono.metodo, 'transferencia')
+        self.assertEqual(abono.metodo, 'tarjeta')
         self.assertEqual(abono.banco, 'deuna')
         self.assertIsNone(abono.monto_2)
         self.assertEqual(abono.observaciones, 'Transferencia 123.')

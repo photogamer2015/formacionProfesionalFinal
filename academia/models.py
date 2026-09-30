@@ -1127,28 +1127,63 @@ class Matricula(models.Model):
 # Abonos / Pagos
 # ─────────────────────────────────────────────────────────
 
+# Métodos de pago de todo el sistema (matrículas, abonos, recuperaciones y
+# adicionales). Es la única lista: de aquí salen las opciones y los nombres.
+METODOS_PAGO = [
+    ('efectivo', 'Efectivo'),
+    ('deposito', 'Depósito'),
+    ('transferencia', 'Transferencia bancaria'),
+    ('tarjeta', 'Tarjeta / Link de pago'),
+]
+
 # Bancos y apps que se eligen al registrar un pago. Es la única lista: de aquí
 # salen las opciones de los formularios y los nombres que se muestran.
 BANCOS_PAGO = [
-    ('pichincha', 'Pichincha'),
     ('guayaquil', 'Guayaquil'),
-    ('produbanco', 'Produbanco'),
+    ('pichincha', 'Pichincha'),
     ('banco_pacifico', 'Banco del Pacífico'),
+    ('produbanco', 'Produbanco'),
+    ('interbancario', 'Interbancario'),
     ('payphone', 'Payphone'),
     ('deuna', 'De una'),
-    ('interbancario', 'Interbancario'),
 ]
+
+# Bancos que admite cada método. Efectivo no lleva banco.
+BANCOS_POR_METODO = {
+    'deposito': ['guayaquil', 'pichincha', 'banco_pacifico', 'produbanco'],
+    'transferencia': [
+        'guayaquil', 'pichincha', 'banco_pacifico', 'produbanco',
+        'interbancario',
+    ],
+    'tarjeta': ['payphone', 'deuna'],
+}
+METODOS_CON_BANCO = tuple(BANCOS_POR_METODO)
+# Depósito, transferencia y tarjeta / link de pago llegan al banco; en la
+# hoja de recaudación se suman aparte del efectivo.
+METODOS_NO_EFECTIVO = METODOS_CON_BANCO
+
+
+def nombre_metodo_pago(valor):
+    """Nombre visible de un método de pago guardado."""
+    if not valor:
+        return ''
+    return dict(METODOS_PAGO).get(valor, valor)
 
 
 def nombre_banco(valor):
     """Nombre visible de un banco guardado en un pago.
 
-    Los que se escribieron a mano con "Otro banco..." se muestran como
-    "Otro banco - <nombre>".
+    Los que se escribieron a mano con "Otro banco..." (opción ya retirada)
+    se muestran como "Otro banco - <nombre>".
     """
     if not valor:
         return ''
     return dict(BANCOS_PAGO).get(valor, f'Otro banco - {valor}')
+
+
+def banco_corresponde_al_metodo(metodo, banco):
+    """Indica si el banco es uno de los que admite el método de pago."""
+    return banco in BANCOS_POR_METODO.get(metodo, ())
 
 
 class Abono(models.Model):
@@ -1167,11 +1202,7 @@ class Abono(models.Model):
         ('recuperacion', 'Recuperación'),
     ]
 
-    METODOS = [
-        ('efectivo', 'Efectivo'),
-        ('transferencia', 'Transferencia bancaria'),
-        ('tarjeta', 'Tarjeta'),
-    ]
+    METODOS = METODOS_PAGO
 
     BANCOS = BANCOS_PAGO
 
@@ -1869,11 +1900,7 @@ class Adicional(models.Model):
         ('NA', 'Ninguna de las anteriores (la academia solo cubre hasta XL)'),
     ]
 
-    METODOS_PAGO = [
-        ('efectivo', 'Efectivo'),
-        ('transferencia', 'Transferencia bancaria'),
-        ('tarjeta', 'Tarjeta de crédito/débito'),
-    ]
+    METODOS_PAGO = METODOS_PAGO
 
     TIPO_COBRO = [
         ('un_solo_metodo', 'Un solo método'),
@@ -1946,7 +1973,7 @@ class Adicional(models.Model):
     )
     banco = models.CharField(
         max_length=50, blank=True,
-        help_text='Banco usado (solo si el método es Transferencia bancaria o Tarjeta).'
+        help_text='Banco o app usado (solo si el método es Depósito, Transferencia bancaria o Tarjeta / Link de pago).'
     )
 
     tipo_cobro = models.CharField(
@@ -2012,14 +2039,7 @@ class Adicional(models.Model):
         return nombre_banco(self.banco_2)
 
     def get_metodo_pago_2_display(self):
-        if not self.metodo_pago_2:
-            return ''
-        metodos_map = {
-            'efectivo': 'Efectivo',
-            'transferencia': 'Transferencia bancaria',
-            'tarjeta': 'Tarjeta de crédito/débito',
-        }
-        return metodos_map.get(self.metodo_pago_2, self.metodo_pago_2)
+        return nombre_metodo_pago(self.metodo_pago_2)
 
     class Meta:
         verbose_name = 'Adicional'
@@ -2523,27 +2543,13 @@ class AdicionalArchivado(models.Model):
         return nombre_banco(self.banco_1)
 
     def get_metodo_pago_1_display(self):
-        if not self.metodo_pago_1:
-            return ''
-        metodos_map = {
-            'efectivo': 'Efectivo',
-            'transferencia': 'Transferencia bancaria',
-            'tarjeta': 'Tarjeta de crédito/débito',
-        }
-        return metodos_map.get(self.metodo_pago_1, self.metodo_pago_1)
+        return nombre_metodo_pago(self.metodo_pago_1)
 
     def get_banco_2_display(self):
         return nombre_banco(self.banco_2)
 
     def get_metodo_pago_2_display(self):
-        if not self.metodo_pago_2:
-            return ''
-        metodos_map = {
-            'efectivo': 'Efectivo',
-            'transferencia': 'Transferencia bancaria',
-            'tarjeta': 'Tarjeta de crédito/débito',
-        }
-        return metodos_map.get(self.metodo_pago_2, self.metodo_pago_2)
+        return nombre_metodo_pago(self.metodo_pago_2)
     class Meta:
         verbose_name = 'Adicional archivado'
         verbose_name_plural = 'Adicionales archivados'

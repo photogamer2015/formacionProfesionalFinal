@@ -13,7 +13,10 @@ from django.utils import timezone
 
 from .busqueda import normalizar_texto_busqueda as norm, filtrar_queryset_busqueda
 from .forms import EstudianteForm, MatriculaForm, _normalizar_digitos_formateados
-from .models import Curso, JornadaCurso, Estudiante, Matricula
+from .models import (
+    BANCOS_POR_METODO, METODOS_CON_BANCO, Curso, JornadaCurso, Estudiante,
+    Matricula,
+)
 
 STUDENT_FIELDS = list(EstudianteForm.Meta.fields)
 # Todo campo del formulario de alta tiene una ruta explícita en este flujo.
@@ -135,6 +138,13 @@ def field_value(name, value, field):
         'forma_pago': {'completo': 'pago_completo', 'contado': 'pago_completo'},
         'tipo_cobro': {'simple': 'un_solo_metodo', 'un solo': 'un_solo_metodo', 'pago mixto': 'mixto'},
     }
+    for suffix in ('', '_1', '_2'):
+        aliases['metodo_pago' + suffix] = {'link de pago': 'tarjeta', 'link': 'tarjeta'}
+        aliases['banco' + suffix] = {
+            'pacifico': 'banco_pacifico', 'banco pacifico': 'banco_pacifico',
+            'banco guayaquil': 'guayaquil', 'banco pichincha': 'pichincha',
+            'banco produbanco': 'produbanco',
+        }
     if normalized in aliases.get(name, {}):
         return aliases[name][normalized]
     if not isinstance(field, forms.ModelChoiceField):
@@ -200,11 +210,11 @@ def active_fields(data, course):
     elif data.get('tipo_cobro') == 'mixto':
         for suffix in ('1', '2'):
             fields += ['monto_pago_' + suffix, 'metodo_pago_' + suffix]
-            if data.get('metodo_pago_' + suffix) in ('transferencia', 'tarjeta'):
+            if data.get('metodo_pago_' + suffix) in METODOS_CON_BANCO:
                 fields += ['banco_' + suffix]
     elif data.get('tipo_cobro') == 'un_solo_metodo':
         fields += ['metodo_pago']
-        if data.get('metodo_pago') in ('transferencia', 'tarjeta'):
+        if data.get('metodo_pago') in METODOS_CON_BANCO:
             fields += ['banco']
     # Igual que el formulario: camiseta para categoría Técnico.
     if course and course.categoria and norm(course.categoria.nombre.strip()) == 'tecnico':
@@ -355,6 +365,11 @@ def enrollment_step(request, state, message):
         else:
             field = definitions[name]
             choices = getattr(field, 'choices', None) or getattr(field.widget, 'choices', [])
+            if name.startswith('banco'):
+                # Solo los bancos o apps que admite el método elegido.
+                metodo = data.get(name.replace('banco', 'metodo_pago'))
+                admitidos = BANCOS_POR_METODO.get(metodo, [])
+                choices = [(key, label) for key, label in choices if key in admitidos]
             lines += [f'• {key}: {label}' for key, label in choices if key]
             if name == 'fecha_matricula':
                 lines.append('Usa DD/MM/AAAA o «hoy». Es la fecha del registro; la fecha de inicio la determina la jornada.')
@@ -374,8 +389,6 @@ def enrollment_step(request, state, message):
                 lines.append('; '.join(limits) + '.')
             if name in ('monto_pago_1', 'monto_pago_2') and data.get('valor_pagado'):
                 lines.append(f'La suma del monto 1 y el monto 2 debe ser exactamente ${amount(data, "valor_pagado") or 0:.2f}.')
-            if name.startswith('banco'):
-                lines.append('Si es otro banco, escribe su nombre completo.')
             if name == 'celular' and name in invalid and 'compartido' in ' '.join(errors[name]):
                 lines.append('Si es intencional, escribe «número compartido: sí» o indica otro celular.')
             if not required(name, field, data):

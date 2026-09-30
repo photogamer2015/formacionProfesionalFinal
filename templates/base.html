@@ -935,6 +935,93 @@
         }
 
     </style>
+    {{ bancos_por_metodo|json_script:"bancos-por-metodo" }}
+    <script>
+    /* Selectores de banco de los pagos: cada método muestra solo sus bancos
+       (BANCOS_POR_METODO en academia/models.py). Depósito y transferencia
+       llevan banco; tarjeta / link de pago, Payphone o De una; efectivo no
+       lleva banco. */
+    window.BancosPago = (function () {
+        let mapa = null;
+        const AYUDA = {
+            deposito: 'Banco donde se hizo el depósito.',
+            transferencia: 'Banco que recibió la transferencia, o Interbancario.',
+            tarjeta: 'Payphone o De una.',
+        };
+
+        function bancosDe(metodo) {
+            if (mapa === null) {
+                const nodo = document.getElementById('bancos-por-metodo');
+                try { mapa = nodo ? JSON.parse(nodo.textContent) : {}; } catch (e) { mapa = {}; }
+            }
+            return Object.prototype.hasOwnProperty.call(mapa, metodo) ? mapa[metodo] : null;
+        }
+
+        function necesitaBanco(metodo) {
+            return bancosDe(metodo) !== null;
+        }
+
+        function etiqueta(metodo, numero) {
+            const n = numero ? ' ' + numero : '';
+            return (metodo === 'tarjeta' ? '💳 Tarjeta / Link de pago' : '🏦 Banco') + n + ' *';
+        }
+
+        function valorInicial(select) {
+            const opcion = Array.from(select.options).find(o => o.defaultSelected);
+            return opcion ? opcion.value : '';
+        }
+
+        // Se reconstruyen las opciones: Safari no oculta <option> con display:none.
+        function filtrar(bancoSel, metodoSel) {
+            if (!bancoSel) return;
+            const metodo = metodoSel ? metodoSel.value : '';
+            if (!bancoSel._bancosPago) {
+                bancoSel._bancosPago = {
+                    opciones: Array.from(bancoSel.options).map(o => [o.value, o.text]),
+                    banco: valorInicial(bancoSel),
+                    metodo: metodoSel ? valorInicial(metodoSel) : '',
+                };
+            }
+            const guardado = bancoSel._bancosPago;
+            const valores = [''].concat(bancosDe(metodo) || []);
+            // Un pago guardado antes de estas reglas conserva su banco
+            // mientras no se cambie su método.
+            if (guardado.banco && metodo === guardado.metodo && !valores.includes(guardado.banco)) {
+                valores.push(guardado.banco);
+            }
+            const anterior = bancoSel.value;
+            const vacio = metodo === 'tarjeta' ? '— Selecciona una opción —' : '— Selecciona un banco —';
+            const opciones = valores
+                .map(valor => guardado.opciones.find(([v]) => v === valor))
+                .filter(Boolean)
+                .map(([valor, texto]) => new Option(valor === '' ? vacio : texto, valor));
+            bancoSel.replaceChildren(...opciones);
+            bancoSel.value = valores.includes(anterior) ? anterior : '';
+            if (bancoSel.value !== anterior) bancoSel.dispatchEvent(new Event('change'));
+        }
+
+        // Muestra el bloque del banco con su etiqueta y deja solo los bancos
+        // del método. Devuelve si el método lleva banco.
+        function aplicar(metodoSel, contenedor, bancoSel, numero) {
+            const metodo = metodoSel ? metodoSel.value : '';
+            const lleva = necesitaBanco(metodo);
+            if (contenedor) {
+                contenedor.style.display = lleva ? 'block' : 'none';
+                const label = contenedor.querySelector('label');
+                if (label && lleva) label.innerText = etiqueta(metodo, numero);
+                const ayuda = contenedor.querySelector('[data-ayuda-banco]');
+                if (ayuda && lleva) ayuda.textContent = AYUDA[metodo] || '';
+            }
+            if (bancoSel) {
+                bancoSel.required = lleva;
+                filtrar(bancoSel, metodoSel);
+            }
+            return lleva;
+        }
+
+        return { necesitaBanco, etiqueta, filtrar, aplicar };
+    })();
+    </script>
     {% block extra_head %}{% endblock %}
     <link rel="stylesheet" href="{% static 'responsive.css' %}?v=20260822-3">
     <script src="{% static 'responsive.js' %}?v=20260822-3" defer></script>
@@ -2249,50 +2336,6 @@
 
 
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const bancoSelects = document.querySelectorAll('select#id_banco');
-    bancoSelects.forEach(select => {
-        const originalName = select.name || 'banco';
-        
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = select.className;
-        input.placeholder = 'Escriba el nombre del banco...';
-        input.style.display = 'none';
-        input.style.marginTop = '8px';
-        input.id = 'id_banco_otro';
-        
-        select.parentNode.insertBefore(input, select.nextSibling);
-        
-        select.addEventListener('change', function() {
-            if (this.value === 'OTRO') {
-                input.style.display = 'block';
-                input.name = originalName;
-                select.removeAttribute('name');
-                input.focus();
-            } else {
-                input.style.display = 'none';
-                input.name = 'banco_otro';
-                select.name = originalName;
-            }
-        });
-        
-        const form = select.closest('form');
-        if (form) {
-            form.addEventListener('submit', function() {
-                if (select.value === 'OTRO') {
-                    input.name = originalName;
-                    select.removeAttribute('name');
-                } else {
-                    select.name = originalName;
-                    input.removeAttribute('name');
-                }
-            });
-        }
-    });
-});
-</script>
 </body>
 
 

@@ -48,11 +48,13 @@
     function update() {
         const mixed = field('tipo_cobro').value === 'mixto';
         show('metodo_pago', !mixed);
-        show('banco', !mixed && ['transferencia', 'tarjeta'].includes(field('metodo_pago').value));
+        show('banco', !mixed && BancosPago.necesitaBanco(field('metodo_pago').value));
+        BancosPago.filtrar(field('banco'), field('metodo_pago'));
         for (const i of [1, 2]) {
             show('monto_pago_' + i, mixed);
             show('metodo_pago_' + i, mixed);
-            show('banco_' + i, mixed && ['transferencia', 'tarjeta'].includes(field('metodo_pago_' + i).value));
+            show('banco_' + i, mixed && BancosPago.necesitaBanco(field('metodo_pago_' + i).value));
+            BancosPago.filtrar(field('banco_' + i), field('metodo_pago_' + i));
         }
         show('modulos_a_pagar', {% if matricula.tipo_matricula == 'reserva_modulo_1' %}true{% else %}false{% endif %});
         const price = Number(JSON.parse(document.getElementById('pago-valor-curso').textContent));

@@ -195,6 +195,7 @@
                             <div style="margin-bottom:4px; padding-bottom:4px; border-bottom:1px dashed #e0e0e0;">
                                 <span style="font-size:11px; color:#888;">Monto 1:</span>
                                 {% if abono.metodo == 'efectivo' %}💵
+                                {% elif abono.metodo == 'deposito' %}🧾
                                 {% elif abono.metodo == 'transferencia' %}🏦
                                 {% elif abono.metodo == 'tarjeta' %}💳{% endif %}
                                 {{ abono.get_metodo_display }}
@@ -203,13 +204,15 @@
                             <div>
                                 <span style="font-size:11px; color:#888;">Monto 2:</span>
                                 {% if abono.metodo_2 == 'efectivo' %}💵
+                                {% elif abono.metodo_2 == 'deposito' %}🧾
                                 {% elif abono.metodo_2 == 'transferencia' %}🏦
                                 {% elif abono.metodo_2 == 'tarjeta' %}💳{% endif %}
-                                {{ abono.get_metodo_2_display|default:abono.metodo_2|title }}
+                                {{ abono.get_metodo_2_display|default:abono.metodo_2 }}
                                 {% if abono.banco_2 %} <small>({{ abono.get_banco_2_display|default:abono.banco_2 }})</small>{% endif %}
                             </div>
                         {% else %}
                             {% if abono.metodo == 'efectivo' %}💵
+                            {% elif abono.metodo == 'deposito' %}🧾
                             {% elif abono.metodo == 'transferencia' %}🏦
                             {% elif abono.metodo == 'tarjeta' %}💳{% endif %}
                             {{ abono.get_metodo_display }}

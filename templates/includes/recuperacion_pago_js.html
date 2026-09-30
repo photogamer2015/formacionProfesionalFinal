@@ -58,35 +58,12 @@ página tiene #id_registrar_pago en "despues", el cobro se oculta y no se valida
         }
 
         function requiereBanco(metodo) {
-            return metodo === 'transferencia' || metodo === 'tarjeta';
+            return BancosPago.necesitaBanco(metodo);
         }
 
-        function configurarBanco(metodoSelect, contenedor, bancoSelect) {
+        function configurarBanco(metodoSelect, contenedor, bancoSelect, orden) {
             if (!metodoSelect || !contenedor || !bancoSelect) return;
-            const metodo = metodoSelect.value;
-            const etiqueta = contenedor.querySelector('label');
-            const visible = requiereBanco(metodo);
-            contenedor.style.display = visible ? 'block' : 'none';
-            bancoSelect.required = visible;
-
-            if (!visible) {
-                bancoSelect.value = '';
-                return;
-            }
-
-            if (metodo === 'tarjeta') {
-                if (etiqueta) etiqueta.textContent = '💳 Tarjeta / App *';
-                Array.from(bancoSelect.options).forEach((opcion) => {
-                    opcion.hidden = !['', 'payphone'].includes(opcion.value);
-                });
-                bancoSelect.value = 'payphone';
-            } else {
-                if (etiqueta) etiqueta.textContent = '🏦 Banco *';
-                Array.from(bancoSelect.options).forEach((opcion) => {
-                    opcion.hidden = opcion.value === 'payphone';
-                });
-                if (bancoSelect.value === 'payphone') bancoSelect.value = '';
-            }
+            BancosPago.aplicar(metodoSelect, contenedor, bancoSelect, orden);
         }
 
         function validarMixto() {
@@ -154,16 +131,16 @@ página tiene #id_registrar_pago en "despues", el cobro se oculta y no se valida
         }
 
         [
-            [metodoSel, bloqueBanco, bancoSel],
-            [metodoSel1, bloqueBanco1, bancoSel1],
-            [metodoSel2, bloqueBanco2, bancoSel2],
-        ].forEach(([metodo, bloque, banco]) => {
+            [metodoSel, bloqueBanco, bancoSel, ''],
+            [metodoSel1, bloqueBanco1, bancoSel1, '1'],
+            [metodoSel2, bloqueBanco2, bancoSel2, '2'],
+        ].forEach(([metodo, bloque, banco, orden]) => {
             if (!metodo) return;
             metodo.addEventListener('change', function () {
-                configurarBanco(metodo, bloque, banco);
+                configurarBanco(metodo, bloque, banco, orden);
                 validarMixto();
             });
-            configurarBanco(metodo, bloque, banco);
+            configurarBanco(metodo, bloque, banco, orden);
         });
 
         [montoTotal, monto1, monto2, bancoSel1, bancoSel2].forEach((campo) => {

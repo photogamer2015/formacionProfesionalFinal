@@ -3,25 +3,62 @@ from decimal import Decimal
 from django import forms
 from django.db.models import Q
 from .models import (
-    Abono, Adicional, BANCOS_PAGO, CategoriaEgreso, Categoria, Comprobante,
-    Curso, Egreso,
+    Abono, Adicional, BANCOS_PAGO, BANCOS_POR_METODO, CategoriaEgreso,
+    Categoria, Comprobante, Curso, Egreso,
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
+    METODOS_CON_BANCO, METODOS_PAGO,
     MONTO_RESERVA_MATRICULA, PersonaExterna, RecuperacionPendiente, Sede,
-    TIPOS_SIN_COBRO_INICIAL,
+    TIPOS_SIN_COBRO_INICIAL, banco_corresponde_al_metodo, nombre_banco,
+    nombre_metodo_pago,
 )
 
 
 def _opciones_banco(valor_actual=''):
     """Opciones del selector de banco de los formularios de pago.
 
-    Incluye los bancos del sistema, el valor ya guardado si se escribió a
-    mano (para no perderlo al editar) y la opción para escribir otro.
+    Incluye todos los bancos del sistema (la pantalla deja visibles solo los
+    del método elegido) y el valor ya guardado si se escribió a mano con la
+    antigua opción "Otro banco...", para no perderlo al editar.
     """
     opciones = [('', '— Selecciona un banco —')] + list(BANCOS_PAGO)
     if valor_actual and valor_actual not in dict(opciones) and valor_actual != 'OTRO':
         opciones.append((valor_actual, valor_actual))
-    opciones.append(('OTRO', 'Otro banco...'))
     return opciones
+
+
+MENSAJES_FALTA_BANCO = {
+    'deposito': 'Debes indicar el banco del depósito.',
+    'transferencia': 'Debes indicar el banco cuando el método es Transferencia.',
+    'tarjeta': 'Debes indicar la opción de tarjeta o link de pago (Payphone o De una).',
+}
+
+
+def _revisar_banco(form, cleaned, campo_metodo, campo_banco, falta=None):
+    """Valida el banco de un pago según su método.
+
+    Depósito y transferencia llevan uno de sus bancos; tarjeta / link de
+    pago, Payphone o De una; efectivo no lleva banco y se borra. Un pago
+    guardado antes de estas reglas conserva su banco mientras no se cambie
+    el método.
+    """
+    metodo = cleaned.get(campo_metodo) or ''
+    if metodo not in METODOS_CON_BANCO:
+        cleaned[campo_banco] = ''
+        return
+    banco = (cleaned.get(campo_banco) or '').strip()
+    cleaned[campo_banco] = banco
+    if not banco:
+        form.add_error(campo_banco, falta or MENSAJES_FALTA_BANCO[metodo])
+        return
+    guardado = (form.initial.get(campo_metodo), form.initial.get(campo_banco))
+    if banco_corresponde_al_metodo(metodo, banco) or (metodo, banco) == guardado:
+        return
+    admitidos = ', '.join(nombre_banco(b) for b in BANCOS_POR_METODO[metodo])
+    form.add_error(
+        campo_banco,
+        f'{nombre_banco(banco)} no corresponde a {nombre_metodo_pago(metodo)}. '
+        f'Elige: {admitidos}.',
+    )
 
 
 def es_ruc_ecuador(valor):
@@ -614,20 +651,13 @@ class MatriculaForm(forms.ModelForm):
 
     def __init__(self, *args, modalidad='presencial', captura_pago=True, **kwargs):
         super().__init__(*args, **kwargs)
-        if 'banco' in self.fields:
-            banco_val = self.initial.get('banco')
-            if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
-                banco_val = getattr(self.instance, 'banco')
-            bancos_list = _opciones_banco(banco_val)
-            self.fields['banco'].widget.choices = bancos_list
-            self.fields['banco_1'].widget.choices = bancos_list
-            self.fields['banco_2'].widget.choices = bancos_list
+        for campo in ('banco', 'banco_1', 'banco_2'):
+            self.fields[campo].widget.choices = _opciones_banco(
+                self.initial.get(campo)
+            )
 
-        from .models import Abono
-        if 'metodo_pago' in self.fields:
-            self.fields['metodo_pago'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
-            self.fields['metodo_pago_1'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
-            self.fields['metodo_pago_2'].choices = [('', 'Seleccione')] + list(Abono.METODOS)
+        for campo in ('metodo_pago', 'metodo_pago_1', 'metodo_pago_2'):
+            self.fields[campo].choices = [('', 'Seleccione')] + list(METODOS_PAGO)
         # "Reserva + Módulo 1" se retiró del registro nuevo. Se conserva solo
         # al editar una matrícula antigua para no volver inválido su historial.
         if 'tipo_matricula' in self.fields:
@@ -843,24 +873,16 @@ class MatriculaForm(forms.ModelForm):
             jornada = cleaned.get('jornada')
             tipo_cobro = cleaned.get('tipo_cobro') or 'un_solo_metodo'
             metodo_pago = cleaned.get('metodo_pago')
-            banco = cleaned.get('banco')
             monto_pago_1 = cleaned.get('monto_pago_1') or Decimal('0.00')
             metodo_pago_1 = cleaned.get('metodo_pago_1')
-            banco_1 = cleaned.get('banco_1')
             monto_pago_2 = cleaned.get('monto_pago_2') or Decimal('0.00')
             metodo_pago_2 = cleaned.get('metodo_pago_2')
-            banco_2 = cleaned.get('banco_2')
             modalidad = jornada.modalidad if jornada else self.modalidad
 
             if tipo_cobro != 'mixto':
                 if not metodo_pago:
                     self.add_error('metodo_pago', 'Selecciona el método de pago.')
-                if metodo_pago == 'transferencia' and not banco:
-                    self.add_error('banco', 'Debes indicar el banco cuando el método es Transferencia.')
-                if metodo_pago == 'tarjeta' and not banco:
-                    self.add_error('banco', 'Debes indicar la opción correspondiente (Payphone).')
-                if metodo_pago not in ('transferencia', 'tarjeta'):
-                    cleaned['banco'] = ''
+                _revisar_banco(self, cleaned, 'metodo_pago', 'banco')
             else:
                 if monto_pago_1 <= 0:
                     self.add_error('monto_pago_1', 'El Monto 1 debe ser mayor a cero.')
@@ -870,14 +892,14 @@ class MatriculaForm(forms.ModelForm):
                     self.add_error('metodo_pago_1', 'Selecciona el método del Monto 1.')
                 if not metodo_pago_2:
                     self.add_error('metodo_pago_2', 'Selecciona el método del Monto 2.')
-                if metodo_pago_1 in ('transferencia', 'tarjeta') and not banco_1:
-                    self.add_error('banco_1', 'Selecciona el banco o app del Monto 1.')
-                if metodo_pago_2 in ('transferencia', 'tarjeta') and not banco_2:
-                    self.add_error('banco_2', 'Selecciona el banco o app del Monto 2.')
-                if metodo_pago_1 not in ('transferencia', 'tarjeta'):
-                    cleaned['banco_1'] = ''
-                if metodo_pago_2 not in ('transferencia', 'tarjeta'):
-                    cleaned['banco_2'] = ''
+                _revisar_banco(
+                    self, cleaned, 'metodo_pago_1', 'banco_1',
+                    'Selecciona el banco o app del Monto 1.',
+                )
+                _revisar_banco(
+                    self, cleaned, 'metodo_pago_2', 'banco_2',
+                    'Selecciona el banco o app del Monto 2.',
+                )
 
             vp = cleaned.get('valor_pagado')
             tipo_matricula = cleaned.get('tipo_matricula')
@@ -1055,17 +1077,8 @@ class AbonoForm(forms.ModelForm):
 
     def __init__(self, *args, matricula=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if 'banco' in self.fields:
-            banco_val = self.initial.get('banco')
-            if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
-                banco_val = getattr(self.instance, 'banco')
-            bancos_list = _opciones_banco(banco_val)
-            self.fields['banco'].widget.choices = bancos_list
-            self.fields['banco_1'].widget.choices = bancos_list
-            self.fields['banco_2'].widget.choices = bancos_list
-
         if 'metodo' in self.fields:
-            metodo_choices = [('', 'Seleccione')] + list(Abono.METODOS)
+            metodo_choices = [('', 'Seleccione')] + list(METODOS_PAGO)
             self.fields['metodo'].choices = metodo_choices
             self.fields['metodo'].required = False
             self.fields['metodo_pago_1'].choices = metodo_choices
@@ -1081,6 +1094,11 @@ class AbonoForm(forms.ModelForm):
             self.initial['monto_pago_2'] = self.instance.monto_2
             self.initial['metodo_pago_2'] = self.instance.metodo_2
             self.initial['banco_2'] = self.instance.banco_2
+
+        for campo in ('banco', 'banco_1', 'banco_2'):
+            self.fields[campo].widget.choices = _opciones_banco(
+                self.initial.get(campo)
+            )
 
         if self.instance and self.instance.pk:
             recuperacion = self.instance.recuperaciones.order_by(
@@ -1173,7 +1191,6 @@ class AbonoForm(forms.ModelForm):
         cleaned = super().clean()
         monto = cleaned.get('monto')
         metodo = cleaned.get('metodo')
-        banco = cleaned.get('banco')
         tipo_cobro = cleaned.get('tipo_cobro') or 'un_solo_metodo'
         tipo_pago = cleaned.get('tipo_pago') or 'abono'
         numero_modulo = cleaned.get('numero_modulo')
@@ -1279,27 +1296,13 @@ class AbonoForm(forms.ModelForm):
         if tipo_cobro != 'mixto':
             if not metodo:
                 self.add_error('metodo', 'Selecciona el método de pago.')
-            elif metodo == 'transferencia' and not banco:
-                self.add_error(
-                    'banco',
-                    'Debes indicar el banco cuando el método es Transferencia.'
-                )
-            elif metodo == 'tarjeta' and not banco:
-                self.add_error(
-                    'banco',
-                    'Debes indicar la opción correspondiente (Payphone).'
-                )
-
-            if metodo not in ['transferencia', 'tarjeta']:
-                cleaned['banco'] = ''
+            _revisar_banco(self, cleaned, 'metodo', 'banco')
 
         if tipo_cobro == 'mixto':
             monto_1 = cleaned.get('monto_pago_1') or Decimal('0.00')
             monto_2 = cleaned.get('monto_pago_2') or Decimal('0.00')
             metodo_1 = cleaned.get('metodo_pago_1')
             metodo_2 = cleaned.get('metodo_pago_2')
-            banco_1 = cleaned.get('banco_1')
-            banco_2 = cleaned.get('banco_2')
 
             if monto_1 <= 0:
                 self.add_error('monto_pago_1', 'El Monto 1 debe ser mayor a cero.')
@@ -1316,14 +1319,14 @@ class AbonoForm(forms.ModelForm):
                 self.add_error('metodo_pago_1', 'Selecciona el método del Monto 1.')
             if not metodo_2:
                 self.add_error('metodo_pago_2', 'Selecciona el método del Monto 2.')
-            if metodo_1 in ('transferencia', 'tarjeta') and not banco_1:
-                self.add_error('banco_1', 'Selecciona el banco o app del Monto 1.')
-            if metodo_2 in ('transferencia', 'tarjeta') and not banco_2:
-                self.add_error('banco_2', 'Selecciona el banco o app del Monto 2.')
-            if metodo_1 not in ('transferencia', 'tarjeta'):
-                cleaned['banco_1'] = ''
-            if metodo_2 not in ('transferencia', 'tarjeta'):
-                cleaned['banco_2'] = ''
+            _revisar_banco(
+                self, cleaned, 'metodo_pago_1', 'banco_1',
+                'Selecciona el banco o app del Monto 1.',
+            )
+            _revisar_banco(
+                self, cleaned, 'metodo_pago_2', 'banco_2',
+                'Selecciona el banco o app del Monto 2.',
+            )
 
         # Validación de saldo: solo aplica si el pago cuenta para el saldo del curso.
         # Recuperaciones cobradas APARTE no se validan contra el saldo.
@@ -1852,24 +1855,14 @@ class _AdicionalBaseForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        metodos = list(Adicional.METODOS_PAGO)
+        metodos = list(METODOS_PAGO)
         self.fields['metodo_pago_1'].choices = [('', '— Método 1 —')] + metodos
         self.fields['metodo_pago_2'].choices = [('', '— Método 2 —')] + metodos
 
-        if 'banco_1' in self.fields:
-            self.fields['banco_1'].widget.choices = _opciones_banco(
-                self.initial.get('banco_1')
+        for campo in ('banco', 'banco_1', 'banco_2'):
+            self.fields[campo].widget.choices = _opciones_banco(
+                self.initial.get(campo)
             )
-
-        if 'banco_2' in self.fields:
-            self.fields['banco_2'].widget.choices = _opciones_banco(
-                self.initial.get('banco_2')
-            )
-        if 'banco' in self.fields:
-            banco_val = self.initial.get('banco')
-            if self.instance and hasattr(self.instance, 'banco') and getattr(self.instance, 'banco'):
-                banco_val = getattr(self.instance, 'banco')
-            self.fields['banco'].widget.choices = _opciones_banco(banco_val)
 
         # Solo cursos activos en el desplegable
         self.fields['curso'].queryset = Curso.objects.filter(activo=True).order_by('nombre')
@@ -1906,8 +1899,6 @@ class _AdicionalBaseForm(forms.ModelForm):
         curso = cleaned.get('curso')
         modalidad = cleaned.get('modalidad')
         talla = cleaned.get('talla_camiseta')
-        metodo = cleaned.get('metodo_pago')
-        banco = cleaned.get('banco')
         factura = cleaned.get('factura_realizada')
 
         # Validaciones de montos y métodos para pago mixto
@@ -1927,6 +1918,14 @@ class _AdicionalBaseForm(forms.ModelForm):
                 self.add_error('metodo_pago_1', 'Requerido para pago mixto.')
             if not metodo2:
                 self.add_error('metodo_pago_2', 'Requerido para pago mixto.')
+            _revisar_banco(
+                self, cleaned, 'metodo_pago_1', 'banco_1',
+                'Selecciona el banco o app del Monto 1.',
+            )
+            _revisar_banco(
+                self, cleaned, 'metodo_pago_2', 'banco_2',
+                'Selecciona el banco o app del Monto 2.',
+            )
 
             # Si es mixto, vaciar el principal
             cleaned['metodo_pago'] = ''
@@ -1945,12 +1944,7 @@ class _AdicionalBaseForm(forms.ModelForm):
             cleaned['banco_2'] = ''
             
             # Validación de banco según método principal
-            if metodo == 'transferencia' and not banco:
-                self.add_error('banco', 'Debes indicar el banco cuando el método es Transferencia.')
-            if metodo == 'tarjeta' and not banco:
-                self.add_error('banco', 'Debes indicar la opción correspondiente (Payphone).')
-            if metodo not in ['transferencia', 'tarjeta']:
-                cleaned['banco'] = ''
+            _revisar_banco(self, cleaned, 'metodo_pago', 'banco')
 
         # Validaciones según tipo
         if tipo in ('cert_matricula', 'cert_asistencia', 'cert_antiguo', 'examen_supletorio'):
@@ -2231,7 +2225,7 @@ class AdicionalSupletorioRapidoForm(forms.Form):
     def __init__(self, *args, matricula=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.matricula = matricula
-        metodos = list(Adicional.METODOS_PAGO)
+        metodos = list(METODOS_PAGO)
         self.fields['metodo_pago_1'].choices = [('', '— Método 1 —')] + metodos
         self.fields['metodo_pago_2'].choices = [('', '— Método 2 —')] + metodos
         bancos_list = _opciones_banco()
@@ -2257,8 +2251,6 @@ class AdicionalSupletorioRapidoForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        metodo = cleaned.get('metodo_pago')
-        banco = cleaned.get('banco')
         valor = cleaned.get('valor') or Decimal('0.00')
         tipo_cobro = cleaned.get('tipo_cobro') or 'un_solo_metodo'
 
@@ -2267,8 +2259,6 @@ class AdicionalSupletorioRapidoForm(forms.Form):
             m2 = cleaned.get('monto_pago_2') or Decimal('0.00')
             metodo1 = cleaned.get('metodo_pago_1')
             metodo2 = cleaned.get('metodo_pago_2')
-            banco1 = cleaned.get('banco_1')
-            banco2 = cleaned.get('banco_2')
 
             if m1 <= 0:
                 self.add_error('monto_pago_1', 'El Monto 1 debe ser mayor a cero.')
@@ -2283,23 +2273,18 @@ class AdicionalSupletorioRapidoForm(forms.Form):
                 self.add_error('metodo_pago_1', 'Selecciona el método del Monto 1.')
             if not metodo2:
                 self.add_error('metodo_pago_2', 'Selecciona el método del Monto 2.')
-            if metodo1 in ('transferencia', 'tarjeta') and not banco1:
-                self.add_error('banco_1', 'Selecciona el banco o app del Monto 1.')
-            if metodo2 in ('transferencia', 'tarjeta') and not banco2:
-                self.add_error('banco_2', 'Selecciona el banco o app del Monto 2.')
-            if metodo1 not in ('transferencia', 'tarjeta'):
-                cleaned['banco_1'] = ''
-            if metodo2 not in ('transferencia', 'tarjeta'):
-                cleaned['banco_2'] = ''
+            _revisar_banco(
+                self, cleaned, 'metodo_pago_1', 'banco_1',
+                'Selecciona el banco o app del Monto 1.',
+            )
+            _revisar_banco(
+                self, cleaned, 'metodo_pago_2', 'banco_2',
+                'Selecciona el banco o app del Monto 2.',
+            )
             cleaned['metodo_pago'] = ''
             cleaned['banco'] = ''
         else:
-            if metodo == 'transferencia' and not banco:
-                self.add_error('banco', 'Debes indicar el banco cuando el método es Transferencia.')
-            if metodo == 'tarjeta' and not banco:
-                self.add_error('banco', 'Debes indicar la opción correspondiente (Payphone).')
-            if metodo not in ['transferencia', 'tarjeta']:
-                cleaned['banco'] = ''
+            _revisar_banco(self, cleaned, 'metodo_pago', 'banco')
             cleaned['monto_pago_1'] = None
             cleaned['metodo_pago_1'] = ''
             cleaned['banco_1'] = ''

@@ -132,7 +132,7 @@
                 <label class="form-label" style="color:#1a237e;">🏦 Banco *</label>
                 {{ form.banco }}
                 {{ form.banco.errors }}
-                <small style="color:#666; font-size:11px;">Selecciona el banco usado para la transferencia.</small>
+                <small data-ayuda-banco style="color:#666; font-size:11px;"></small>
             </div>
         </div>
 
@@ -329,19 +329,19 @@
             campos.push({ name: 'monto_pago_1', label: 'Monto 1' });
             campos.push({ name: 'metodo_pago_1', label: 'Método 1' });
             const met1 = document.getElementById('id_metodo_pago_1_adicional');
-            if (met1 && ['transferencia', 'tarjeta'].includes(met1.value)) {
+            if (met1 && BancosPago.necesitaBanco(met1.value)) {
                 campos.push({ name: 'banco_1', label: 'Banco 1' });
             }
             
             campos.push({ name: 'monto_pago_2', label: 'Monto 2' });
             campos.push({ name: 'metodo_pago_2', label: 'Método 2' });
             const met2 = document.getElementById('id_metodo_pago_2_adicional');
-            if (met2 && ['transferencia', 'tarjeta'].includes(met2.value)) {
+            if (met2 && BancosPago.necesitaBanco(met2.value)) {
                 campos.push({ name: 'banco_2', label: 'Banco 2' });
             }
         } else {
-            if (metodoSel && ['transferencia', 'tarjeta'].includes(metodoSel.value)) {
-                campos.push({ name: 'banco', label: metodoSel.value === 'tarjeta' ? 'Tarjeta / App' : 'Banco' });
+            if (metodoSel && BancosPago.necesitaBanco(metodoSel.value)) {
+                campos.push({ name: 'banco', label: metodoSel.value === 'tarjeta' ? 'Tarjeta / Link de pago' : 'Banco' });
             }
         }
 
@@ -506,39 +506,7 @@
         if (!metodoSel || !bloqueBanco) return;
 
         function actualizar() {
-            const bancoSel = document.getElementById('id_banco');
-            const labelBanco = bloqueBanco.querySelector('label');
-
-            if (metodoSel.value === 'transferencia') {
-                bloqueBanco.style.display = 'block';
-                if (labelBanco) labelBanco.innerText = '🏦 Banco *';
-                if (bancoSel) {
-                    Array.from(bancoSel.options).forEach(opt => {
-                        if (opt.value === 'payphone') {
-                            opt.style.display = 'none';
-                        } else {
-                            opt.style.display = '';
-                        }
-                    });
-                    if (bancoSel.value === 'payphone') { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
-                }
-            } else if (metodoSel.value === 'tarjeta') {
-                bloqueBanco.style.display = 'block';
-                if (labelBanco) labelBanco.innerText = '💳 Tarjeta / App *';
-                if (bancoSel) {
-                    Array.from(bancoSel.options).forEach(opt => {
-                        if (opt.value === 'payphone' || opt.value === '') {
-                            opt.style.display = '';
-                        } else {
-                            opt.style.display = 'none';
-                        }
-                    });
-                    if (bancoSel.value !== 'payphone') { bancoSel.value = 'payphone'; bancoSel.dispatchEvent(new Event('change')); }
-                }
-            } else {
-                bloqueBanco.style.display = 'none';
-                if (bancoSel) { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
-            }
+            BancosPago.aplicar(metodoSel, bloqueBanco, document.getElementById('id_banco'));
             validarCamposPrincipales();
         }
         metodoSel.addEventListener('change', actualizar);
@@ -603,34 +571,10 @@
             }
         }
 
-        function setupBanco(metodoEl, bloqueEl) {
+        function setupBanco(metodoEl, bloqueEl, numero) {
             if (!metodoEl || !bloqueEl) return;
             metodoEl.addEventListener('change', function() {
-                const val = this.value;
-                const bancoSel = bloqueEl.querySelector('select');
-                const label = bloqueEl.querySelector('label');
-                if (val === 'transferencia') {
-                    bloqueEl.style.display = 'block';
-                    if (label) label.innerText = '🏦 Banco *';
-                    if (bancoSel) {
-                        Array.from(bancoSel.options).forEach(opt => {
-                            opt.style.display = (opt.value === 'payphone') ? 'none' : '';
-                        });
-                        if (bancoSel.value === 'payphone') bancoSel.value = '';
-                    }
-                } else if (val === 'tarjeta') {
-                    bloqueEl.style.display = 'block';
-                    if (label) label.innerText = '💳 Tarjeta / App *';
-                    if (bancoSel) {
-                        Array.from(bancoSel.options).forEach(opt => {
-                            opt.style.display = (opt.value === 'payphone' || opt.value === '') ? '' : 'none';
-                        });
-                        if (bancoSel.value !== 'payphone') bancoSel.value = 'payphone';
-                    }
-                } else {
-                    bloqueEl.style.display = 'none';
-                    if (bancoSel) bancoSel.value = '';
-                }
+                BancosPago.aplicar(this, bloqueEl, bloqueEl.querySelector('select'), numero);
                 validarCamposPrincipales();
             });
             // trigger on load
@@ -645,8 +589,8 @@
         if (monto1) monto1.addEventListener('input', validarMontos);
         if (monto2) monto2.addEventListener('input', validarMontos);
 
-        setupBanco(metodo1, bloqueBanco1);
-        setupBanco(metodo2, bloqueBanco2);
+        setupBanco(metodo1, bloqueBanco1, '1');
+        setupBanco(metodo2, bloqueBanco2, '2');
     })();
 
     if (form) {

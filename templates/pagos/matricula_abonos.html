@@ -466,17 +466,21 @@
                         <span
                             style="background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">💵
                             Efectivo</span>
+                        {% elif a.metodo == 'deposito' %}
+                        <span
+                            style="background:#e0f2f1; color:#00695c; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">🧾
+                            Depósito</span>
                         {% elif a.metodo == 'transferencia' %}
                         <span
                             style="background:#e3f2fd; color:#0d47a1; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">🏦
                             Transferencia</span>
-                        {% if a.banco %}
-                        <div style="font-size:10px; color:#666; margin-top:2px;">{{ a.get_banco_display }}</div>
-                        {% endif %}
                         {% elif a.metodo == 'tarjeta' %}
                         <span
                             style="background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">💳
-                            Tarjeta</span>
+                            Tarjeta / Link de pago</span>
+                        {% endif %}
+                        {% if a.banco and a.metodo != 'efectivo' %}
+                        <div style="font-size:10px; color:#666; margin-top:2px;">{{ a.get_banco_display }}</div>
                         {% endif %}
                     </div>
                     {% if a.monto_2 %}
@@ -486,17 +490,21 @@
                         <span
                             style="background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">💵
                             Efectivo</span>
+                        {% elif a.metodo_2 == 'deposito' %}
+                        <span
+                            style="background:#e0f2f1; color:#00695c; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">🧾
+                            Depósito</span>
                         {% elif a.metodo_2 == 'transferencia' %}
                         <span
                             style="background:#e3f2fd; color:#0d47a1; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">🏦
                             Transferencia</span>
-                        {% if a.banco_2 %}
-                        <div style="font-size:10px; color:#666; margin-top:2px;">{{ a.get_banco_2_display|default:a.banco_2 }}</div>
-                        {% endif %}
                         {% elif a.metodo_2 == 'tarjeta' %}
                         <span
                             style="background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">💳
-                            Tarjeta</span>
+                            Tarjeta / Link de pago</span>
+                        {% endif %}
+                        {% if a.banco_2 and a.metodo_2 != 'efectivo' %}
+                        <div style="font-size:10px; color:#666; margin-top:2px;">{{ a.get_banco_2_display|default:a.banco_2 }}</div>
                         {% endif %}
                     </div>
                     {% endif %}
@@ -653,13 +661,13 @@
                     {{ form.metodo.errors }}
                 </div>
 
-                {# Banco — solo se muestra si el método es Transferencia bancaria #}
+                {# Banco — solo se muestra si el método lleva banco o app #}
                 <div id="bloque-banco"
                     style="margin-bottom:12px; display:none; background:#f5f7ff; border:1px solid #c5cae9; border-radius:8px; padding:12px;">
                     <label class="form-label" style="color:#1a237e;">🏦 Banco *</label>
                     {{ form.banco }}
                     {{ form.banco.errors }}
-                    <small style="color:#666; font-size:11px;">Selecciona el banco usado para la transferencia.</small>
+                    <small data-ayuda-banco style="color:#666; font-size:11px;"></small>
                 </div>
             </div>
 
@@ -751,47 +759,9 @@
     });
 
     // ========== MOSTRAR/OCULTAR BANCO SEGÚN MÉTODO DE PAGO ==========
-    function _aplicarToggleBanco(metodoSel, bancoCont, bancoSel) {
+    function _aplicarToggleBanco(metodoSel, bancoCont, bancoSel, numero) {
         if (!metodoSel || !bancoCont) return;
-        const met = metodoSel.value;
-        const labelBanco = bancoCont.querySelector('label');
-
-        if (met === 'transferencia') {
-            bancoCont.style.display = 'block';
-            if (labelBanco) labelBanco.innerText = '🏦 Banco *';
-            if (bancoSel) {
-                bancoSel.required = true;
-                Array.from(bancoSel.options).forEach(opt => {
-                    if (opt.value === 'payphone') {
-                        opt.style.display = 'none';
-                    } else {
-                        opt.style.display = '';
-                    }
-                });
-                if (bancoSel.value === 'payphone') { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
-            }
-        } else if (met === 'tarjeta') {
-            bancoCont.style.display = 'block';
-            if (labelBanco) labelBanco.innerText = '💳 Tarjeta / App *';
-            if (bancoSel) {
-                bancoSel.required = true;
-                Array.from(bancoSel.options).forEach(opt => {
-                    if (opt.value === 'payphone' || opt.value === '') {
-                        opt.style.display = '';
-                    } else {
-                        opt.style.display = 'none';
-                    }
-                });
-                if (bancoSel.value !== 'payphone') { bancoSel.value = 'payphone'; bancoSel.dispatchEvent(new Event('change')); }
-            }
-        } else {
-            bancoCont.style.display = 'none';
-            if (bancoSel) {
-                bancoSel.required = false;
-                bancoSel.value = '';
-                bancoSel.dispatchEvent(new Event('change'));
-            }
-        }
+        BancosPago.aplicar(metodoSel, bancoCont, bancoSel, numero);
         validarMonto();
     }
 
@@ -808,8 +778,8 @@
     const bancoSel2 = document.getElementById('id_banco_2_abono');
 
     if (metodoSel) metodoSel.addEventListener('change', () => _aplicarToggleBanco(metodoSel, bloqueBanco, bancoSel));
-    if (metodoSel1) metodoSel1.addEventListener('change', () => _aplicarToggleBanco(metodoSel1, bloqueBanco1, bancoSel1));
-    if (metodoSel2) metodoSel2.addEventListener('change', () => _aplicarToggleBanco(metodoSel2, bloqueBanco2, bancoSel2));
+    if (metodoSel1) metodoSel1.addEventListener('change', () => _aplicarToggleBanco(metodoSel1, bloqueBanco1, bancoSel1, '1'));
+    if (metodoSel2) metodoSel2.addEventListener('change', () => _aplicarToggleBanco(metodoSel2, bloqueBanco2, bancoSel2, '2'));
 
     // ── Mostrar/ocultar Módulo y bloque Recuperación según tipo de pago ──
     const tipoSel = document.getElementById('id_tipo_pago');
@@ -1062,7 +1032,7 @@
     }
 
     function requiereBanco(selectMetodo) {
-        return selectMetodo && (selectMetodo.value === 'transferencia' || selectMetodo.value === 'tarjeta');
+        return selectMetodo && BancosPago.necesitaBanco(selectMetodo.value);
     }
 
     function estaVisible(el) {
@@ -1118,12 +1088,12 @@
             if (monto1 <= 0) agregarFaltante(faltantes, 'Monto 1');
             if (!metodoSel1 || !metodoSel1.value) agregarFaltante(faltantes, 'Método 1');
             if (requiereBanco(metodoSel1) && bancoSel1 && !bancoSel1.value) {
-                agregarFaltante(faltantes, metodoSel1.value === 'tarjeta' ? 'Tarjeta / app 1' : 'Banco 1');
+                agregarFaltante(faltantes, metodoSel1.value === 'tarjeta' ? 'Tarjeta / link de pago 1' : 'Banco 1');
             }
             if (monto2 <= 0) agregarFaltante(faltantes, 'Monto 2');
             if (!metodoSel2 || !metodoSel2.value) agregarFaltante(faltantes, 'Método 2');
             if (requiereBanco(metodoSel2) && bancoSel2 && !bancoSel2.value) {
-                agregarFaltante(faltantes, metodoSel2.value === 'tarjeta' ? 'Tarjeta / app 2' : 'Banco 2');
+                agregarFaltante(faltantes, metodoSel2.value === 'tarjeta' ? 'Tarjeta / link de pago 2' : 'Banco 2');
             }
             if (montoPrincipal > 0 && monto1 > 0 && monto2 > 0 && Math.abs((monto1 + monto2) - montoPrincipal) > 0.01) {
                 agregarFaltante(faltantes, 'Suma del pago mixto');
@@ -1131,7 +1101,7 @@
         } else {
             if (!metodoSel || !metodoSel.value) agregarFaltante(faltantes, 'Método de pago');
             if (requiereBanco(metodoSel) && bancoSel && !bancoSel.value) {
-                agregarFaltante(faltantes, metodoSel.value === 'tarjeta' ? 'Tarjeta / app' : 'Banco');
+                agregarFaltante(faltantes, metodoSel.value === 'tarjeta' ? 'Tarjeta / link de pago' : 'Banco');
             }
         }
 
@@ -1266,10 +1236,10 @@
         _aplicarToggleBanco(metodoSel, bloqueBanco, bancoSel);
     }
     if (metodoSel1) {
-        _aplicarToggleBanco(metodoSel1, bloqueBanco1, bancoSel1);
+        _aplicarToggleBanco(metodoSel1, bloqueBanco1, bancoSel1, '1');
     }
     if (metodoSel2) {
-        _aplicarToggleBanco(metodoSel2, bloqueBanco2, bancoSel2);
+        _aplicarToggleBanco(metodoSel2, bloqueBanco2, bancoSel2, '2');
     }
     actualizar();
     if (tipoCobroSelect) {

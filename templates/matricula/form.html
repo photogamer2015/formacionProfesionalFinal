@@ -330,10 +330,10 @@
             </div>
             <div id="banco-container">
                 <label class="form-label" for="id_banco">
-                    💳 Tarjeta / App *
+                    🏦 Banco *
                 </label>
                 {{ mat_form.banco }}{{ mat_form.banco.errors }}
-                <small style="color: #666; display: block; margin-top: 5px;">Selecciona el tipo de tarjeta o app: Payphone o De una.</small>
+                <small data-ayuda-banco style="color: #666; display: block; margin-top: 5px;"></small>
             </div>
         </div>
 
@@ -349,7 +349,7 @@
                     {{ mat_form.metodo_pago_1 }}{{ mat_form.metodo_pago_1.errors }}
                 </div>
                 <div id="banco-1-container">
-                    <label class="form-label" for="id_banco_1">💳 Tarjeta / App 1 *</label>
+                    <label class="form-label" for="id_banco_1">🏦 Banco 1 *</label>
                     {{ mat_form.banco_1 }}{{ mat_form.banco_1.errors }}
                 </div>
             </div>
@@ -363,7 +363,7 @@
                     {{ mat_form.metodo_pago_2 }}{{ mat_form.metodo_pago_2.errors }}
                 </div>
                 <div id="banco-2-container">
-                    <label class="form-label" for="id_banco_2">💳 Tarjeta / App 2 *</label>
+                    <label class="form-label" for="id_banco_2">🏦 Banco 2 *</label>
                     {{ mat_form.banco_2 }}{{ mat_form.banco_2.errors }}
                 </div>
             </div>
@@ -1453,13 +1453,21 @@
                 ['Forma pago', textoSeleccion('forma_pago')],
                 ['Distribución', tipoCobro],
             ];
+            // El banco o app acompaña al método (Depósito · Pichincha).
+            function metodoConBanco(sufijo) {
+                const metodo = textoSeleccion('metodo_pago' + sufijo);
+                const banco = obtenerElementoCampo('banco' + sufijo);
+                return banco && banco.value
+                    ? metodo + ' · ' + textoSeleccion('banco' + sufijo)
+                    : metodo;
+            }
             if ((obtenerElementoCampo('tipo_cobro') || {}).value === 'mixto') {
                 rows.push(['Monto 1', '$' + (valorCampo('monto_pago_1') || '0.00')]);
-                rows.push(['Método 1', textoSeleccion('metodo_pago_1')]);
+                rows.push(['Método 1', metodoConBanco('_1')]);
                 rows.push(['Monto 2', '$' + (valorCampo('monto_pago_2') || '0.00')]);
-                rows.push(['Método 2', textoSeleccion('metodo_pago_2')]);
+                rows.push(['Método 2', metodoConBanco('_2')]);
             } else {
-                rows.push(['Método', textoSeleccion('metodo_pago')]);
+                rows.push(['Método', metodoConBanco('')]);
             }
             return rows;
         }
@@ -1666,47 +1674,9 @@
         const CAMPOS_ESTUDIANTE = ['nombres', 'edad', 'correo', 'celular', 'nivel_formacion', 'titulo_profesional', 'ciudad'];
 
         // ========== MOSTRAR/OCULTAR BANCO SEGÚN MÉTODO DE PAGO ==========
-        function _aplicarToggleBanco(metodoSel, bancoCont, bancoSel) {
+        function _aplicarToggleBanco(metodoSel, bancoCont, bancoSel, numero) {
             if (!metodoSel || !bancoCont) return;
-            const met = metodoSel.value;
-            const labelBanco = bancoCont.querySelector('label');
-
-            if (met === 'transferencia') {
-                bancoCont.style.display = 'block';
-                if (labelBanco) labelBanco.innerText = '🏦 Banco *';
-                if (bancoSel) {
-                    bancoSel.required = true;
-                    Array.from(bancoSel.options).forEach(opt => {
-                        if (opt.value === 'payphone') {
-                            opt.style.display = 'none';
-                        } else {
-                            opt.style.display = '';
-                        }
-                    });
-                    if (bancoSel.value === 'payphone') { bancoSel.value = ''; bancoSel.dispatchEvent(new Event('change')); }
-                }
-            } else if (met === 'tarjeta') {
-                bancoCont.style.display = 'block';
-                if (labelBanco) labelBanco.innerText = '💳 Tarjeta / App *';
-                if (bancoSel) {
-                    bancoSel.required = true;
-                    Array.from(bancoSel.options).forEach(opt => {
-                        if (opt.value === 'payphone' || opt.value === '') {
-                            opt.style.display = '';
-                        } else {
-                            opt.style.display = 'none';
-                        }
-                    });
-                    if (bancoSel.value !== 'payphone') { bancoSel.value = 'payphone'; bancoSel.dispatchEvent(new Event('change')); }
-                }
-            } else {
-                bancoCont.style.display = 'none';
-                if (bancoSel) {
-                    bancoSel.required = false;
-                    bancoSel.value = '';
-                    bancoSel.dispatchEvent(new Event('change'));
-                }
-            }
+            BancosPago.aplicar(metodoSel, bancoCont, bancoSel, numero);
             if (typeof toggleSubmitBtn === 'function') toggleSubmitBtn();
         }
 
@@ -1724,10 +1694,10 @@
             _aplicarToggleBanco(metodoPagoSelect, bancoContainer, bancoSelect);
         }
         function toggleBanco1() {
-            _aplicarToggleBanco(metodoPagoSelect1, bancoContainer1, bancoSelect1);
+            _aplicarToggleBanco(metodoPagoSelect1, bancoContainer1, bancoSelect1, '1');
         }
         function toggleBanco2() {
-            _aplicarToggleBanco(metodoPagoSelect2, bancoContainer2, bancoSelect2);
+            _aplicarToggleBanco(metodoPagoSelect2, bancoContainer2, bancoSelect2, '2');
         }
 
         if (metodoPagoSelect) {
@@ -2522,28 +2492,20 @@
                 agregarFaltante('Método de pago');
             }
 
-            // 6. Banco — obligatorio solo cuando el contenedor está visible
-            //    (método de pago: Transferencia bancaria o Tarjeta / App)
-            const bancoCont = document.getElementById('banco-container');
-            const bancoSel = document.getElementById('id_banco');
-            if (!sinCobro && bancoCont && bancoSel && bancoCont.style.display !== 'none') {
-                if (!bancoSel.value) {
-                    agregarFaltante('Banco');
-                }
+            // 6. Banco — obligatorio cuando el método lo lleva (Depósito,
+            //    Transferencia o Tarjeta / Link de pago). Se revisan solo los
+            //    métodos de la distribución elegida: al pasar a Pago Mixto, el
+            //    método único queda oculto con su valor anterior y no cuenta.
+            function faltaBanco(metodoSel, bancoId) {
+                const bancoSel = document.getElementById(bancoId);
+                return !!(metodoSel && bancoSel
+                    && BancosPago.necesitaBanco(metodoSel.value) && !bancoSel.value);
             }
-            const bancoCont1 = document.getElementById('banco-1-container');
-            const bancoSel1 = document.getElementById('id_banco_1');
-            if (!sinCobro && bancoCont1 && bancoSel1 && bancoCont1.style.display !== 'none') {
-                if (!bancoSel1.value) {
-                    agregarFaltante('Banco 1');
-                }
-            }
-            const bancoCont2 = document.getElementById('banco-2-container');
-            const bancoSel2 = document.getElementById('id_banco_2');
-            if (!sinCobro && bancoCont2 && bancoSel2 && bancoCont2.style.display !== 'none') {
-                if (!bancoSel2.value) {
-                    agregarFaltante('Banco 2');
-                }
+            if (!SOLO_DATOS && !sinCobro && tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
+                if (faltaBanco(metodoPagoSelect1, 'id_banco_1')) agregarFaltante('Banco 1');
+                if (faltaBanco(metodoPagoSelect2, 'id_banco_2')) agregarFaltante('Banco 2');
+            } else if (!SOLO_DATOS && !sinCobro && faltaBanco(metodoPagoSelect, 'id_banco')) {
+                agregarFaltante('Banco');
             }
 
             // 7. Datos de factura obligatorios si factura = Sí.
