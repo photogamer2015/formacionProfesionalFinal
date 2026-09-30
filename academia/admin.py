@@ -1,4 +1,11 @@
-from django.contrib import admin
+from decimal import Decimal
+
+from django.contrib import admin, messages
+from django.contrib.admin import helpers
+from django.db import transaction
+from django.template.response import TemplateResponse
+from django.utils.formats import number_format
+
 from .models import (
     Adicional, Categoria, Comprobante, Curso, JornadaCurso,
     Estudiante, Matricula, PersonaExterna, RecuperacionPendiente,
@@ -6,7 +13,12 @@ from .models import (
     EstudianteArchivado, AdicionalArchivado, CierreAdministrativo, Sede,
     ActividadUsuario, AmistadUsuario, Aviso, MeGustaPerfil, PerfilUsuario,
     ConfirmacionMatriculaCorreo, Recordatorio, RecordatorioPagoCorreo,
+    MONTO_RESERVA_MATRICULA,
 )
+
+
+def _dinero(valor):
+    return f'${number_format(valor, 2)}'
 
 
 @admin.register(ActividadUsuario)
@@ -225,6 +237,102 @@ class MatriculaAdmin(admin.ModelAdmin):
     )
     autocomplete_fields = ('estudiante', 'curso', 'jornada')
     readonly_fields = ('registrado_por', 'creado', 'actualizado')
+    actions = ['aplicar_precio_actual']
+
+    @admin.action(
+        permissions=['change'],
+        description='Aplicar el precio actual del curso',
+    )
+    def aplicar_precio_actual(self, request, queryset):
+        """Baja las matrículas seleccionadas al precio que hoy tiene su curso,
+        mostrando primero una página de confirmación."""
+        matriculas = queryset.select_related(
+            'curso', 'estudiante', 'jornada',
+        ).order_by('curso__nombre', 'pk')
+        cambios, sin_cambio = _plan_precio_actual(matriculas)
+
+        if request.POST.get('confirmar') and cambios:
+            with transaction.atomic():
+                for cambio in cambios:
+                    m = cambio['matricula']
+                    # save() de Matricula también sincroniza su Comprobante.
+                    m.save(update_fields=['valor_curso', 'actualizado'])
+                    self.log_change(
+                        request, m,
+                        f'Valor del curso: {_dinero(cambio["valor_anterior"])} → '
+                        f'{_dinero(m.valor_curso)} (precio actual del curso).',
+                    )
+            mensaje = (
+                f'Se actualizaron {len(cambios)} matrícula(s) al precio actual '
+                'del curso.'
+            )
+            if sin_cambio:
+                # Algo cambió entre la confirmación y el guardado (p. ej. un pago).
+                mensaje += (
+                    f' {len(sin_cambio)} ya no cumplían las condiciones y '
+                    'quedaron igual.'
+                )
+            self.message_user(request, mensaje, messages.SUCCESS)
+            return None
+
+        return TemplateResponse(
+            request,
+            'admin/academia/matricula/aplicar_precio_actual.html',
+            {
+                **self.admin_site.each_context(request),
+                'title': 'Aplicar el precio actual del curso',
+                'opts': self.model._meta,
+                'cambios': cambios,
+                'sin_cambio': sin_cambio,
+                'action_checkbox_name': helpers.ACTION_CHECKBOX_NAME,
+                'media': self.media,
+            },
+        )
+
+
+def _plan_precio_actual(matriculas):
+    """Separa las matrículas que bajan al precio actual de su curso de las
+    que se dejan igual (con el motivo). Solo baja valores, nunca los sube."""
+    cambios, sin_cambio = [], []
+    for m in matriculas:
+        # En «Inscripción (gratis)» el valor guardado ya descuenta los $10.
+        ajuste = (
+            MONTO_RESERVA_MATRICULA if m.es_inscripcion_gratis
+            else Decimal('0.00')
+        )
+        nuevo = m.curso.valor_para(m.modalidad) - ajuste
+        if m.estado == 'retiro_voluntario':
+            motivo = 'Retiro voluntario'
+        elif m.es_sin_costo:
+            motivo = 'Tipo «Otros» (sin costo)'
+        elif nuevo <= 0:
+            motivo = (
+                f'El curso no tiene precio en '
+                f'{m.get_modalidad_display().lower()}'
+            )
+        elif m.valor_curso == nuevo:
+            motivo = 'Ya tiene el precio actual'
+        elif m.valor_curso < nuevo:
+            motivo = f'Su valor es menor al precio actual ({_dinero(nuevo)}); no se sube'
+        elif m.descuento:
+            motivo = f'Tiene un descuento de {_dinero(m.descuento)}: revísala a mano'
+        elif m.valor_pagado > nuevo:
+            motivo = f'Ya pagó {_dinero(m.valor_pagado)}, más que el nuevo valor'
+        else:
+            motivo = ''
+
+        if motivo:
+            sin_cambio.append({'matricula': m, 'motivo': motivo})
+            continue
+        valor_anterior, saldo_anterior = m.valor_curso, m.saldo
+        m.valor_curso = nuevo
+        cambios.append({
+            'matricula': m,
+            'valor_anterior': valor_anterior,
+            'saldo_anterior': saldo_anterior,
+            'modulos': m.cuotas_modulos_objetivo(),
+        })
+    return cambios, sin_cambio
 
 
 @admin.register(Comprobante)

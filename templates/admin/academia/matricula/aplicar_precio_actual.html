@@ -1,0 +1,86 @@
+{% extends "admin/base_site.html" %}
+{% load l10n admin_urls static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    {{ media }}
+    <script src="{% static 'admin/js/cancel.js' %}" async></script>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">Inicio</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; Aplicar el precio actual del curso
+</div>
+{% endblock %}
+
+{% block content %}
+<p>
+    Cada matrícula baja al precio que hoy tiene su curso. Se recalculan el saldo,
+    los módulos y el comprobante de venta. Los pagos ya registrados no cambian.
+</p>
+
+{% if cambios %}
+<h2>Se actualizarán ({{ cambios|length }})</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Estudiante</th><th>Curso</th><th>Tipo</th><th>Valor del curso</th>
+            <th>Pagado</th><th>Saldo</th><th>Módulos</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for cambio in cambios %}{% with m=cambio.matricula %}
+        <tr>
+            <td>{{ m.estudiante.nombre_completo }}</td>
+            <td>{{ m.curso.nombre }} ({{ m.get_modalidad_display }})</td>
+            <td>{{ m.get_tipo_matricula_display }}</td>
+            <td>${{ cambio.valor_anterior }} → <strong>${{ m.valor_curso }}</strong></td>
+            <td>${{ m.valor_pagado }}</td>
+            <td>${{ cambio.saldo_anterior }} → <strong>${{ m.saldo }}</strong></td>
+            <td>{% for cuota in cambio.modulos %}${{ cuota }}{% if not forloop.last %} · {% endif %}{% endfor %}</td>
+        </tr>
+    {% endwith %}{% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p><strong>Ninguna de las matrículas seleccionadas cambia de valor.</strong></p>
+{% endif %}
+
+{% if sin_cambio %}
+<h2>Quedan igual ({{ sin_cambio|length }})</h2>
+<table>
+    <thead>
+        <tr><th>Estudiante</th><th>Curso</th><th>Valor del curso</th><th>Motivo</th></tr>
+    </thead>
+    <tbody>
+    {% for fila in sin_cambio %}{% with m=fila.matricula %}
+        <tr>
+            <td>{{ m.estudiante.nombre_completo }}</td>
+            <td>{{ m.curso.nombre }} ({{ m.get_modalidad_display }})</td>
+            <td>${{ m.valor_curso }}</td>
+            <td>{{ fila.motivo }}</td>
+        </tr>
+    {% endwith %}{% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<form method="post">{% csrf_token %}
+<div class="submit-row">
+    {% for cambio in cambios %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ cambio.matricula.pk|unlocalize }}">
+    {% endfor %}
+    <input type="hidden" name="action" value="aplicar_precio_actual">
+    <input type="hidden" name="confirmar" value="1">
+    {% if cambios %}
+    <input type="submit" value="Sí, actualizar {{ cambios|length }} matrícula(s)">
+    {% endif %}
+    <a role="button" href="#" class="button cancel-link">Volver sin cambiar</a>
+</div>
+</form>
+{% endblock %}
