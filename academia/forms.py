@@ -704,9 +704,11 @@ class MatriculaForm(forms.ModelForm):
         # Jornadas: Si no hay curso seleccionado, no mostramos ninguna inicialmente.
         # El frontend (AJAX) las cargará al elegir un curso.
         if self.instance and self.instance.pk and self.instance.curso_id:
+            # Al editar se conserva la jornada actual aunque ya esté inactiva:
+            # desactivar una jornada no debe impedir corregir el pago inicial.
             self.fields['jornada'].queryset = JornadaCurso.objects.filter(
+                Q(activo=True) | Q(pk=self.instance.jornada_id),
                 curso_id=self.instance.curso_id,
-                activo=True,
             )
         elif self.data and self.data.get('mat-curso'):
             # Si el form fue enviado (is_bound) y tiene curso, cargamos sus jornadas

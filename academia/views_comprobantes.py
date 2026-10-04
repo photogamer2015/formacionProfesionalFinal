@@ -10,6 +10,7 @@ Incluye:
 """
 
 from collections import defaultdict
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -19,6 +20,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
@@ -26,9 +28,10 @@ from .forms import ComprobanteForm
 from .models import (
     ARCHIVOS_AVATAR_PERFIL, ARCHIVOS_PORTADA_PERFIL,
     AVATARES_PERFIL, AVATAR_PERFIL_PREDETERMINADO,
-    HOBBIES_MURAL, INTERESES_MURAL, MUSICA_MURAL, PELICULAS_MURAL,
-    PORTADAS_PERFIL, PORTADA_PERFIL_PREDETERMINADA,
-    Comprobante, Curso, Matricula, PerfilUsuario, RecuperacionPendiente,
+    HOBBIES_MURAL, INTERESES_MURAL, METODOS_CON_BANCO, MUSICA_MURAL,
+    PELICULAS_MURAL, PORTADAS_PERFIL, PORTADA_PERFIL_PREDETERMINADA,
+    Abono, Comprobante, Curso, Matricula, PerfilUsuario, RecuperacionPendiente,
+    nombre_banco, nombre_metodo_pago,
 )
 from .permisos import (
     es_admin, es_asesor, matricula_requerida,
@@ -96,6 +99,105 @@ def _seleccion_mural_valida(request, nombre, opciones):
     if any(valor not in claves_validas for valor in valores):
         return None
     return valores
+
+
+DIAS_RECIENTES_PAGOS_PERFIL = 7
+
+
+def _etiqueta_metodo_pago(metodo, banco):
+    etiqueta = nombre_metodo_pago(metodo) or 'Sin método'
+    if metodo in METODOS_CON_BANCO and banco:
+        etiqueta = f'{etiqueta} · {nombre_banco(banco)}'
+    return etiqueta
+
+
+def _dia_pagos_perfil(valor, hoy):
+    """Día pedido en ?pagos_dia=AAAA-MM-DD; hoy si falta, es inválido o futuro."""
+    try:
+        dia = parse_date((valor or '').strip())
+    except ValueError:  # formato correcto pero fecha imposible (ej. 31 de febrero)
+        dia = None
+    if dia is None or dia.year < 2000 or dia > hoy:
+        return hoy
+    return dia
+
+
+def _pagos_registrados_por_dia(usuario, valor_dia):
+    """
+    Pagos de estudiantes que registró `usuario`, separados por día.
+
+    El día es el de la hora local en que se registró el pago (como en
+    «Pagos registrados» del Control de registro), no la fecha que se anotó
+    en el pago: así lo que alguien registra hoy aparece hoy. Los límites del
+    día se calculan aquí para no depender de la zona horaria de la base.
+    """
+    hoy = timezone.localdate()
+    dia = _dia_pagos_perfil(valor_dia, hoy)
+    inicio = timezone.make_aware(datetime.combine(dia, time.min))
+    fin = timezone.make_aware(datetime.combine(dia + timedelta(days=1), time.min))
+
+    pagos = list(
+        Abono.objects.filter(
+            registrado_por=usuario, creado__gte=inicio, creado__lt=fin,
+        )
+        .select_related('matricula__estudiante', 'matricula__curso')
+        .order_by('-creado', '-pk')
+    )
+
+    total = Decimal('0.00')
+    metodos = {}
+    for pago in pagos:
+        monto = pago.monto or Decimal('0.00')
+        monto_2 = pago.monto_2 or Decimal('0.00')
+        metodo_1 = _etiqueta_metodo_pago(pago.metodo, pago.banco)
+        if monto_2 > 0:
+            # En un pago mixto `monto` es el total y `monto_2` la segunda parte.
+            partes = [
+                (metodo_1, monto - monto_2),
+                (_etiqueta_metodo_pago(pago.metodo_2, pago.banco_2), monto_2),
+            ]
+        else:
+            partes = [(metodo_1, monto)]
+        pago.partes_metodo = partes
+        total += monto
+        for etiqueta, parcial in partes:
+            item = metodos.setdefault(
+                etiqueta, {'etiqueta': etiqueta, 'total': Decimal('0.00')},
+            )
+            item['total'] += parcial
+
+    # Últimos días con pagos: se recorre del más reciente hacia atrás y se
+    # corta al completar los días que se muestran.
+    dias_recientes = []
+    por_dia = {}
+    registros = (
+        Abono.objects.filter(registrado_por=usuario)
+        .order_by('-creado', '-pk')
+        .values_list('creado', 'monto')
+    )
+    for creado, monto in registros.iterator():
+        dia_registro = timezone.localtime(creado).date()
+        if dia_registro not in por_dia:
+            if len(dias_recientes) == DIAS_RECIENTES_PAGOS_PERFIL:
+                break
+            por_dia[dia_registro] = {
+                'dia': dia_registro, 'cantidad': 0, 'total': Decimal('0.00'),
+            }
+            dias_recientes.append(por_dia[dia_registro])
+        por_dia[dia_registro]['cantidad'] += 1
+        por_dia[dia_registro]['total'] += monto or Decimal('0.00')
+
+    return {
+        'dia': dia,
+        'hoy': hoy,
+        'es_hoy': dia == hoy,
+        'dia_anterior': dia - timedelta(days=1),
+        'dia_siguiente': dia + timedelta(days=1) if dia < hoy else None,
+        'pagos': pagos,
+        'total': total,
+        'metodos': sorted(metodos.values(), key=lambda item: -item['total']),
+        'dias_recientes': dias_recientes,
+    }
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -670,12 +772,17 @@ def comprobante_asesor_detalle(request, vendedora_id):
             .select_related('curso', 'estudiante')
             .order_by('-fecha_matricula', '-id')
         )
+        # Cada usuario ve solo los pagos que registró él mismo.
+        pagos_registrados = _pagos_registrados_por_dia(
+            asesor, request.GET.get('pagos_dia'),
+        )
     else:
         comprobantes = Comprobante.objects.none()
         comprobantes_retirados = Comprobante.objects.none()
         comprobantes_pendientes = Comprobante.objects.none()
         recuperaciones = RecuperacionPendiente.objects.none()
         registros = Matricula.objects.none()
+        pagos_registrados = None
         total_ventas = 0
         total_activas = 0
         total_retiros = 0
@@ -686,6 +793,7 @@ def comprobante_asesor_detalle(request, vendedora_id):
         'asesor': asesor,
         'comprobantes': comprobantes,
         'registros': registros,
+        'pagos_registrados': pagos_registrados,
         'total_ventas': total_ventas,
         'total_activas': total_activas,
         'total_retiros': total_retiros,

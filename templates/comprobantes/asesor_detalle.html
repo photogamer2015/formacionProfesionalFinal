@@ -30,6 +30,163 @@
         color: var(--fp-muted, #6f7889);
         font-weight: 600;
     }
+
+    /* ── Pagos registrados por día ── */
+    .profile-pagos-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px 16px;
+        padding: 14px 20px;
+        border-bottom: 1px solid #e9edf3;
+    }
+    .profile-pagos-dia {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px 10px;
+        min-width: 0;
+    }
+    .profile-pagos-dia > strong {
+        color: var(--fp-navy);
+        font-size: 15px;
+    }
+    .profile-pagos-total {
+        color: #6f7889;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    .profile-pagos-total strong {
+        color: #278441;
+        font-size: 15px;
+    }
+    .profile-pagos-nav {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .profile-pagos-nav button.profile-row-link {
+        cursor: pointer;
+        font-family: inherit;
+    }
+    .profile-pagos-nav input[type="date"] {
+        min-height: 30px;
+        padding: 4px 8px;
+        border: 1px solid #dce3ee;
+        border-radius: 9px;
+        color: var(--fp-navy);
+        background: #ffffff;
+        font: inherit;
+        font-size: 12px;
+    }
+    .profile-pagos-metodos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 12px 20px 0;
+    }
+    .profile-pagos-dias {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px 20px 14px;
+        border-bottom: 1px solid #e9edf3;
+    }
+    .profile-pagos-dias-titulo {
+        color: #7b8494;
+        font-size: 11px;
+        font-weight: 800;
+    }
+    .profile-pagos-dia-chip {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 6px 11px;
+        border: 1px solid #dce3ee;
+        border-radius: 11px;
+        color: var(--fp-navy);
+        background: #f2f5fa;
+        text-decoration: none;
+        line-height: 1.25;
+    }
+    .profile-pagos-dia-chip strong {
+        font-size: 12px;
+    }
+    .profile-pagos-dia-chip small {
+        color: #6f7889;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    .profile-pagos-dia-chip:hover,
+    .profile-pagos-dia-chip.is-active {
+        color: #ffffff;
+        border-color: var(--fp-navy);
+        background: var(--fp-navy);
+    }
+    .profile-pagos-dia-chip:hover small,
+    .profile-pagos-dia-chip.is-active small {
+        color: rgba(255, 255, 255, .82);
+    }
+    .profile-pagos-metodo-linea {
+        display: block;
+        white-space: nowrap;
+    }
+    body.dark-mode .profile-pagos-toolbar,
+    body.dark-mode .profile-pagos-dias {
+        border-color: var(--fp-dark-line);
+    }
+    body.dark-mode .profile-pagos-dia > strong {
+        color: var(--fp-dark-text);
+    }
+    body.dark-mode .profile-pagos-total,
+    body.dark-mode .profile-pagos-dias-titulo,
+    body.dark-mode .profile-pagos-dia-chip small {
+        color: var(--fp-dark-muted);
+    }
+    body.dark-mode .profile-pagos-total strong {
+        color: #6fd38c;
+    }
+    body.dark-mode .profile-pagos-nav input[type="date"],
+    body.dark-mode .profile-pagos-dia-chip {
+        color: var(--fp-dark-text);
+        border-color: var(--fp-dark-line);
+        background: var(--fp-dark-soft);
+        color-scheme: dark;
+    }
+    body.dark-mode .profile-pagos-dia-chip:hover,
+    body.dark-mode .profile-pagos-dia-chip.is-active {
+        color: #ffffff;
+        border-color: #3d578d;
+        background: #24375f;
+    }
+    @media (max-width: 760px) {
+        .profile-pagos-toolbar,
+        .profile-pagos-dias {
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+        .profile-pagos-metodos {
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+        .profile-pagos-nav input[type="date"] {
+            flex: 1 1 140px;
+        }
+        .profile-pagos-metodo-linea {
+            white-space: normal;
+        }
+        /* En tarjetas no hace falta fijar la columna del estudiante. */
+        #pagos .profile-table td.fp-table-identity-column {
+            position: static;
+            min-width: 0;
+            max-width: none;
+            background: transparent;
+            box-shadow: none;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -335,6 +492,7 @@
     <nav class="profile-tabs" aria-label="Secciones del perfil">
         <a href="#resumen" class="is-active">Resumen</a>
         <a href="#estudiantes">Estudiantes</a>
+        <a href="#pagos">Pagos</a>
         <a href="#actividad">Actividad</a>
     </nav>
     {% endif %}
@@ -573,6 +731,134 @@
     </div>
     {% endif %}
 </section>
+
+{% with pr=pagos_registrados %}
+<section class="profile-section-card" id="pagos">
+    <header class="profile-section-header">
+        <div class="profile-section-heading">
+            <span class="profile-section-icon" aria-hidden="true">$</span>
+            <div>
+                <h2>Pagos registrados por día</h2>
+                <p>Pagos de estudiantes que registraste tú, según el día en que los registraste.</p>
+            </div>
+        </div>
+        <span class="profile-count">{{ pr.pagos|length }} pago{{ pr.pagos|length|pluralize }}</span>
+    </header>
+
+    <div class="profile-pagos-toolbar">
+        <div class="profile-pagos-dia">
+            <strong>{{ pr.dia|date:"l, j \d\e F \d\e Y"|capfirst }}</strong>
+            {% if pr.es_hoy %}<span class="profile-pill profile-pill-active">Hoy</span>{% endif %}
+            <span class="profile-pagos-total">Total del día: <strong>${{ pr.total|floatformat:2 }}</strong></span>
+        </div>
+        <form method="get" action="#pagos" class="profile-pagos-nav" aria-label="Elegir el día de los pagos">
+            <a href="?pagos_dia={{ pr.dia_anterior|date:'Y-m-d' }}#pagos" class="profile-row-link">‹ Día anterior</a>
+            <label class="sr-only" for="pagos-dia-input">Día</label>
+            <input type="date" id="pagos-dia-input" name="pagos_dia"
+                   value="{{ pr.dia|date:'Y-m-d' }}" max="{{ pr.hoy|date:'Y-m-d' }}">
+            <button type="submit" class="profile-row-link">Ver día</button>
+            {% if pr.dia_siguiente %}
+            <a href="?pagos_dia={{ pr.dia_siguiente|date:'Y-m-d' }}#pagos" class="profile-row-link">Día siguiente ›</a>
+            {% endif %}
+            {% if not pr.es_hoy %}
+            <a href="?pagos_dia={{ pr.hoy|date:'Y-m-d' }}#pagos" class="profile-row-link">Hoy</a>
+            {% endif %}
+        </form>
+    </div>
+
+    {% if pr.metodos %}
+    <div class="profile-pagos-metodos" aria-label="Total del día por método de pago">
+        {% for metodo in pr.metodos %}
+        <span class="profile-pill profile-pill-mode">{{ metodo.etiqueta }}: ${{ metodo.total|floatformat:2 }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if pr.dias_recientes %}
+    <nav class="profile-pagos-dias" aria-label="Últimos días con pagos registrados">
+        <span class="profile-pagos-dias-titulo">Últimos días con pagos:</span>
+        {% for d in pr.dias_recientes %}
+        <a href="?pagos_dia={{ d.dia|date:'Y-m-d' }}#pagos"
+           class="profile-pagos-dia-chip{% if d.dia == pr.dia %} is-active{% endif %}"
+           {% if d.dia == pr.dia %}aria-current="date"{% endif %}>
+            <strong>{% if d.dia == pr.hoy %}Hoy{% else %}{{ d.dia|date:"D d/m"|capfirst }}{% endif %}</strong>
+            <small>{{ d.cantidad }} pago{{ d.cantidad|pluralize }} · ${{ d.total|floatformat:2 }}</small>
+        </a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if pr.pagos %}
+    <div class="table-wrap profile-table-wrap">
+        <table class="profile-table" aria-label="Pagos registrados el {{ pr.dia|date:'d/m/Y' }}">
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Estudiante</th>
+                    <th>Curso</th>
+                    <th>Concepto</th>
+                    <th>Método</th>
+                    <th>Monto</th>
+                    <th>Fecha del pago</th>
+                    <th>Recibo</th>
+                    <th class="profile-actions-heading">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in pr.pagos %}
+                <tr>
+                    <td data-label="Hora"><strong>{{ p.creado|time:"H:i" }}</strong></td>
+                    <td data-label="Estudiante">
+                        <div>
+                            <strong>{{ p.matricula.estudiante.nombres }}</strong>
+                            <span class="profile-table-note">{{ p.matricula.estudiante.cedula }}</span>
+                        </div>
+                    </td>
+                    <td data-label="Curso">
+                        <div>
+                            {{ p.matricula.curso.nombre }}
+                            <span class="profile-table-note">{{ p.matricula.get_modalidad_display }}</span>
+                        </div>
+                    </td>
+                    <td data-label="Concepto">
+                        <div>
+                            {{ p.get_tipo_pago_display }}
+                            {% if p.get_modulo_display %}<span class="profile-table-note">{{ p.get_modulo_display }}</span>{% endif %}
+                        </div>
+                    </td>
+                    <td data-label="Método">
+                        <div>
+                            {% for etiqueta, parcial in p.partes_metodo %}
+                            <span class="profile-pagos-metodo-linea">{{ etiqueta }}{% if p.partes_metodo|length > 1 %}: ${{ parcial|floatformat:2 }}{% endif %}</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td data-label="Monto" class="profile-money-positive">${{ p.monto|floatformat:2 }}</td>
+                    <td data-label="Fecha del pago">{{ p.fecha|date:"d/m/Y" }}</td>
+                    <td data-label="Recibo">{{ p.numero_recibo|default:"—" }}</td>
+                    <td data-label="Acciones" class="profile-actions-cell">
+                        {% if puede_gestionar_matriculas %}
+                            <a href="{% url 'academia:matricula_abonos' p.matricula_id %}" class="profile-row-link">
+                                <span aria-hidden="true">◉</span> Ver pagos
+                            </a>
+                        {% else %}
+                            <span class="profile-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="profile-empty">
+        <span aria-hidden="true">$</span>
+        <h3>{% if pr.es_hoy %}Hoy aún no registras pagos{% else %}No registraste pagos este día{% endif %}</h3>
+        <p>Los pagos que registres aparecerán aquí el mismo día, con su hora y monto.</p>
+    </div>
+    {% endif %}
+</section>
+{% endwith %}
 
 <section class="profile-section-card" id="actividad">
     <header class="profile-section-header">
