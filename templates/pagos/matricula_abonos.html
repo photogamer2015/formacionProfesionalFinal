@@ -643,6 +643,9 @@
                     <label class="form-label">Monto (USD) *</label>
                     {{ form.monto }}
                     {{ form.monto.errors }}
+                    <small id="aviso-tope-modulo" aria-live="polite"
+                        style="display:none; font-size:11px; margin-top:5px; line-height:1.35;">
+                    </small>
                 </div>
             </div>
 
@@ -1025,6 +1028,42 @@
         return parseFloat((input.value || '').replace(',', '.')) || 0;
     }
 
+    // ── Solo Módulo: cada módulo se paga hasta $20 (Presencial) o $25
+    //    (Online). El tope viene del servidor, que también lo valida. ──
+    const avisoTopeModulo = document.getElementById('aviso-tope-modulo');
+    const topeModulo = montoInput && montoInput.dataset.topeModulo
+        ? Number(montoInput.dataset.topeModulo) : null;
+    const modalidadTopeLabel = montoInput ? (montoInput.dataset.modalidadLabel || '') : '';
+
+    function aplicaTopeModulo() {
+        return topeModulo !== null && !!tipoSel && tipoSel.value === 'solo_modulo';
+    }
+
+    function excedeTopeModulo() {
+        return aplicaTopeModulo()
+            && Math.round(valorNumero(montoInput) * 100) > Math.round(topeModulo * 100);
+    }
+
+    function marcarTopeModulo() {
+        if (!montoInput || !avisoTopeModulo) return;
+        const excede = excedeTopeModulo();
+        montoInput.style.borderColor = excede ? '#c62828' : '';
+        montoInput.style.background = excede ? '#ffebee' : '';
+        if (excede) montoInput.setAttribute('aria-invalid', 'true');
+        else montoInput.removeAttribute('aria-invalid');
+        if (!aplicaTopeModulo()) {
+            avisoTopeModulo.style.display = 'none';
+            return;
+        }
+        const tope = '$' + topeModulo.toFixed(2);
+        avisoTopeModulo.style.display = 'block';
+        avisoTopeModulo.style.color = excede ? '#c62828' : '#666';
+        avisoTopeModulo.style.fontWeight = excede ? '700' : '400';
+        avisoTopeModulo.textContent = excede
+            ? `⚠️ En ${modalidadTopeLabel} cada módulo se paga hasta ${tope}. Si paga más de un módulo, registra cada módulo por separado.`
+            : `Máximo por módulo en ${modalidadTopeLabel}: ${tope}.`;
+    }
+
     function agregarFaltante(faltantes, label) {
         if (label && !faltantes.includes(label)) {
             faltantes.push(label);
@@ -1053,6 +1092,9 @@
         if (tipoSel && !tipoSel.value) agregarFaltante(faltantes, 'Tipo de pago');
         if (fechaInput && !fechaInput.value) agregarFaltante(faltantes, 'Fecha del pago');
         if (!montoInput || montoPrincipal <= 0) agregarFaltante(faltantes, 'Monto mayor a $0.00');
+        if (excedeTopeModulo()) {
+            agregarFaltante(faltantes, `Monto de máximo $${topeModulo.toFixed(2)} por módulo`);
+        }
 
         if (bloqueModulo && estaVisible(bloqueModulo) && moduloSelect && !moduloSelect.value) {
             agregarFaltante(faltantes, 'Módulo');
@@ -1109,6 +1151,10 @@
     }
 
     function enfocarPrimerCampoPendiente() {
+        if (excedeTopeModulo()) {
+            montoInput.focus();
+            return;
+        }
         if (
             fechaFaltaInput && fechaFaltaInput.value
             && fechaRecuperarInput && fechaRecuperarInput.value
@@ -1149,6 +1195,7 @@
 
     function validarMonto() {
         if (!btnGuardar || !montoInput) return false;
+        marcarTopeModulo();
         const val = valorNumero(montoInput);
         const faltantes = obtenerFaltantesPago();
         let esValido = faltantes.length === 0;

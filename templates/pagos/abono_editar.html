@@ -77,6 +77,9 @@
             <label class="form-label">Monto (USD) *</label>
             {{ form.monto }}
             {{ form.monto.errors }}
+            <small id="aviso-tope-modulo" aria-live="polite"
+                style="display:none; font-size:11px; margin-top:5px; line-height:1.35;">
+            </small>
         </div>
     </div>
 
@@ -396,6 +399,48 @@
         return parseFloat((input.value || '').replace(',', '.')) || 0;
     }
 
+    // ── Solo Módulo: cada módulo se paga hasta $20 (Presencial) o $25
+    //    (Online). Un pago antiguo mayor se puede guardar sin cambiar su monto. ──
+    const avisoTopeModulo = document.getElementById('aviso-tope-modulo');
+    const topeModulo = montoInput && montoInput.dataset.topeModulo
+        ? Number(montoInput.dataset.topeModulo) : null;
+    const montoModuloOriginal = montoInput && montoInput.dataset.montoModuloOriginal
+        ? Number(montoInput.dataset.montoModuloOriginal) : null;
+    const modalidadTopeLabel = montoInput ? (montoInput.dataset.modalidadLabel || '') : '';
+
+    function aplicaTopeModulo() {
+        return topeModulo !== null && !!tipoSel && tipoSel.value === 'solo_modulo';
+    }
+
+    function excedeTopeModulo() {
+        if (!aplicaTopeModulo()) return false;
+        const centavos = Math.round(valorNumero(montoInput) * 100);
+        if (montoModuloOriginal !== null && centavos === Math.round(montoModuloOriginal * 100)) {
+            return false;
+        }
+        return centavos > Math.round(topeModulo * 100);
+    }
+
+    function marcarTopeModulo() {
+        if (!montoInput || !avisoTopeModulo) return;
+        const excede = excedeTopeModulo();
+        montoInput.style.borderColor = excede ? '#c62828' : '';
+        montoInput.style.background = excede ? '#ffebee' : '';
+        if (excede) montoInput.setAttribute('aria-invalid', 'true');
+        else montoInput.removeAttribute('aria-invalid');
+        if (!aplicaTopeModulo()) {
+            avisoTopeModulo.style.display = 'none';
+            return;
+        }
+        const tope = '$' + topeModulo.toFixed(2);
+        avisoTopeModulo.style.display = 'block';
+        avisoTopeModulo.style.color = excede ? '#c62828' : '#666';
+        avisoTopeModulo.style.fontWeight = excede ? '700' : '400';
+        avisoTopeModulo.textContent = excede
+            ? `⚠️ En ${modalidadTopeLabel} cada módulo se paga hasta ${tope}. Si paga más de un módulo, registra cada módulo por separado.`
+            : `Máximo por módulo en ${modalidadTopeLabel}: ${tope}.`;
+    }
+
     function mostrarErrorMixto(mostrar, mensaje = '') {
         if (mixtoErrorMsg) {
             if (mensaje) mixtoErrorMsg.textContent = '⚠️ ' + mensaje;
@@ -411,8 +456,9 @@
 
     function validarMonto() {
         if (!btnGuardar || !montoInput) return false;
+        marcarTopeModulo();
         const val = valorNumero(montoInput);
-        let esValido = (val > 0);
+        let esValido = (val > 0) && !excedeTopeModulo();
 
         if (tipoSel && tipoSel.value === 'recuperacion') {
             if (!fechaFaltaInput || !fechaFaltaInput.value) {

@@ -1,0 +1,532 @@
+{% comment %}Estilos de la hoja del Registro Estudiantil (aspecto de la hoja de Excel del equipo).{% endcomment %}
+<style>
+    .registro-cabecera {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 12px 20px;
+        margin-bottom: 14px;
+    }
+    .registro-cabecera .page-subtitle { margin-bottom: 0; }
+    .registro-estado-hoja {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+        vertical-align: middle;
+    }
+    .registro-estado-hoja.is-abierta { background: #e6f6ea; color: #17692e; }
+    .registro-estado-hoja.is-cerrada { background: #eceff3; color: #4b5563; }
+    .registro-btn-rango {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+    }
+    .registro-aviso {
+        padding: 12px 16px;
+        border-radius: 10px;
+        background: #eff5ff;
+        color: #334b73;
+        margin-bottom: 14px;
+        line-height: 1.5;
+    }
+    .registro-aviso a { font-weight: 800; }
+    .registro-aviso[hidden] { display: none; }
+    body.dark-mode .registro-aviso { background: #1a2638; color: #c9d7f0; }
+    .registro-leyenda {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 14px;
+        padding: 0;
+        list-style: none;
+    }
+    .registro-leyenda li {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border: 1px solid var(--fp-border);
+        border-radius: 999px;
+        background: var(--fp-surface);
+        color: var(--fp-ink);
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .registro-leyenda .muestra {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid rgba(0,0,0,.25);
+        flex: 0 0 auto;
+    }
+
+    /* ── Filtros (como en «Lista de Matriculados») ── */
+    .registro-filtros {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 14px;
+        padding: 16px;
+        border-radius: 12px;
+        background: var(--fp-surface);
+        box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    }
+    .registro-filtros-form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 280px;
+    }
+    .registro-filtros-form .form-input {
+        width: auto;
+        max-width: 220px;
+    }
+    .registro-filtros-form .registro-filtro-buscar {
+        flex: 1;
+        min-width: 220px;
+        max-width: none;
+    }
+    .registro-filtros-form #filtro-jornada { max-width: 280px; }
+    .registro-filtros-form #filtro-jornada:disabled { opacity: .7; cursor: not-allowed; }
+    .registro-salidas { display: flex; flex-wrap: wrap; gap: 6px; }
+    body.dark-mode .registro-filtros {
+        background: linear-gradient(180deg, rgba(22,30,44,.98), rgba(17,24,37,.98));
+        border: 1px solid var(--fp-dark-line);
+    }
+    @media (max-width: 640px) {
+        .registro-filtros-form .form-input,
+        .registro-filtros-form #filtro-jornada {
+            flex: 1 1 100%;
+            max-width: none;
+        }
+    }
+
+    /* ── Hoja ── */
+    .registro-hoja {
+        max-height: 72vh;
+        overflow: auto;
+        border: 1px solid var(--fp-border);
+        border-radius: 10px;
+        background: var(--fp-surface);
+    }
+    .registro-hoja.con-pestanas { border-radius: 10px 10px 0 0; }
+    .registro-tabla {
+        border-collapse: separate;
+        border-spacing: 0;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-style: italic;
+        font-size: 14px;
+    }
+    .registro-tabla th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 10px 12px;
+        background: #2fd34f;
+        color: #0b2a10;
+        font-weight: 800;
+        text-align: left;
+        white-space: nowrap;
+        border-bottom: 2px solid #1c9e36;
+    }
+    .registro-tabla td {
+        padding: 5px 8px;
+        background: var(--fila, #f2f2f2);
+        color: #111;
+        white-space: nowrap;
+        vertical-align: middle;
+        border-bottom: 1px solid rgba(255,255,255,.55);
+        border-right: 1px solid rgba(255,255,255,.35);
+    }
+    .registro-tabla .col-no { font-weight: 800; text-align: right; padding-right: 10px; }
+    .registro-tabla .col-nombre { font-weight: 700; min-width: 240px; white-space: normal; }
+    .registro-tabla .col-valor { text-align: right; font-variant-numeric: tabular-nums; }
+    .registro-tabla .col-estado {
+        min-width: 150px;
+        font-family: inherit;
+        font-style: normal;
+        font-size: 12px;
+        white-space: normal;
+    }
+    .registro-tabla th.col-estado { font-style: italic; }
+    .registro-tabla tr.is-archivada td { color: #2b2b2b; }
+    .registro-tag {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: #fff;
+        color: #8a1c1c;
+        font-family: system-ui, sans-serif;
+        font-style: normal;
+        font-size: 11px;
+        font-weight: 800;
+    }
+    .registro-tabla tr.is-archivada .registro-tag { color: #374151; }
+    .registro-tabla td.registro-vacio {
+        padding: 28px;
+        text-align: center;
+        color: var(--fp-muted);
+        background: var(--fp-surface);
+        font-family: inherit;
+        font-style: normal;
+        white-space: normal;
+    }
+
+    /* Celdas editables: desplegables como los de la hoja de Excel. */
+    .registro-tabla td[data-col="registra"],
+    .registro-tabla td[data-col="vendedora"],
+    .registro-tabla td[data-col="central"] { min-width: 150px; }
+    .registro-tabla td[data-col="curso"],
+    .registro-tabla td[data-col="modalidad"],
+    .registro-tabla td[data-col="dias"],
+    .registro-tabla td[data-col="tipo"] { min-width: 170px; }
+    .registro-tabla td[data-col="inicio"],
+    .registro-tabla td[data-col="forma"],
+    .registro-tabla td[data-col="banco"] { min-width: 150px; }
+    .registro-tabla .chip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        min-height: 30px;
+        padding: 3px 12px;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(255,255,255,.78);
+        color: #111;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+    .registro-tabla .chip:hover { background: #fff; }
+    .registro-tabla .chip:focus-visible { outline: 3px solid #1b2a4e; outline-offset: 1px; }
+    .registro-tabla .chip.chip-texto {
+        border-radius: 6px;
+        background: transparent;
+        padding: 3px 6px;
+    }
+    .registro-tabla .chip.chip-texto:hover { background: rgba(255,255,255,.55); }
+    .registro-tabla .chip-valor { overflow: hidden; text-overflow: ellipsis; }
+    .registro-tabla .chip-flecha { font-size: 10px; font-style: normal; opacity: .8; }
+    .registro-tabla td.is-falta .chip {
+        background: #fff3c4;
+        outline: 2px solid #c98a00;
+        font-weight: 800;
+    }
+    .registro-tabla .celda-editor {
+        width: 100%;
+        min-width: 140px;
+        box-sizing: border-box;
+        padding: 5px 8px;
+        border: 2px solid #1b2a4e;
+        border-radius: 8px;
+        background: #fff;
+        color: #111;
+        font-family: system-ui, sans-serif;
+        font-style: normal;
+        font-size: 14px;
+    }
+    .registro-tabla td[data-col="nombres"] .celda-editor { min-width: 260px; }
+    .registro-tabla .celda-enlace {
+        font-style: normal;
+        font-weight: 800;
+        color: #1b2a4e;
+        text-decoration: none;
+    }
+    .registro-tabla tr.is-pendiente td { box-shadow: inset 0 2px 0 #c98a00, inset 0 -2px 0 #c98a00; }
+    .registro-tabla tr.is-guardada td { box-shadow: inset 0 2px 0 #17692e, inset 0 -2px 0 #17692e; }
+    .registro-tabla tr:target td { box-shadow: inset 0 2px 0 #1b2a4e, inset 0 -2px 0 #1b2a4e; }
+    .estado-falta { display: block; color: #6b4a00; font-weight: 800; margin-bottom: 4px; }
+    .registro-tabla .btn-deshacer {
+        padding: 3px 10px;
+        border: 1px solid rgba(0,0,0,.25);
+        border-radius: 8px;
+        background: #fff;
+        color: #1b2a4e;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    /* ── Pestañas de hojas (abajo, como en Excel) ── */
+    .hojas-barra {
+        position: sticky;
+        bottom: 0;
+        z-index: 6;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 8px;
+        border: 1px solid var(--fp-border);
+        border-top: 2px solid #d5d9df;
+        border-radius: 0 0 10px 10px;
+        background: #f1f3f4;
+    }
+    .hojas-pestanas {
+        display: flex;
+        flex: 1;
+        gap: 2px;
+        min-width: 0;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        scrollbar-width: thin;
+    }
+    .hoja-pestana {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 6px;
+        color: #3c4043;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .hoja-pestana:hover { background: #e3e6e8; }
+    .hoja-pestana.is-activa {
+        background: #fff;
+        color: #0b57d0;
+        box-shadow: inset 0 -3px 0 #0b57d0, 0 1px 3px rgba(0,0,0,.12);
+    }
+    .hoja-total {
+        min-width: 22px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: rgba(60,64,67,.10);
+        font-size: 12px;
+        text-align: center;
+    }
+    .hoja-hoy {
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: #17692e;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 800;
+    }
+    .hojas-flecha,
+    .hojas-menu > summary {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #3c4043;
+        font-size: 20px;
+        cursor: pointer;
+        list-style: none;
+    }
+    .hojas-menu > summary::-webkit-details-marker { display: none; }
+    .hojas-flecha:hover,
+    .hojas-menu > summary:hover { background: #e3e6e8; }
+    .hojas-menu { position: relative; }
+    .hojas-menu-panel {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 0;
+        z-index: 20;
+        width: 280px;
+        max-height: 60vh;
+        overflow-y: auto;
+        padding: 8px;
+        border: 1px solid var(--fp-border);
+        border-radius: 12px;
+        background: var(--fp-surface);
+        box-shadow: 0 18px 44px rgba(27,42,78,.20);
+    }
+    .hojas-menu-panel a {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        color: var(--fp-ink);
+        text-decoration: none;
+        font-size: 14px;
+    }
+    .hojas-menu-panel a:hover { background: var(--fp-surface-2); }
+    .hojas-menu-panel a.is-activa { color: #0b57d0; font-weight: 800; }
+    .hojas-menu-panel .hojas-menu-rango { justify-content: flex-start; gap: 8px; font-weight: 800; color: var(--fp-navy); }
+    .hojas-menu-mes {
+        margin: 10px 10px 4px;
+        color: var(--fp-muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+    body.dark-mode .hojas-barra { background: #0e141f; border-top-color: var(--fp-dark-line); }
+    body.dark-mode .hoja-pestana,
+    body.dark-mode .hojas-flecha,
+    body.dark-mode .hojas-menu > summary { color: var(--fp-dark-text); }
+    body.dark-mode .hoja-pestana:hover,
+    body.dark-mode .hojas-flecha:hover,
+    body.dark-mode .hojas-menu > summary:hover { background: #1a2434; }
+    body.dark-mode .hoja-pestana.is-activa { background: #1a2638; color: #9ec2ff; box-shadow: inset 0 -3px 0 #9ec2ff; }
+    body.dark-mode .hoja-total { background: rgba(232,237,247,.12); }
+
+    /* ── Cambios sin actualizar ── */
+    .registro-tabla td.is-cambiada .chip {
+        background: #fff7d6;
+        box-shadow: inset 0 0 0 2px #c98a00;
+        font-weight: 800;
+    }
+    .registro-tabla td.is-error .chip {
+        background: #ffe3e0;
+        box-shadow: inset 0 0 0 2px #b42318;
+    }
+    .registro-tabla tr.is-con-error td { box-shadow: inset 0 2px 0 #b42318, inset 0 -2px 0 #b42318; }
+    .estado-error { display: block; color: #8e1c12; font-weight: 800; margin-bottom: 6px; }
+    .estado-acciones { display: flex; flex-wrap: wrap; gap: 6px; }
+    .registro-tabla .btn-actualizar {
+        padding: 3px 10px;
+        border: 1px solid #0f5132;
+        border-radius: 8px;
+        background: #17692e;
+        color: #fff;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+    }
+    .registro-tabla .btn-actualizar:hover { background: #0f5132; }
+    .registro-barra-cambios {
+        position: sticky;
+        top: 8px;
+        z-index: 40;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 16px;
+        margin-bottom: 12px;
+        padding: 12px 16px;
+        border: 2px solid #c98a00;
+        border-radius: 12px;
+        background: #fff7d6;
+        color: #5c3d00;
+        box-shadow: 0 10px 26px rgba(92,61,0,.18);
+    }
+    .registro-barra-cambios[hidden] { display: none; }
+    .registro-barra-cambios p { margin: 0; font-weight: 700; line-height: 1.45; }
+    .registro-barra-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+    body.dark-mode .registro-barra-cambios { background: #3a2e0c; color: #ffe7a3; border-color: #c98a00; }
+
+    /* ── Ventana «¿Desea actualizar estos cambios en el sistema?» ── */
+    .registro-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(0,0,0,.55);
+        backdrop-filter: blur(4px);
+    }
+    .registro-modal[hidden] { display: none; }
+    .registro-modal-caja {
+        width: min(560px, 100%);
+        max-height: 90dvh;
+        overflow-y: auto;
+        padding: 28px 24px 22px;
+        border-radius: 16px;
+        background: #fff;
+        color: #18233f;
+        box-shadow: 0 24px 64px rgba(0,0,0,.25);
+        text-align: center;
+    }
+    .registro-modal-icono {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 60px;
+        height: 60px;
+        margin: 0 auto 14px;
+        border-radius: 50%;
+        background: #e6f6ea;
+        font-size: 26px;
+    }
+    .registro-modal-caja h3 { margin: 0 0 8px; color: #1a237e; font-size: 19px; font-weight: 800; }
+    .registro-modal-texto { margin: 0 0 16px; color: #555; font-size: 14px; line-height: 1.5; }
+    .registro-modal-lista { display: grid; gap: 10px; text-align: left; }
+    .registro-modal-fila {
+        padding: 12px 14px;
+        border: 1px solid #dde4ee;
+        border-radius: 12px;
+        background: #f6f8fc;
+    }
+    .registro-modal-fila.is-aviso { background: #fff7d6; border-color: #f0d58a; }
+    .registro-modal-fila h4 { margin: 0 0 6px; font-size: 14px; color: #1b2a4e; }
+    .registro-modal-fila p { margin: 0; font-size: 13px; color: #6b4a00; }
+    .registro-modal-fila ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+    .registro-modal-progreso { margin: 14px 0 0; font-weight: 800; color: #17692e; }
+    .registro-modal-progreso[hidden] { display: none; }
+    .registro-modal-acciones {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    .registro-modal-acciones .btn { min-width: 140px; }
+    .registro-modal-acciones .btn[hidden] { display: none; }
+    body.dark-mode .registro-modal-caja { background: #121925; color: var(--fp-dark-text); }
+    body.dark-mode .registro-modal-caja h3 { color: #dfe8ff; }
+    body.dark-mode .registro-modal-texto { color: var(--fp-dark-muted); }
+    body.dark-mode .registro-modal-fila { background: #0e141f; border-color: var(--fp-dark-line); }
+    body.dark-mode .registro-modal-fila h4 { color: #dfe8ff; }
+    body.dark-mode .registro-modal-fila.is-aviso { background: #3a2e0c; }
+    body.dark-mode .registro-modal-fila p { color: #ffe7a3; }
+
+    /* ── Avisos de guardado ── */
+    .registro-avisos {
+        position: fixed;
+        right: 16px;
+        bottom: 84px;
+        z-index: 3000;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-width: min(440px, calc(100vw - 32px));
+    }
+    .registro-toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        box-shadow: 0 14px 34px rgba(0,0,0,.20);
+        font-size: 14px;
+        line-height: 1.45;
+    }
+    .registro-toast.is-ok { background: #17692e; color: #fff; }
+    .registro-toast.is-error { background: #8e1c12; color: #fff; }
+    .registro-toast p { flex: 1; margin: 0; }
+    .registro-toast button {
+        flex: 0 0 auto;
+        border: 0;
+        border-radius: 8px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,.18);
+        color: #fff;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+    }
+</style>

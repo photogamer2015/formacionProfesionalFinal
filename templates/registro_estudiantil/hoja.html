@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+
+{% block title %}Registro Estudiantil · {{ hoja|date:"d/m/Y" }}{% endblock %}
+
+{% block extra_head %}{% include 'registro_estudiantil/_estilos.html' %}{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp; Registro Estudiantil
+</div>
+
+<div class="registro-cabecera">
+    <div>
+        <h2 class="page-title">Registro Estudiantil</h2>
+        <p class="page-subtitle">
+            Hoja del {{ hoja|date:"l d \d\e F \d\e Y" }}
+            {% if es_hoy %}<span class="registro-estado-hoja is-abierta">Abierta · se cierra a las 12:00 de la noche</span>
+            {% elif hoja < hoy %}<span class="registro-estado-hoja is-cerrada">Cerrada</span>{% endif %}
+            · {% if hay_filtros %}{{ total }} de {{ total_sin_filtros }} registro{{ total_sin_filtros|pluralize }} (con filtros){% else %}{{ total }} registro{{ total|pluralize }}{% endif %}
+        </p>
+    </div>
+    <a class="btn btn-primary registro-btn-rango" href="{% url 'academia:registro_estudiantil_rango' %}{% if filtros_query %}?{{ filtros_query }}{% endif %}"><span aria-hidden="true">📅</span><span>Ir a rango de fecha</span></a>
+</div>
+
+{% if es_hoy %}
+<div class="registro-aviso" id="registro-cierre" hidden>
+    Ya son las 12:00 de la noche: esta hoja se cerró y empezó la hoja del nuevo día.
+    <a href="{% url 'academia:registro_estudiantil' %}">Ir a la hoja de hoy</a>
+</div>
+{% endif %}
+
+{% if puede_editar %}
+<div class="registro-aviso">Haz clic en una celda para cambiarla. Los cambios se guardan en la matrícula cuando pulsas «Actualizar cambios en el sistema» y confirmas: no hace falta ir a «Editar matrícula». Las filas archivadas por un cierre de curso son solo de consulta.</div>
+{% else %}
+<div class="registro-aviso">Vista de consulta: los cambios en este registro los hace un administrador.</div>
+{% endif %}
+
+{% include 'registro_estudiantil/_filtros.html' %}
+
+{% if hay_filtros and total_sin_filtros %}
+    {% include 'registro_estudiantil/_tabla.html' with con_pestanas=True titulo_tabla="Registro estudiantil del día" mensaje_vacio="Ninguna matrícula de este día coincide con los filtros." %}
+{% elif es_hoy %}
+    {% include 'registro_estudiantil/_tabla.html' with con_pestanas=True titulo_tabla="Registro estudiantil de hoy" mensaje_vacio="Hoja nueva: todavía no hay matrículas registradas hoy." %}
+{% else %}
+    {% include 'registro_estudiantil/_tabla.html' with con_pestanas=True titulo_tabla="Registro estudiantil del día" mensaje_vacio="No hay matrículas registradas en este día." %}
+{% endif %}
+
+<nav class="hojas-barra" aria-label="Hojas por día">
+    <details class="hojas-menu">
+        <summary title="Todas las hojas" aria-label="Todas las hojas">≡</summary>
+        <div class="hojas-menu-panel">
+            <a class="hojas-menu-rango" href="{% url 'academia:registro_estudiantil_rango' %}{% if filtros_query %}?{{ filtros_query }}{% endif %}"><span aria-hidden="true">📅</span><span>Ir a rango de fecha</span></a>
+            {% for grupo in meses_hojas %}
+            <div class="hojas-menu-mes">{{ grupo.mes|date:"F Y" }}</div>
+            {% for h in grupo.hojas %}
+            <a href="?hoja={{ h.iso }}{% if filtros_query %}&amp;{{ filtros_query }}{% endif %}"{% if h.activa %} class="is-activa" aria-current="page"{% endif %}>
+                <span>{{ h.fecha|date:"l d" }}{% if h.hoy %} · hoy{% endif %}</span><span>{{ h.total }}</span>
+            </a>
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </details>
+    <button type="button" class="hojas-flecha" data-desplazar="-1" aria-label="Ver hojas más recientes">‹</button>
+    <div class="hojas-pestanas" id="hojas-pestanas">
+        {% for h in hojas %}
+        <a class="hoja-pestana{% if h.activa %} is-activa{% endif %}" href="?hoja={{ h.iso }}{% if filtros_query %}&amp;{{ filtros_query }}{% endif %}" data-hoja="{{ h.iso }}"
+           title="{{ h.fecha|date:'l d \d\e F \d\e Y' }} · {{ h.total }} registro{{ h.total|pluralize }}"{% if h.activa %} aria-current="page"{% endif %}>
+            {% if h.hoy %}<span class="hoja-hoy">Hoy</span>{% endif %}{{ h.etiqueta }}<span class="hoja-total">{{ h.total }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    <button type="button" class="hojas-flecha" data-desplazar="1" aria-label="Ver hojas más antiguas">›</button>
+</nav>
+
+{% if puede_editar %}{% include 'registro_estudiantil/_edicion.html' %}{% endif %}
+
+<script>
+(function () {
+    const pestanas = document.getElementById('hojas-pestanas');
+    const activa = pestanas.querySelector('.is-activa');
+    if (activa) activa.scrollIntoView({ block: 'nearest', inline: 'center' });
+    document.querySelectorAll('[data-desplazar]').forEach(boton => {
+        boton.addEventListener('click', () => {
+            pestanas.scrollBy({ left: Number(boton.dataset.desplazar) * pestanas.clientWidth * 0.8 });
+        });
+    });
+    document.addEventListener('click', e => {
+        const menu = document.querySelector('.hojas-menu');
+        if (menu.open && !menu.contains(e.target)) menu.open = false;
+    });
+    {% if es_hoy %}
+    // A medianoche (hora de Ecuador) la hoja de hoy se cierra: se avisa y se
+    // ofrece abrir la hoja nueva sin recargar a la fuerza.
+    setTimeout(() => {
+        document.getElementById('registro-cierre').hidden = false;
+        document.querySelectorAll('.registro-estado-hoja.is-abierta').forEach(el => {
+            el.textContent = 'Cerrada';
+            el.className = 'registro-estado-hoja is-cerrada';
+        });
+    }, {{ segundos_para_cerrar }} * 1000);
+    {% endif %}
+})();
+</script>
+{% endblock %}

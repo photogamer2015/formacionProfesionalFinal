@@ -1,0 +1,69 @@
+{% comment %}Tabla del Registro Estudiantil. Para el administrador, _edicion.html convierte cada celda en un desplegable.{% endcomment %}
+{% if leyenda %}
+<ul class="registro-leyenda" id="registro-leyenda" aria-label="Colores por asesora que registró">
+    {% for item in leyenda %}
+    <li><span class="muestra" style="background:{{ item.color }};" aria-hidden="true"></span>{{ item.nombre }} · {{ item.total }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% if puede_editar %}
+<div class="registro-barra-cambios" id="registro-barra-cambios" role="region" aria-label="Cambios sin actualizar" hidden>
+    <p><span aria-hidden="true">✏️</span> <span data-barra-texto>Tienes cambios sin actualizar.</span></p>
+    <div class="registro-barra-acciones">
+        <button type="button" class="btn btn-secondary btn-sm" data-descartar-cambios>Descartar</button>
+        <button type="button" class="btn btn-primary btn-sm" data-revisar-cambios>💾 Actualizar cambios en el sistema</button>
+    </div>
+</div>
+{% endif %}
+
+<div class="table-wrap registro-hoja{% if con_pestanas %} con-pestanas{% endif %}">
+    <table class="registro-tabla" data-pagination="off" data-table-context="custom" aria-label="{{ titulo_tabla }}">
+        <thead>
+            <tr>
+                <th>No.</th>
+                <th>Fecha</th>
+                <th>Registra</th>
+                <th>Nombres del Estudiante</th>
+                <th>Vendedora</th>
+                <th>Central</th>
+                <th>Programa / Curso</th>
+                <th>Modalidad</th>
+                <th>Jornada</th>
+                <th>Fecha de inicio</th>
+                <th>Matrícula</th>
+                <th>Valor</th>
+                <th>Forma de Pago</th>
+                <th>Banco</th>
+                <th>No. de Factura</th>
+                {% if puede_editar %}<th class="col-estado">Estado</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in filas %}
+            <tr id="fila-{{ f.clave }}" data-clave="{{ f.clave }}" data-registra="{{ f.etiquetas.registra_completo }}" style="--fila: {{ f.color }};"{% if f.archivada %} class="is-archivada" title="Matrícula archivada por un cierre de curso: solo consulta."{% endif %}>
+                <td class="col-no" data-col="numero">{{ f.numero }}</td>
+                <td data-col="fecha">{{ f.etiquetas.fecha }}</td>
+                <td data-col="registra" title="{{ f.etiquetas.registra_completo }}">{{ f.etiquetas.registra|default:"—" }}</td>
+                <td data-col="nombres" class="col-nombre">{{ f.etiquetas.nombres }}{% if f.retiro %}<span class="registro-tag">Retiro</span>{% endif %}{% if f.archivada %}<span class="registro-tag">Archivada</span>{% endif %}</td>
+                <td data-col="vendedora" title="{{ f.etiquetas.vendedora_completo }}">{{ f.etiquetas.vendedora|default:"—" }}</td>
+                <td data-col="central">{{ f.etiquetas.central|default:"—" }}</td>
+                <td data-col="curso">{{ f.etiquetas.curso }}</td>
+                <td data-col="modalidad">{{ f.etiquetas.modalidad }}</td>
+                <td data-col="dias">{{ f.etiquetas.dias|default:"—" }}</td>
+                <td data-col="inicio">{{ f.etiquetas.inicio|default:"—" }}</td>
+                <td data-col="tipo">{{ f.etiquetas.tipo }}</td>
+                <td data-col="valor" class="col-valor">{{ f.etiquetas.valor|default:"—" }}</td>
+                <td data-col="forma">{{ f.etiquetas.forma|default:"—" }}</td>
+                <td data-col="banco">{{ f.etiquetas.banco|default:"—" }}</td>
+                <td data-col="factura">{{ f.etiquetas.factura|default:"—" }}</td>
+                {% if puede_editar %}<td data-col="estado" class="col-estado">{% if f.archivada %}Solo consulta{% endif %}</td>{% endif %}
+            </tr>
+            {% empty %}
+            <tr class="registro-fila-vacia">
+                <td colspan="{% if puede_editar %}16{% else %}15{% endif %}" class="registro-vacio">{{ mensaje_vacio }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

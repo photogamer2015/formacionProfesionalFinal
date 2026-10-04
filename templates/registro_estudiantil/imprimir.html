@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registro Estudiantil · {{ titulo }}</title>
+<style>
+    /* A4 horizontal: la tabla ocupa todo el ancho útil de la hoja (285 mm). */
+    @page {
+        size: A4 landscape;
+        margin: 7mm 6mm 9mm 6mm;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0;
+        background: #e9edf3;
+        color: #111;
+    }
+    body {
+        font-family: Georgia, 'Times New Roman', serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .acciones {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        padding: 10px;
+        background: #1b2a4e;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
+    .acciones button,
+    .acciones a {
+        padding: 9px 18px;
+        border: 0;
+        border-radius: 8px;
+        font: 700 14px system-ui, -apple-system, 'Segoe UI', sans-serif;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .acciones .imprimir { background: #2fd34f; color: #0b2a10; }
+    .acciones .volver { background: #fff; color: #1b2a4e; }
+    .acciones p {
+        flex-basis: 100%;
+        margin: 0;
+        color: #dbe4f5;
+        font-size: 12px;
+        text-align: center;
+    }
+    /* En pantalla se ve del mismo ancho que en la hoja impresa. */
+    .pagina {
+        width: 285mm;
+        max-width: calc(100vw - 16px);
+        margin: 12px auto;
+        padding: 6mm;
+        background: #fff;
+        box-shadow: 0 6px 24px rgba(0,0,0,.15);
+    }
+    .encabezado {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 12px;
+        margin-bottom: 2.5mm;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
+    .encabezado h1 { margin: 0; font-size: 15pt; color: #1b2a4e; }
+    .encabezado .sub { margin: 1mm 0 0; font-size: 9pt; color: #374151; }
+    .encabezado .meta { text-align: right; font-size: 8pt; color: #4b5563; white-space: nowrap; }
+    .aviso { margin: 0 0 2mm; font: 8.5pt system-ui, sans-serif; color: #8e1c12; }
+    .leyenda {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5mm 4mm;
+        margin: 0 0 2.5mm;
+        padding: 0;
+        list-style: none;
+        font: 8pt system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
+    .leyenda span {
+        display: inline-block;
+        width: 3.2mm;
+        height: 3.2mm;
+        margin-right: 1.2mm;
+        border: .2mm solid rgba(0,0,0,.35);
+        border-radius: .8mm;
+        vertical-align: -.5mm;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 8.3pt;
+        font-style: italic;
+    }
+    th {
+        padding: 1.6mm 1.2mm;
+        border: .3mm solid #fff;
+        background: #2fd34f;
+        color: #0b2a10;
+        font-weight: 800;
+        text-align: left;
+        line-height: 1.15;
+    }
+    td {
+        padding: 1.2mm;
+        border: .3mm solid #fff;
+        background: var(--fila, #f2f2f2);
+        line-height: 1.2;
+        vertical-align: middle;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+    td.fecha { white-space: nowrap; }
+    th.no, td.no { text-align: right; }
+    td.no { font-weight: 800; }
+    td.nombre { font-weight: 700; }
+    td.valor { text-align: right; white-space: nowrap; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    tr.total td {
+        background: #fff8e1;
+        color: #1b2a4e;
+        font-style: normal;
+        font-weight: 800;
+    }
+    td.vacio {
+        padding: 8mm;
+        background: #fff;
+        font-style: normal;
+        text-align: center;
+    }
+    @media print {
+        html, body { background: #fff; }
+        .acciones { display: none; }
+        .pagina {
+            width: auto;
+            max-width: none;
+            margin: 0;
+            padding: 0;
+            box-shadow: none;
+        }
+    }
+</style>
+</head>
+<body>
+<div class="acciones">
+    <button type="button" class="imprimir" onclick="window.print()">🖨️ Imprimir</button>
+    <a class="volver" href="{{ url_volver }}">← Volver al registro</a>
+    <p>Sale en A4 horizontal y ocupa todo el ancho de la hoja. Si tu impresora agrega márgenes, elige «Escala: Ajustar a la página».</p>
+</div>
+
+<main class="pagina">
+    <header class="encabezado">
+        <div>
+            <h1>Registro Estudiantil</h1>
+            <p class="sub">
+                {{ titulo }} · {{ filas|length }} registro{{ filas|length|pluralize }}
+                {% if resumen_filtros %} · Filtros: {{ resumen_filtros|join:"; " }}{% endif %}
+            </p>
+        </div>
+        <div class="meta">Formación Profesional EC<br>Impreso el {{ generado|date:"d/m/Y H:i" }}</div>
+    </header>
+
+    {% if recortado %}
+    <p class="aviso">Se muestran las {{ limite }} matrículas más recientes de {{ total }}. Elige un rango más corto para imprimir el resto.</p>
+    {% endif %}
+
+    {% if leyenda %}
+    <ul class="leyenda">
+        {% for item in leyenda %}
+        <li><span style="background: {{ item.color }};"></span>{{ item.nombre }} · {{ item.total }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <table>
+        <colgroup>
+            <col style="width: 3%;">
+            <col style="width: 6.5%;">
+            <col style="width: 5.5%;">
+            <col style="width: 12%;">
+            <col style="width: 6.5%;">
+            <col style="width: 6%;">
+            <col style="width: 9%;">
+            <col style="width: 7.5%;">
+            <col style="width: 7%;">
+            <col style="width: 6.5%;">
+            <col style="width: 6.5%;">
+            <col style="width: 4.5%;">
+            <col style="width: 7%;">
+            <col style="width: 6.5%;">
+            <col style="width: 6%;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th class="no">No.</th>
+                <th>Fecha</th>
+                <th>Registra</th>
+                <th>Nombres del Estudiante</th>
+                <th>Vendedora</th>
+                <th>Central</th>
+                <th>Programa / Curso</th>
+                <th>Modalidad</th>
+                <th>Jornada</th>
+                <th>Fecha de inicio</th>
+                <th>Matrícula</th>
+                <th>Valor</th>
+                <th>Forma de Pago</th>
+                <th>Banco</th>
+                <th>No. de Factura</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in filas %}
+            <tr style="--fila: {{ f.color }};">
+                <td class="no">{{ f.numero }}</td>
+                <td class="fecha">{{ f.etiquetas.fecha }}</td>
+                <td>{{ f.etiquetas.registra|default:"—" }}</td>
+                <td class="nombre">{{ f.nombre_impresion }}</td>
+                <td>{{ f.etiquetas.vendedora|default:"—" }}</td>
+                <td>{{ f.etiquetas.central|default:"—" }}</td>
+                <td>{{ f.etiquetas.curso }}</td>
+                <td>{{ f.etiquetas.modalidad }}</td>
+                <td>{{ f.etiquetas.dias|default:"—" }}</td>
+                <td>{{ f.etiquetas.inicio|default:"—" }}</td>
+                <td>{{ f.etiquetas.tipo }}</td>
+                <td class="valor">{{ f.etiquetas.valor|default:"—" }}</td>
+                <td>{{ f.etiquetas.forma|default:"—" }}</td>
+                <td>{{ f.etiquetas.banco|default:"—" }}</td>
+                <td>{{ f.etiquetas.factura|default:"—" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="15" class="vacio">No hay matrículas para imprimir con estos filtros.</td></tr>
+            {% endfor %}
+            {% if filas %}
+            <tr class="total">
+                <td colspan="11">Total: {{ filas|length }} registro{{ filas|length|pluralize }}</td>
+                <td class="valor">{{ total_valor }}</td>
+                <td colspan="3"></td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</main>
+
+<script>
+    // Abre el cuadro de impresión al cargar; también está el botón «Imprimir».
+    window.addEventListener('load', function () {
+        setTimeout(function () { window.print(); }, 400);
+    });
+</script>
+</body>
+</html>

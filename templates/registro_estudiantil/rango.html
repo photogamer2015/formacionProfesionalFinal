@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block title %}Registro Estudiantil · Rango de fechas{% endblock %}
+
+{% block extra_head %}
+{% include 'registro_estudiantil/_estilos.html' %}
+{% include 'registro_estudiantil/_rango_fechas_estilos.html' %}
+<style>
+    .registro-rango-vacio {
+        padding: 36px 24px;
+        border: 2px dashed var(--fp-border);
+        border-radius: 14px;
+        background: var(--fp-surface);
+        color: var(--fp-muted);
+        text-align: center;
+        line-height: 1.6;
+    }
+    .registro-rango-vacio strong { display: block; color: var(--fp-ink); font-size: 17px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:registro_estudiantil' %}">Registro Estudiantil</a> &nbsp;›&nbsp; Rango de fechas
+</div>
+
+<div class="registro-cabecera">
+    <div>
+        <h2 class="page-title">Registro Estudiantil · Rango de fechas</h2>
+        <p class="page-subtitle">
+            {% if desde and hasta %}
+                {% if desde == hasta %}Matrículas del {{ desde|date:"d/m/Y" }}{% else %}Matrículas del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}{% endif %}
+                · {% if hay_filtros %}{{ total }} de {{ total_sin_filtros }} registro{{ total_sin_filtros|pluralize }} (con filtros){% else %}{{ total }} registro{{ total|pluralize }}{% endif %}, de lo más reciente a lo más antiguo.
+            {% else %}
+                Elige un rango de fechas: se juntan las hojas de esos días en una sola tabla.
+            {% endif %}
+        </p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'academia:registro_estudiantil' %}{% if filtros_query %}?{{ filtros_query }}{% endif %}">← Volver a las hojas</a>
+</div>
+
+{% include 'registro_estudiantil/_filtros.html' %}
+
+{% if desde and hasta %}
+    {% if recortado %}
+    <div class="registro-aviso">Se muestran las {{ limite }} matrículas más recientes de {{ total }}. Elige un rango más corto para ver el resto.</div>
+    {% endif %}
+    {% if puede_editar %}
+    <div class="registro-aviso">Haz clic en una celda para cambiarla. Los cambios se guardan en la matrícula cuando pulsas «Actualizar cambios en el sistema» y confirmas: no hace falta ir a «Editar matrícula». Las filas archivadas por un cierre de curso son solo de consulta.</div>
+    {% endif %}
+    {% if hay_filtros %}
+    {% include 'registro_estudiantil/_tabla.html' with titulo_tabla="Registro estudiantil por rango de fechas" mensaje_vacio="Ninguna matrícula de este rango coincide con los filtros." %}
+    {% else %}
+    {% include 'registro_estudiantil/_tabla.html' with titulo_tabla="Registro estudiantil por rango de fechas" mensaje_vacio="No hay matrículas en este rango de fechas." %}
+    {% endif %}
+    {% if puede_editar %}{% include 'registro_estudiantil/_edicion.html' %}{% endif %}
+{% else %}
+    <div class="registro-rango-vacio">
+        <strong>Ningún rango elegido</strong>
+        Pulsa «Fecha matric.» y elige los días. La tabla aparece con las matrículas de ese rango, de la más reciente a la más antigua.
+    </div>
+    <script>
+        // Sin rango, el selector se abre solo para elegir las fechas.
+        document.addEventListener('DOMContentLoaded', () => {
+            const boton = document.querySelector('[data-date-range-trigger]');
+            if (boton) boton.click();
+        });
+    </script>
+{% endif %}
+{% endblock %}

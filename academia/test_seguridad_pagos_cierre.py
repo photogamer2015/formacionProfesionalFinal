@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.contrib.auth.models import Group, User
 from django.test import TestCase, Client
 from django.urls import reverse
+from .forms import ERROR_TOPE_RESERVA_EDICION
 from .models import Curso, Estudiante, JornadaCurso, Matricula, Abono, CierreCurso
 from . import tests as pruebas_existentes
 
@@ -143,7 +144,7 @@ class PagoAisladoTests(TestCase):
         Abono.objects.filter(pk=self.inicial.pk).update(creado=self.mat.creado)
         Abono.objects.filter(pk=self.posterior.pk).update(creado=self.mat.creado + timedelta(days=9))
         self.url = reverse('academia:matricula_editar', args=['online', self.mat.pk])
-        self.data = {'editar_pago':'1', 'mat-valor_pagado':'15', 'mat-forma_pago':'abono', 'mat-descuento':'0', 'mat-tipo_cobro':'un_solo_metodo', 'mat-metodo_pago':'efectivo'}
+        self.data = {'editar_pago':'1', 'mat-valor_pagado':'8', 'mat-forma_pago':'abono', 'mat-descuento':'0', 'mat-tipo_cobro':'un_solo_metodo', 'mat-metodo_pago':'efectivo'}
 
     def test_pantalla_solo_pago(self):
         response = self.client.get(self.url, {'editar_pago':'1'})
@@ -161,7 +162,7 @@ class PagoAisladoTests(TestCase):
         response = self.client.post(self.url,self.data)
         self.assertEqual(response.status_code,302, getattr(response,'context',None) and response.context['mat_form'].errors)
         self.mat.refresh_from_db();self.est.refresh_from_db()
-        self.assertEqual(self.mat.valor_pagado,Decimal('35'))
+        self.assertEqual(self.mat.valor_pagado,Decimal('28'))
         self.assertEqual(self.est.nombres,'Prueba pago')
         after = Matricula.objects.values().get(pk=self.mat.pk)
         self.assertEqual([k for k in before if before[k] != after[k]], ['valor_pagado', 'actualizado'])
@@ -188,6 +189,39 @@ class PagoAisladoTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code,302)
         self.assertEqual(self.client.get(reverse('academia:api_estudiante_por_cedula',args=[self.est.cedula])).status_code,302)
 
+
+    def test_reserva_no_sube_el_pago_inicial_sobre_diez(self):
+        antes = list(Abono.objects.values())
+        response = self.client.post(self.url, {**self.data, 'mat-valor_pagado': '15'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['mat_form'].errors['valor_pagado'], [ERROR_TOPE_RESERVA_EDICION])
+        self.assertEqual(antes, list(Abono.objects.values()))
+        self.assertContains(response, 'id="pago-tope-reserva"')
+
+    def test_reserva_antigua_mayor_a_diez_se_guarda_sin_cambiar_el_monto(self):
+        # Pago inicial registrado antes del tope: $35 de reserva.
+        Abono.objects.filter(pk=self.inicial.pk).update(monto=35)
+        self.mat.recalcular_valor_pagado()
+        response = self.client.post(self.url, {**self.data, 'mat-valor_pagado': '30'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['mat_form'].errors['valor_pagado'], [ERROR_TOPE_RESERVA_EDICION])
+        response = self.client.post(self.url, {
+            **self.data, 'mat-valor_pagado': '35',
+            'mat-metodo_pago': 'transferencia', 'mat-banco': 'pichincha',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.mat.refresh_from_db()
+        self.assertEqual(self.mat.valor_pagado, Decimal('55'))
+        inicial = Abono.objects.get(matricula=self.mat, fecha=date(2026, 8, 1))
+        self.assertEqual((inicial.monto, inicial.metodo), (Decimal('35'), 'transferencia'))
+
+    def test_programa_completo_no_tiene_tope_de_reserva(self):
+        Matricula.objects.filter(pk=self.mat.pk).update(tipo_matricula='programa_completo', forma_pago='pago_completo')
+        self.assertNotContains(self.client.get(self.url, {'editar_pago': '1'}), 'id="pago-tope-reserva"')
+        response = self.client.post(self.url, {**self.data, 'mat-valor_pagado': '80', 'mat-forma_pago': 'pago_completo'})
+        self.assertEqual(response.status_code, 302)
+        self.mat.refresh_from_db()
+        self.assertEqual(self.mat.valor_pagado, Decimal('100'))
 
 class CierreSeguroTests(pruebas_existentes.CierreCursoManualTests):
     def test_archivo_conserva_desglose_mixto(self):

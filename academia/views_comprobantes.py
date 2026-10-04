@@ -34,6 +34,7 @@ from .permisos import (
     es_admin, es_asesor, matricula_requerida,
 )
 from .busqueda import filtrar_queryset_busqueda
+from .colores_registro import color_de_usuario
 from .views_social import contexto_social_perfil
 
 
@@ -626,6 +627,10 @@ def comprobante_asesor_detalle(request, vendedora_id):
         asesor_rol = 'Asesor'
     else:
         asesor_rol = 'Usuario'
+    # Color de sus filas en el Registro Estudiantil (lo asigna un administrador).
+    color_registro = (
+        color_de_usuario(asesor) if asesor_rol != 'Usuario' else None
+    )
 
     if mostrar_detalle_operativo_perfil:
         comprobantes = (
@@ -694,6 +699,7 @@ def comprobante_asesor_detalle(request, vendedora_id):
         'mostrar_detalle_operativo_perfil': mostrar_detalle_operativo_perfil,
         'editar_mural': editar_mural,
         'asesor_rol': asesor_rol,
+        'color_registro': color_registro,
         'avatar_seleccionado': avatar_seleccionado,
         'avatar_asesor_archivo': ARCHIVOS_AVATAR_PERFIL.get(
             avatar_seleccionado,

@@ -5,6 +5,32 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'perfil.css' %}?v=20260802-4">
+<style>
+    .profile-color-registro {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        padding: 5px 12px 5px 6px;
+        border: 1px solid var(--fp-border, #dde4ee);
+        border-radius: 999px;
+        background: var(--fp-surface, #fff);
+        color: var(--fp-ink, #18233f);
+        font-size: 13px;
+        font-weight: 700;
+    }
+    .profile-color-registro-muestra {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1px solid rgba(0,0,0,.35);
+        flex: 0 0 auto;
+    }
+    .profile-color-registro small {
+        color: var(--fp-muted, #6f7889);
+        font-weight: 600;
+    }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -73,6 +99,13 @@
                         {{ asesor.get_full_name|default:asesor.username }}
                     </h1>
                     <p class="profile-username">@{{ asesor.username }}</p>
+                    {% if color_registro %}
+                    <span class="profile-color-registro" title="Color de las filas en el Registro Estudiantil. Lo asigna un administrador.">
+                        <span class="profile-color-registro-muestra" style="background: {{ color_registro.hex }};" aria-hidden="true"></span>
+                        {% if es_perfil_propio %}Tu color{% else %}Color{% endif %} en el Registro Estudiantil: {{ color_registro.nombre }}
+                        {% if color_registro.automatico %}<small>(automático)</small>{% endif %}
+                    </span>
+                    {% endif %}
                 </div>
                 <span class="profile-role profile-role-{{ asesor_rol|lower }}">
                     {{ asesor_rol }}

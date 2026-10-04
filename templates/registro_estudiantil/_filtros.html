@@ -1,0 +1,104 @@
+{% comment %}Filtros del Registro Estudiantil: los de «Lista de Matriculados» y los de la Hoja de recaudación (Modalidad, Ciudad, Curso y Jornada del curso). En la hoja del día no va la fecha (la hoja ya es el día); en el rango va el selector «Fecha matric.».{% endcomment %}
+<div class="registro-filtros">
+    <form method="get" class="registro-filtros-form" id="registro-filtros-form">
+        {% if modo == 'hoja' %}<input type="hidden" name="hoja" value="{{ hoja|date:'Y-m-d' }}">{% endif %}
+        <input type="text" name="q" value="{{ filtros.q }}" placeholder="Buscar por cédula, nombre, curso o cédula de factura…"
+            class="form-input registro-filtro-buscar" aria-label="Buscar por cédula, nombre, curso o cédula de factura">
+        <select name="curso" class="form-input" id="filtro-curso" aria-label="Curso">
+            <option value="">Todos los cursos</option>
+            {% for c in cursos %}
+            <option value="{{ c.pk }}"{% if filtros.curso == c.pk|stringformat:"s" %} selected{% endif %}>{{ c.nombre }}</option>
+            {% endfor %}
+        </select>
+        <select name="jornada" class="form-input" id="filtro-jornada" aria-label="Jornada del curso" data-seleccionada="{{ filtros.jornada }}">
+            <option value="">— Primero selecciona un curso —</option>
+        </select>
+        <select name="descuento" class="form-input" aria-label="Descuento">
+            <option value="">-</option>
+            <option value="si"{% if filtros.descuento == 'si' %} selected{% endif %}>Con descuento</option>
+            <option value="no"{% if filtros.descuento == 'no' %} selected{% endif %}>Sin descuento</option>
+        </select>
+        <select name="estado_pago" class="form-input" aria-label="Estado de pago">
+            <option value="">Estado pago: Todos</option>
+            <option value="pendiente"{% if filtros.estado_pago == 'pendiente' %} selected{% endif %}>Saldo pendiente</option>
+            <option value="pagado"{% if filtros.estado_pago == 'pagado' %} selected{% endif %}>Pagado</option>
+        </select>
+        {% if modo == 'rango' %}{% include 'registro_estudiantil/_rango_fechas.html' %}{% endif %}
+        <select name="modalidad" class="form-input" id="filtro-modalidad" aria-label="Modalidad">
+            <option value="">Modalidad: Todas</option>
+            <option value="presencial"{% if filtros.modalidad == 'presencial' %} selected{% endif %}>🏫 Presencial</option>
+            <option value="online"{% if filtros.modalidad == 'online' %} selected{% endif %}>🟢 Online</option>
+        </select>
+        <select name="ciudad" class="form-input" id="filtro-ciudad" aria-label="Ciudad">
+            <option value="">Ciudad: Todas</option>
+            {% for ciudad in ciudades %}
+            <option value="{{ ciudad }}"{% if filtros.ciudad == ciudad %} selected{% endif %}>{{ ciudad }}</option>
+            {% endfor %}
+        </select>
+        <select name="sede" class="form-input" aria-label="Sede">
+            <option value="">Sede: Todas</option>
+            {% for sede in sedes %}
+            <option value="{{ sede.value }}"{% if filtros.sede == sede.value %} selected{% endif %}>{{ sede.label }}</option>
+            {% endfor %}
+        </select>
+        <select name="registrador" class="form-input" aria-label="Registrador">
+            <option value="">Registrador: Todos</option>
+            {% for r in registradores %}
+            <option value="{{ r.id }}"{% if filtros.registrador == r.id|stringformat:"s" %} selected{% endif %}>
+                {{ r.first_name|default:r.username }} {{ r.last_name }}
+            </option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary">Filtrar</button>
+        {% if hay_filtros %}<a class="btn btn-secondary" href="{{ url_limpiar }}">Limpiar</a>{% endif %}
+    </form>
+    {% if puede_exportar %}
+    <div class="registro-salidas">
+        <a class="btn btn-secondary" href="{% url 'academia:registro_estudiantil_export_excel' %}?{{ consulta_query }}" title="Exportar a Excel con los filtros aplicados">📊 Excel</a>
+        <a class="btn btn-secondary" href="{% url 'academia:registro_estudiantil_imprimir' %}?{{ consulta_query }}" target="_blank" rel="noopener" title="Imprimir en A4 horizontal">🖨️ Imprimir</a>
+    </div>
+    {% endif %}
+</div>
+
+{{ jornadas_filtro|json_script:"registro-jornadas-filtro" }}
+<script>
+(function () {
+    // «Jornada del curso» como en la Hoja de recaudación: depende del curso y
+    // se acota con la modalidad y la ciudad. Las opciones se reconstruyen
+    // porque Safari no oculta <option> con hidden.
+    const datos = document.getElementById('registro-jornadas-filtro');
+    const curso = document.getElementById('filtro-curso');
+    const jornada = document.getElementById('filtro-jornada');
+    const modalidad = document.getElementById('filtro-modalidad');
+    const ciudad = document.getElementById('filtro-ciudad');
+    if (!datos || !curso || !jornada) return;
+    const jornadas = JSON.parse(datos.textContent);
+    let elegida = jornada.dataset.seleccionada || '';
+
+    function sincronizar() {
+        const anterior = jornada.value || elegida;
+        elegida = '';
+        if (!curso.value) {
+            jornada.replaceChildren(new Option('— Primero selecciona un curso —', ''));
+            jornada.disabled = true;
+            return;
+        }
+        const ciudadElegida = (ciudad.value || '').toLowerCase();
+        const lista = jornadas.filter(j =>
+            j.curso === curso.value
+            && (!modalidad.value || j.modalidad === modalidad.value)
+            && (!ciudadElegida || j.ciudad.toLowerCase() === ciudadElegida));
+        const primera = new Option(
+            lista.length ? 'Jornada del curso: Todas' : '— No hay jornadas para este curso/filtro —', ''
+        );
+        jornada.replaceChildren(primera, ...lista.map(j => new Option(j.texto, j.id)));
+        jornada.disabled = false;
+        jornada.value = lista.some(j => j.id === anterior) ? anterior : '';
+    }
+
+    curso.addEventListener('change', sincronizar);
+    if (modalidad) modalidad.addEventListener('change', sincronizar);
+    if (ciudad) ciudad.addEventListener('change', sincronizar);
+    sincronizar();
+})();
+</script>

@@ -2,7 +2,7 @@ from django.urls import path, re_path
 from . import (
     views, views_adicional, views_admin, views_avisos, views_cierre,
     views_comprobantes, views_pagos, views_recordatorios, views_sedes,
-    views_social, views_jornadas_estudiante,
+    views_social, views_jornadas_estudiante, views_registro_estudiantil,
 )
 
 app_name = 'academia'
@@ -24,9 +24,30 @@ urlpatterns = [
     # ── Ayuda ──────────────────────────────────────────────────
     path('ayuda/', views.ayuda, name='ayuda'),
 
+    # ── Registro Estudiantil (una hoja por día, como el Excel) ──
+    path('registro-estudiantil/',
+         views_registro_estudiantil.registro_estudiantil,
+         name='registro_estudiantil'),
+    path('registro-estudiantil/rango/',
+         views_registro_estudiantil.registro_estudiantil_rango,
+         name='registro_estudiantil_rango'),
+    path('registro-estudiantil/<int:pk>/guardar/',
+         views_registro_estudiantil.registro_estudiantil_guardar,
+         name='registro_estudiantil_guardar'),
+    path('registro-estudiantil/exportar/excel/',
+         views_registro_estudiantil.registro_estudiantil_excel,
+         name='registro_estudiantil_export_excel'),
+    path('registro-estudiantil/imprimir/',
+         views_registro_estudiantil.registro_estudiantil_imprimir,
+         name='registro_estudiantil_imprimir'),
+
     # ── Matrícula (presencial u online) ────────────────────────
     path('matricula/facturas/',
          views.matricula_facturas, name='matricula_facturas'),
+    path('matricula/facturas/sin-factura/',
+         views.matricula_sin_factura, name='matricula_sin_factura'),
+    path('matricula/facturas/<int:pk>/registrar/',
+         views.matricula_registrar_factura, name='matricula_registrar_factura'),
     path('matricula/<str:modalidad>/',
          views.matricula_menu, name='matricula_menu'),
     path('matricula/<str:modalidad>/registrar/',

@@ -180,6 +180,11 @@ JORNADA_DIAS = [
 
 # Tipos de matrícula contratada por el estudiante
 MONTO_RESERVA_MATRICULA = Decimal('10.00')
+# Máximo de un pago «Solo Módulo» según la modalidad de la matrícula.
+TOPE_PAGO_MODULO = {
+    'presencial': Decimal('20.00'),
+    'online': Decimal('25.00'),
+}
 CENTAVO = Decimal('0.01')
 DOLAR = Decimal('1.00')
 
@@ -258,6 +263,7 @@ TIPOS_REGISTRO = [
     ('central_1', 'Central 1'),
     ('central_2', 'Central 2'),
     ('central_ia', 'Central IA'),
+    ('venta_presencial', 'Venta Presencial'),
     ('seguimiento', 'Seguimiento'),
 ]
 
@@ -745,7 +751,7 @@ class Matricula(models.Model):
     # y al guardarse genera/actualiza un Comprobante espejo para el ranking.
     tipo_registro = models.CharField(
         max_length=20, choices=TIPOS_REGISTRO, blank=True,
-        help_text='Origen del registro: Central 1, Central 2, Central IA o Seguimiento.'
+        help_text='Origen del registro: Central 1, Central 2, Central IA, Venta Presencial o Seguimiento.'
     )
     factura_realizada = models.CharField(
         max_length=2, choices=SI_NO, default='no',
@@ -762,6 +768,11 @@ class Matricula(models.Model):
     fact_correo = models.CharField(max_length=254,
         blank=True,
         help_text='Correo electrónico para enviar la factura.'
+    )
+    # Texto y no número: los números de factura llevan ceros a la izquierda.
+    numero_factura = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text='Número de la factura emitida (solo números).'
     )
     link_comprobante = models.URLField(
         max_length=500, blank=True,
@@ -906,6 +917,13 @@ class Matricula(models.Model):
         self.valor_pagado = total
         if save:
             super().save(update_fields=['valor_pagado', 'actualizado'])
+            # El comprobante espejo (Comprobantes y ranking) muestra lo cobrado
+            # y lo pendiente: se actualiza con cada pago, no solo cuando se
+            # vuelve a guardar la matrícula (mismo cálculo que _sync_comprobante).
+            Comprobante.objects.filter(matricula=self).update(
+                pago_abono=total,
+                diferencia=max(self.saldo, Decimal('0.00')),
+            )
         return total
 
     # ── Helpers para el control por módulo ──
@@ -1471,12 +1489,8 @@ class Comprobante(models.Model):
         ('no', 'No'),
     ]
 
-    TIPOS_REGISTRO = [
-        ('central_1', 'Central 1'),
-        ('central_2', 'Central 2'),
-        ('central_ia', 'Central IA'),
-        ('seguimiento', 'Seguimiento'),
-    ]
+    # Mismas opciones que la matrícula: el comprobante espejo copia su valor.
+    TIPOS_REGISTRO = TIPOS_REGISTRO
 
     # ── Datos del curso vendido ──────────────────────────
     curso = models.ForeignKey(
@@ -1526,7 +1540,7 @@ class Comprobante(models.Model):
     tipo_registro = models.CharField(
         max_length=20, choices=TIPOS_REGISTRO, blank=True, null=True,
         verbose_name='Tipo de registro',
-        help_text='Origen del registro: Central 1, Central 2, Central IA o Seguimiento.'
+        help_text='Origen del registro: Central 1, Central 2, Central IA, Venta Presencial o Seguimiento.'
     )
 
     # ── Pagos ────────────────────────────────────────────
@@ -2343,6 +2357,7 @@ class MatriculaArchivada(models.Model):
     fact_nombres = models.CharField(max_length=200, blank=True)
     fact_cedula = models.CharField(max_length=20, blank=True)
     fact_correo = models.CharField(max_length=254, blank=True)
+    numero_factura = models.CharField(max_length=20, blank=True, default='')
     link_comprobante = models.URLField(max_length=500, blank=True)
 
     observaciones = models.TextField(blank=True)
@@ -2938,6 +2953,21 @@ class CuotaManualRecaudacion(models.Model):
         return f'{self.matricula_id} · {self.fecha} · ${self.monto}'
 
 
+# Colores de las filas del Registro Estudiantil: los de la hoja de Excel del
+# equipo más rosado, morado, lila y blanco. El administrador elige el de cada
+# usuario en el admin de Django (Usuarios › Modificar usuario).
+COLORES_REGISTRO = [
+    ('azul', 'Azul', '#4a86e8'),
+    ('naranja', 'Naranja', '#ff9900'),
+    ('rojo', 'Rojo', '#e8453c'),
+    ('verde', 'Verde', '#93c47d'),
+    ('rosado', 'Rosado', '#f7a8c8'),
+    ('morado', 'Morado', '#9b72cf'),
+    ('lila', 'Lila', '#cdb4f0'),
+    ('blanco', 'Blanco', '#ffffff'),
+]
+
+
 class PerfilUsuario(models.Model):
     """Preferencias visuales y personales del perfil de cada usuario."""
 
@@ -2961,6 +2991,15 @@ class PerfilUsuario(models.Model):
     hobbies_favoritos = models.JSONField(default=list, blank=True)
     peliculas_favoritas = models.JSONField(default=list, blank=True)
     intereses_personales = models.JSONField(default=list, blank=True)
+    color_registro = models.CharField(
+        'Color en el Registro Estudiantil',
+        max_length=20, blank=True, default='',
+        choices=[(codigo, nombre) for codigo, nombre, _hex in COLORES_REGISTRO],
+        help_text=(
+            'Color de las filas que registra en el Registro Estudiantil. '
+            'Solo lo cambia un administrador. Vacío: el sistema elige uno.'
+        ),
+    )
     actualizado = models.DateTimeField(auto_now=True)
 
     class Meta:

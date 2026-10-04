@@ -285,6 +285,7 @@ def _snapshot_matricula(matricula, cierre, fecha_archivo=None):
         fact_nombres=matricula.fact_nombres or '',
         fact_cedula=matricula.fact_cedula or '',
         fact_correo=matricula.fact_correo or '',
+        numero_factura=matricula.numero_factura or '',
         link_comprobante=matricula.link_comprobante or '',
 
         observaciones=matricula.observaciones or '',

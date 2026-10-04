@@ -11,7 +11,8 @@ from django.urls import reverse
 from .forms import MatriculaForm, EstudianteForm
 from .models import Curso, Categoria, JornadaCurso, Sede, Estudiante, Matricula, Abono, Comprobante
 from .mercybot import STATE
-from .mercybot_matricula import STUDENT_FIELDS, ACADEMIC_FIELDS, PAYMENT_FIELDS, CLOSING_FIELDS, LEGACY_FIELDS
+from .mercybot_matricula import (STUDENT_FIELDS, ACADEMIC_FIELDS, PAYMENT_FIELDS, CLOSING_FIELDS,
+                                 LEGACY_FIELDS, FACTURA_FIELDS)
 
 
 class MercyBotMatriculaTests(TestCase):
@@ -34,12 +35,11 @@ class MercyBotMatriculaTests(TestCase):
             'titulo_profesional': 'Contabilidad', 'ciudad': 'Quito',
             'curso': str(self.course.pk), 'jornada': str(self.jornada.pk), 'estado': 'activa',
             'tipo_matricula': 'reserva_abono', 'fecha_matricula': '2026-09-19',
-            'valor_curso': '100', 'descuento': '10', 'forma_pago': 'abono', 'valor_pagado': '20',
+            'valor_curso': '100', 'descuento': '10', 'forma_pago': 'abono', 'valor_pagado': '10',
             'tipo_cobro': 'un_solo_metodo', 'metodo_pago': 'transferencia', 'banco': 'pichincha',
             'talla_camiseta': 'M', 'observaciones': 'Inscripción desde el chat',
             'tipo_registro': 'central_2', 'vendedora_id': str(self.advisor.pk),
-            'factura_realizada': 'si', 'fact_nombres': 'Titular Factura', 'fact_cedula': '0912345678',
-            'fact_correo': 'factura@example.test', 'link_comprobante': 'https://example.test/recibo',
+            'link_comprobante': 'https://example.test/recibo',
         }
         notify = patch('academia.views._programar_confirmacion_matricula')
         self.notify = notify.start(); self.addCleanup(notify.stop)
@@ -60,11 +60,11 @@ class MercyBotMatriculaTests(TestCase):
         self.assertEqual(set(MatriculaForm().fields),
                          (set(ACADEMIC_FIELDS + PAYMENT_FIELDS + CLOSING_FIELDS) - {'vendedora_id'}) | LEGACY_FIELDS)
 
-    def test_complete_enrollment_payment_invoice_and_audit(self):
+    def test_complete_enrollment_payment_and_audit(self):
         result = self.register()
         self.assertIn('Matrícula #', result['reply'])
         self.assertIn('03/10/2026', result['reply'])
-        self.assertIn('$70.00', result['reply'])
+        self.assertIn('$80.00', result['reply'])
         m = Matricula.objects.get()
         self.assertEqual(m.estudiante.nombres, self.data['nombres'])
         self.assertEqual(m.estudiante.edad, 26)
@@ -78,14 +78,16 @@ class MercyBotMatriculaTests(TestCase):
         self.assertEqual(m.talla_camiseta, 'M')
         self.assertEqual(m.observaciones, self.data['observaciones'])
         self.assertEqual(m.tipo_registro, 'central_2')
-        self.assertEqual(m.fact_nombres, 'Titular Factura')
-        self.assertEqual(m.fact_cedula, '0912345678')
-        self.assertEqual(m.fact_correo, 'factura@example.test')
+        # La factura se registra después, en Matrícula › Facturas.
+        self.assertEqual((m.factura_realizada, m.fact_nombres, m.fact_cedula), ('no', '', ''))
+        self.assertIn('Matrícula › Facturas › Registrar factura', result['reply'])
+        self.assertIn(reverse('academia:matricula_registrar_factura', args=[m.pk]),
+                      [enlace['url'] for enlace in result['links']])
         self.assertEqual(m.link_comprobante, self.data['link_comprobante'])
-        self.assertEqual(m.valor_pagado, Decimal('20'))
-        self.assertEqual(m.saldo, Decimal('70'))
+        self.assertEqual(m.valor_pagado, Decimal('10'))
+        self.assertEqual(m.saldo, Decimal('80'))
         p = Abono.objects.get(matricula=m)
-        self.assertEqual(p.monto, Decimal('20'))
+        self.assertEqual(p.monto, Decimal('10'))
         self.assertEqual(p.metodo, 'transferencia')
         self.assertEqual(p.banco, 'pichincha')
         self.assertEqual(p.registrado_por, self.user)
@@ -180,17 +182,28 @@ class MercyBotMatriculaTests(TestCase):
         self.assertEqual(Matricula.objects.get().estudiante_id, student.pk)
         student.refresh_from_db(); self.assertEqual(student.nombres, 'Nombre Existente')
 
+    def test_reserva_above_ten_dollars_is_rejected_until_corrected(self):
+        result = self.register(dict(self.data, valor_pagado='20'))
+        self.assertIn('máximo $10.00', result['reply'])
+        self.assertEqual(self.client.session[STATE]['waiting'], 'valor_pagado')
+        self.assertFalse(Estudiante.objects.exists())
+        self.assertFalse(Matricula.objects.exists())
+        self.assertFalse(Abono.objects.exists())
+        result = self.chat('10')
+        self.assertIn('Matrícula #', result['reply'])
+        self.assertEqual(Abono.objects.get().monto, Decimal('10'))
+
     def test_mixed_payment_sum_bank_and_no_partial_records(self):
-        values = dict(self.data, tipo_cobro='mixto', monto_pago_1='12', metodo_pago_1='efectivo',
-                      monto_pago_2='9', metodo_pago_2='tarjeta', banco_2='payphone')
+        values = dict(self.data, tipo_cobro='mixto', monto_pago_1='6', metodo_pago_1='efectivo',
+                      monto_pago_2='5', metodo_pago_2='tarjeta', banco_2='payphone')
         result = self.register(values)
         self.assertIn('suma', result['reply'])
         self.assertFalse(Matricula.objects.exists())
-        result = self.chat('monto 2: 8')
+        result = self.chat('monto 2: 4')
         self.assertIn('Matrícula #', result['reply'])
         p = Abono.objects.get()
-        self.assertEqual(p.monto, Decimal('20'))
-        self.assertEqual(p.monto_2, Decimal('8'))
+        self.assertEqual(p.monto, Decimal('10'))
+        self.assertEqual(p.monto_2, Decimal('4'))
         self.assertEqual(p.metodo, 'efectivo')
         self.assertEqual(p.metodo_2, 'tarjeta')
         self.assertEqual(p.banco_2, 'payphone')
@@ -213,12 +226,16 @@ class MercyBotMatriculaTests(TestCase):
         p = Abono.objects.get()
         self.assertEqual((p.metodo, p.banco), ('deposito', 'banco_pacifico'))
 
-    def test_invoice_requires_student_contact_and_tax_fields(self):
-        values = dict(self.data, celular='', ciudad='', fact_nombres='', fact_cedula='')
-        self.register(values)
-        self.assertFalse(Matricula.objects.exists())
-        self.chat('celular: 0998765432; ciudad: Quito; nombres factura: Ana; cédula factura: 0912345678')
-        self.assertEqual(Matricula.objects.count(), 1)
+    def test_factura_ya_no_se_pide_y_se_ignora_con_aviso(self):
+        result = self.chat('registrar estudiante; cédula: 0999999999; factura: si; nombres factura: Otra Persona')
+        self.assertIn('Matrícula › Facturas › Registrar factura', result['reply'])
+        self.assertFalse(set(FACTURA_FIELDS) & set(self.client.session[STATE]['data']))
+        # Sin factura en la matrícula, celular y ciudad ya no son obligatorios.
+        values = {k: v for k, v in self.data.items() if k != 'cedula'}
+        result = self.chat(self.payload(dict(values, celular='', ciudad='')))
+        self.assertIn('Matrícula #', result['reply'])
+        m = Matricula.objects.get()
+        self.assertEqual((m.factura_realizada, m.fact_nombres), ('no', ''))
 
     def test_full_payment_online_and_suggested_course_price(self):
         values = dict(self.data, jornada=str(self.online.pk), tipo_matricula='programa_completo',

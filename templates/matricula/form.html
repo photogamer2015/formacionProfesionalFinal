@@ -310,6 +310,14 @@
         <div>
             <label class="form-label" for="{{ mat_form.valor_pagado.id_for_label }}">Valor pagado (USD)</label>
             {{ mat_form.valor_pagado }}{{ mat_form.valor_pagado.errors }}
+            {# Si el servidor ya devolvió un error en este campo, no se repite el aviso. #}
+            {% if not mat_form.valor_pagado.errors %}
+            <div id="valor-pagado-tope-error" class="valor-pagado-tope-error" role="alert" style="display:none;">
+                ⚠️ En Reserva / Abono el valor pagado es de máximo $10.00. Si paga el curso
+                completo, elige «Programa Completo»; si paga más que la reserva, registra
+                el resto en Gestionar Pagos.
+            </div>
+            {% endif %}
             <small class="form-helptext-pagado" style="color: #666; display: block; margin-top: 5px;">{{ mat_form.valor_pagado.help_text|default:'' }}</small>
         </div>
         <!-- Selector de Distribución de Pago -->
@@ -456,34 +464,12 @@
         {% endif %}
     </div>
 
-    <h3 class="form-section-title" style="margin-top:32px;">🧾 Factura</h3>
-    <div class="form-grid">
-        <div>
-            <label class="form-label" for="{{ mat_form.factura_realizada.id_for_label }}">¿Factura con datos? *</label>
-            {{ mat_form.factura_realizada }}{{ mat_form.factura_realizada.errors }}
-        </div>
-    </div>
-
-    <div id="datos-factura-wrap" style="margin-top:14px;">
-        <div style="font-size:13px; font-weight:600; color:#1A237E; margin-bottom:8px;">Datos para factura</div>
-        <div class="form-grid">
-            <div>
-                <label class="form-label" for="{{ mat_form.fact_nombres.id_for_label }}">Nombres</label>
-                {{ mat_form.fact_nombres }}{{ mat_form.fact_nombres.errors }}
-            </div>
-            
-            <div>
-                <label class="form-label" for="{{ mat_form.fact_cedula.id_for_label }}">Número de cédula / RUC</label>
-                {{ mat_form.fact_cedula }}{{ mat_form.fact_cedula.errors }}
-            </div>
-            <div>
-                <label class="form-label" for="{{ mat_form.fact_correo.id_for_label }}">Correo electrónico (opcional)</label>
-                {{ mat_form.fact_correo }}{{ mat_form.fact_correo.errors }}
-            </div>
-        </div>
-        <small style="color:#888; font-size:11px; display:block; margin-top:6px;">
-            Nombres y número de cédula/RUC son obligatorios cuando "Factura realizada" = Sí. El correo es opcional.
-        </small>
+    <!-- La factura ya no se registra al matricular: solo se indica dónde hacerlo. -->
+    <div id="aviso-factura" class="flash flash-info" role="note" style="margin:32px 0 0; line-height:1.55;">
+        <strong>🧾 La factura ya no se registra aquí.</strong>
+        Después de guardar la matrícula, ve a
+        <strong>Matrícula › Facturas › Registrar factura</strong>, busca al estudiante y pulsa
+        «Registrar factura»: sus datos salen solos y ahí escribes el número de factura.
     </div>
 
     <div class="form-actions-row">
@@ -924,6 +910,22 @@
     .field-required { /* Se quitó el border-color rojo para evitar confusión con errores */ }
     .req-star { color: #c62828; margin-left:6px; font-weight:700; }
 
+    /* Reserva / Abono con más de $10: el valor pagado queda en rojo
+       (!important para que no lo quiten el foco ni los avisos del formulario). */
+    .form-input.valor-pagado-excedido {
+        border-color: #c62828 !important;
+        background: #ffebee;
+        box-shadow: 0 0 0 3px rgba(198, 40, 40, .15) !important;
+    }
+    .valor-pagado-tope-error {
+        margin-top: 5px;
+        color: #c62828;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.4;
+    }
+    body.dark-mode .valor-pagado-tope-error { color: #ff8a80; }
+
 </style>
 {% endblock %}
 
@@ -949,6 +951,7 @@
             'programa_completo': 'pago_completo',
         };
         const formaPagoHint = document.getElementById('forma-pago-hint');
+        const topeReservaError = document.getElementById('valor-pagado-tope-error');
         const valorCampos = document.getElementById('valor-campos');
         const cobroCampos = document.getElementById('cobro-campos');
         const otrosAviso = document.getElementById('otros-aviso');
@@ -1096,7 +1099,7 @@
                 valorPagadoInput.readOnly = false;
                 valorPagadoInput.style.background = '';
                 if (formaPagoHint) formaPagoHint.textContent =
-                    'Reserva / Abono: inicia en $10.00 y puedes escribir un monto mayor. El saldo se divide entre los módulos del curso.';
+                    'Reserva / Abono: se cobra de $0.01 hasta $10.00 como máximo. El saldo se divide entre los módulos del curso.';
             } else if (forma === 'pago_completo') {
                 if (forzar || !tieneValorMio) {
                     valorPagadoInput.value = neto.toFixed(2);
@@ -1121,6 +1124,30 @@
             if (typeof toggleSubmitBtn === 'function') {
                 toggleSubmitBtn();
             }
+        }
+
+        // ── Reserva / Abono: el valor pagado va de $0.01 hasta $10.00 ──
+        // Si escriben más, el campo queda en rojo y no se puede registrar
+        // (el servidor también lo rechaza). Se compara en centavos.
+        function excedeTopeReserva() {
+            if (!ES_REGISTRO_NUEVO || !valorPagadoInput) return false;
+            if (tipoMatriculaActual() !== 'reserva_abono') return false;
+            const val = parseFloat((valorPagadoInput.value || '').replace(',', '.'));
+            return !isNaN(val) && Math.round(val * 100) > Math.round(MONTO_RESERVA * 100);
+        }
+
+        function marcarTopeReserva() {
+            if (!valorPagadoInput) return;
+            const excede = excedeTopeReserva();
+            valorPagadoInput.classList.toggle('valor-pagado-excedido', excede);
+            if (excede) {
+                valorPagadoInput.setAttribute('aria-invalid', 'true');
+                valorPagadoInput.setAttribute('aria-describedby', 'valor-pagado-tope-error');
+            } else {
+                valorPagadoInput.removeAttribute('aria-invalid');
+                valorPagadoInput.removeAttribute('aria-describedby');
+            }
+            if (topeReservaError) topeReservaError.style.display = excede ? 'block' : 'none';
         }
 
         // Flujo heredado: solo aparece al editar una matrícula antigua.
@@ -1247,13 +1274,15 @@
         }
         
         // Al elegir el tipo de matrícula, se autocompleta la forma de pago
-        // (se puede cambiar a mano después).
+        // (se puede cambiar a mano después) y el valor pagado vuelve al de
+        // ese tipo: Reserva / Abono → $10.00; Programa Completo → el total.
+        // Así no queda, por ejemplo, el total del curso como «reserva».
         if (tipoMatriculaSelect) {
             tipoMatriculaSelect.addEventListener('change', function () {
                 const sugerida = TIPO_MATRICULA_A_FORMA_PAGO[this.value];
                 if (sugerida && formaPagoSelect) {
                     formaPagoSelect.value = sugerida;
-                    aplicarFormaPago();
+                    aplicarFormaPago(true);
                     validarCamposPrincipales();
                 }
                 actualizarModulosAPagar(true);
@@ -1290,7 +1319,6 @@
             { name: 'fecha_matricula', label: 'Fecha de matrícula' },
             { name: 'valor_curso', label: 'Valor del curso' },
             { name: 'tipo_registro', label: 'Tipo de registro' },
-            { name: 'factura_realizada', label: '¿Factura realizada?' },
         ];
         if (SOLO_DATOS) {
             for (let i = CAMPOS_REQUERIDOS.length - 1; i >= 0; i--) {
@@ -1478,7 +1506,6 @@
             const duplicadoTexto = duplicadoVisible && cursoDuplicadoDetalle
                 ? cursoDuplicadoDetalle.textContent.trim()
                 : '';
-            const facturaSi = (valorCampo('factura_realizada') || '').toLowerCase() === 'si';
 
             confirmResumen.innerHTML = [
                 seccionResumen('Estudiante', [
@@ -1499,10 +1526,6 @@
                 seccionResumen('Comprobante', [
                     ['Tipo registro', textoSeleccion('tipo_registro')],
                     ['Asesor', textoAsesorSeleccionado()],
-                    ['Factura', textoSeleccion('factura_realizada')],
-                    ['Titular factura', facturaSi ? valorCampo('fact_nombres') : 'No aplica'],
-                    ['Cédula/RUC factura', facturaSi ? valorCampo('fact_cedula') : 'No aplica'],
-                    ['Correo factura', facturaSi ? valorCampo('fact_correo') : 'No aplica'],
                 ]),
             ].join('') + (
                 duplicadoTexto
@@ -2287,139 +2310,6 @@
         }
         filtrarCursosVisuales();
 
-        // ── Toggle visual de "datos de factura" y gestión de requisitos ───
-        const facturaSelect = obtenerElementoCampo('factura_realizada');
-        const datosFacturaWrap = document.getElementById('datos-factura-wrap');
-
-        const INVOICE_FIELDS = [
-            { name: 'fact_nombres', label: 'Nombres (factura)' },
-            
-            { name: 'fact_cedula', label: 'Cédula / RUC (factura)' },
-        ];
-
-        function isFacturaSi() {
-            const checked = document.querySelector('[name="factura_realizada"]:checked');
-            if (checked) return checked.value === 'si';
-            if (facturaSelect) return facturaSelect.value === 'si';
-            return false;
-        }
-
-        function setInvoiceRequired(required) {
-            INVOICE_FIELDS.forEach(f => {
-                const el = obtenerElementoCampo(f.name);
-                if (!el) return;
-                const lbl = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
-                if (required) {
-                    el.setAttribute('required', 'required');
-                    el.classList.add('field-required');
-                    if (lbl && !lbl.querySelector('.req-star')) {
-                        const span = document.createElement('span');
-                        span.className = 'req-star';
-                        span.textContent = ' *';
-                        lbl.appendChild(span);
-                    }
-                } else {
-                    el.removeAttribute('required');
-                    el.classList.remove('field-required');
-                    el.style.borderColor = '';
-                    if (lbl) {
-                        const star = lbl.querySelector('.req-star');
-                        if (star) star.remove();
-                    }
-                }
-            });
-
-            if (required) {
-                INVOICE_FIELDS.forEach(f => {
-                    if (!CAMPOS_REQUERIDOS.find(c => c.name === f.name)) {
-                        CAMPOS_REQUERIDOS.push({ name: f.name, label: f.label });
-                    }
-                });
-            } else {
-                for (let i = CAMPOS_REQUERIDOS.length - 1; i >= 0; i--) {
-                    if (INVOICE_FIELDS.find(x => x.name === CAMPOS_REQUERIDOS[i].name)) {
-                        CAMPOS_REQUERIDOS.splice(i, 1);
-                    }
-                }
-            }
-            toggleSubmitBtn();
-        }
-
-        // ── Factura con datos: celular/ciudad del estudiante pasan a ser
-        //    obligatorios. El correo se autocompleta si existe, pero no bloquea
-        //    la matrícula. ──────────────────────────────────────────────────
-        const STUDENT_REQ_FIELDS = [
-            { name: 'celular', label: 'Celular' },
-            { name: 'ciudad', label: 'Ciudad' },
-        ];
-
-        function setStudentFacturaRequired(required) {
-            STUDENT_REQ_FIELDS.forEach(f => {
-                const el = obtenerElementoCampo(f.name);
-                if (!el) return;
-                const lbl = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
-                if (required) {
-                    el.setAttribute('required', 'required');
-                    el.classList.add('field-required');
-                    if (lbl && !lbl.querySelector('.req-star')) {
-                        const span = document.createElement('span');
-                        span.className = 'req-star';
-                        span.textContent = ' *';
-                        lbl.appendChild(span);
-                    }
-                    if (!CAMPOS_REQUERIDOS.find(c => c.name === f.name)) {
-                        CAMPOS_REQUERIDOS.push({ name: f.name, label: f.label });
-                    }
-                } else {
-                    el.removeAttribute('required');
-                    el.classList.remove('field-required');
-                    if (lbl) {
-                        const star = lbl.querySelector('.req-star');
-                        if (star) star.remove();
-                    }
-                    for (let i = CAMPOS_REQUERIDOS.length - 1; i >= 0; i--) {
-                        if (CAMPOS_REQUERIDOS[i].name === f.name) CAMPOS_REQUERIDOS.splice(i, 1);
-                    }
-                }
-            });
-            toggleSubmitBtn();
-        }
-
-        // Mapa campo_factura ← campo_estudiante
-        const FACTURA_MAP = [
-            { factura: 'fact_nombres', estudiante: 'nombres' },
-            { factura: 'fact_cedula', estudiante: 'cedula' },
-            { factura: 'fact_correo', estudiante: 'correo' },
-        ];
-        // Si el usuario edita un campo de factura a mano, dejamos de sobreescribirlo.
-        const facturaDirty = {};
-        FACTURA_MAP.forEach(m => {
-            const el = obtenerElementoCampo(m.factura);
-            if (el) {
-                el.addEventListener('input', () => { facturaDirty[m.factura] = true; });
-            }
-        });
-
-        function autofillFactura() {
-            if (!isFacturaSi()) return;
-            FACTURA_MAP.forEach(m => {
-                if (facturaDirty[m.factura]) return; // respetar edición manual
-                const src = obtenerElementoCampo(m.estudiante);
-                const dst = obtenerElementoCampo(m.factura);
-                if (src && dst) {
-                    dst.value = src.value || '';
-                }
-            });
-            validarCamposPrincipales();
-        }
-
-        // Cuando cambian los datos del estudiante y la factura está en "Sí",
-        // reflejar el cambio en los datos de factura.
-        ['nombres', 'cedula', 'correo'].forEach(name => {
-            const el = obtenerElementoCampo(name);
-            if (el) el.addEventListener('input', autofillFactura);
-        });
-
         // ── Validar formulario y habilitar/deshabilitar botón ──
         // Devuelve un arreglo con los motivos por los que NO se puede registrar.
         function obtenerFaltantesRegistro() {
@@ -2454,6 +2344,10 @@
                 if (isNaN(val) || val <= 0) {
                     agregarFaltante('Valor pagado mayor a $0.00');
                 }
+            }
+            // 1b. Reserva / Abono: el valor pagado es de máximo $10.00.
+            if (!sinCobro && excedeTopeReserva()) {
+                agregarFaltante('Valor pagado de máximo $' + MONTO_RESERVA.toFixed(2) + ' en Reserva / Abono');
             }
 
             // 2. Debe seleccionar un asesor (vendedora)
@@ -2508,14 +2402,7 @@
                 agregarFaltante('Banco');
             }
 
-            // 7. Datos de factura obligatorios si factura = Sí.
-            const facturaRealizada = obtenerElementoCampo('factura_realizada');
-            if (facturaRealizada && facturaRealizada.value === 'si') {
-                if (campoEstaVacio('fact_nombres')) agregarFaltante('Nombres de factura');
-                if (campoEstaVacio('fact_cedula')) agregarFaltante('Cédula / RUC de factura');
-            }
-
-            // 8. Mixto sum validation
+            // 7. Mixto sum validation
             if (!sinCobro && tipoCobroSelect && tipoCobroSelect.value === 'mixto') {
                 const total = parseFloat(valorPagadoInput.value) || 0;
                 const m1 = parseFloat(document.getElementById('id_monto_pago_1').value) || 0;
@@ -2530,6 +2417,7 @@
 
         // ── Ocultar/deshabilitar botón ──
         function toggleSubmitBtn() {
+            marcarTopeReserva();
             const btn = document.getElementById('submit-btn');
             if (!btn) return;
 
@@ -2561,26 +2449,6 @@
             // Ejecutar al cargar para estado inicial
             setTimeout(toggleSubmitBtn, 100);
         }
-
-        function toggleDatosFactura() {
-            if (!datosFacturaWrap) return;
-            const si = isFacturaSi();
-            datosFacturaWrap.style.opacity = si ? '1' : '0.65';
-            setInvoiceRequired(si);
-            setStudentFacturaRequired(si);
-            if (si) autofillFactura();
-            validarCamposPrincipales();
-        }
-
-        // Escuchar cambios (soporta radios o selects)
-        const facturaEls = document.querySelectorAll('[name="factura_realizada"]');
-        if (facturaEls && facturaEls.length) {
-            facturaEls.forEach(e => e.addEventListener('change', toggleDatosFactura));
-        } else if (facturaSelect) {
-            facturaSelect.addEventListener('change', toggleDatosFactura);
-        }
-        // Inicializar estado
-        toggleDatosFactura();
 
         // ── Validar al cargar ─────────────────────────────────────────────
         validarCamposPrincipales();

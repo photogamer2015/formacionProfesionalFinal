@@ -1,0 +1,350 @@
+{% comment %}Estilos del selector de rango de fechas: copia exacta de los de «Lista de Matriculados» (templates/matricula/lista.html) para que se vea igual.{% endcomment %}
+<style>
+    .matricula-date-range {
+        position: relative;
+        flex: 0 0 268px;
+        min-width: 248px;
+        max-width: 300px;
+    }
+    .date-range-trigger {
+        width: 100%;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 10px 12px;
+        border: 2px solid var(--fp-border);
+        border-radius: 8px;
+        background: var(--fp-surface);
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+        transition: border .15s, box-shadow .15s, background .15s;
+    }
+    .date-range-trigger:hover,
+    .date-range-trigger[aria-expanded="true"],
+    .matricula-date-range.has-value .date-range-trigger {
+        border-color: var(--fp-navy);
+        box-shadow: 0 0 0 3px rgba(27,42,78,.10);
+    }
+    .date-range-trigger-text {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: left;
+    }
+    .date-range-trigger-caret {
+        color: var(--fp-muted);
+        font-size: 12px;
+        flex: 0 0 auto;
+    }
+    .date-range-popover[hidden] {
+        display: none;
+    }
+    .date-range-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 2500;
+        width: min(860px, calc(100vw - 32px));
+        overflow: hidden;
+        border: 1px solid rgba(27,42,78,.12);
+        border-radius: 12px;
+        background: var(--fp-surface);
+        color: var(--fp-ink);
+        box-shadow: 0 22px 56px rgba(27,42,78,.18);
+    }
+    .date-range-layout {
+        display: grid;
+        grid-template-columns: 184px minmax(0, 1fr);
+    }
+    .date-range-presets {
+        padding: 14px 10px;
+        border-right: 1px solid var(--fp-line);
+        background: var(--fp-surface-2);
+    }
+    .date-range-presets-title {
+        padding: 0 10px 9px;
+        color: var(--fp-muted);
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .date-range-preset {
+        width: 100%;
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 10px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+    }
+    .date-range-preset::before {
+        content: "";
+        width: 15px;
+        height: 15px;
+        border: 1.5px solid #c6cfda;
+        border-radius: 50%;
+        background: var(--fp-surface);
+        flex: 0 0 auto;
+    }
+    .date-range-preset:hover {
+        background: rgba(27,42,78,.07);
+    }
+    .date-range-preset.is-active {
+        color: var(--fp-navy);
+        font-weight: 800;
+        background: rgba(27,42,78,.09);
+    }
+    .date-range-preset.is-active::before {
+        border-color: var(--fp-navy);
+        box-shadow: inset 0 0 0 4px var(--fp-surface);
+        background: var(--fp-navy);
+    }
+    .date-range-main {
+        padding: 14px;
+    }
+    .date-range-calendars {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 16px;
+    }
+    .date-range-calendar-head {
+        min-height: 32px;
+        display: grid;
+        grid-template-columns: 32px 1fr 32px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .date-range-calendar-title {
+        text-align: center;
+        color: var(--fp-ink);
+        font-size: 14px;
+        font-weight: 800;
+        text-transform: capitalize;
+    }
+    .date-range-nav {
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-muted);
+        font-size: 23px;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .date-range-nav:hover {
+        background: var(--fp-surface-2);
+        color: var(--fp-navy);
+    }
+    .date-range-weekdays,
+    .date-range-days {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 3px;
+    }
+    .date-range-weekdays {
+        margin-bottom: 4px;
+    }
+    .date-range-weekdays span {
+        color: var(--fp-muted);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: center;
+    }
+    .date-range-day {
+        min-width: 0;
+        aspect-ratio: 1;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fp-ink);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .date-range-day:hover {
+        background: var(--fp-surface-2);
+    }
+    .date-range-day.is-today {
+        outline: 1px solid rgba(228,81,3,.72);
+        outline-offset: -2px;
+    }
+    .date-range-day.is-in-range {
+        background: #e8f1ff;
+        color: var(--fp-navy);
+    }
+    .date-range-day.is-selected-start,
+    .date-range-day.is-selected-end {
+        background: var(--fp-navy);
+        color: #ffffff;
+        font-weight: 800;
+        outline: none;
+    }
+    .date-range-empty-day {
+        min-height: 30px;
+    }
+    .date-range-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 14px;
+        border-top: 1px solid var(--fp-line);
+        background: rgba(241,245,251,.72);
+    }
+    .date-range-mode-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 38px;
+        color: var(--fp-ink);
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+        user-select: none;
+    }
+    .date-range-mode-toggle input {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--fp-navy);
+        cursor: pointer;
+    }
+    .date-range-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .date-range-floating[hidden] {
+        display: none;
+    }
+    .date-range-floating {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        bottom: 76px;
+        left: 198px;
+        z-index: 2600;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid rgba(27,42,78,.12);
+        border-radius: 12px;
+        background: var(--fp-surface);
+        box-shadow: 0 20px 54px rgba(27,42,78,.20);
+    }
+    .date-range-floating-calendars {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 16px;
+        align-content: start;
+        min-height: 0;
+        overflow-y: auto;
+    }
+    .date-range-floating-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 12px;
+        border-top: 1px solid var(--fp-line);
+    }
+    body.dark-mode .date-range-trigger,
+    body.dark-mode .date-range-popover,
+    body.dark-mode .date-range-floating {
+        background: #0d1420;
+        color: var(--fp-dark-text);
+        border-color: var(--fp-dark-line);
+    }
+    body.dark-mode .date-range-popover {
+        background: #121925;
+        box-shadow: 0 24px 56px rgba(0,0,0,.48);
+    }
+    body.dark-mode .date-range-presets,
+    body.dark-mode .date-range-footer,
+    body.dark-mode .date-range-floating-actions {
+        background: #0d1420;
+        border-color: var(--fp-dark-line);
+    }
+    body.dark-mode .date-range-preset,
+    body.dark-mode .date-range-calendar-title,
+    body.dark-mode .date-range-day {
+        color: var(--fp-dark-text);
+    }
+    body.dark-mode .date-range-preset:hover,
+    body.dark-mode .date-range-nav:hover,
+    body.dark-mode .date-range-day:hover {
+        background: rgba(126,167,255,.10);
+    }
+    body.dark-mode .date-range-day.is-in-range {
+        background: rgba(126,167,255,.18);
+        color: #dfe8ff;
+    }
+    body.dark-mode .date-range-preset.is-active {
+        color: #dfe8ff;
+        background: rgba(126,167,255,.16);
+    }
+    @media (max-width: 760px) {
+        .matricula-date-range {
+            flex: 1 1 240px;
+            max-width: none;
+        }
+        .date-range-popover {
+            width: calc(100vw - 24px);
+        }
+        .date-range-layout {
+            grid-template-columns: 1fr;
+        }
+        .date-range-presets {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px;
+            border-right: 0;
+            border-bottom: 1px solid var(--fp-line);
+        }
+        .date-range-presets-title {
+            grid-column: 1 / -1;
+        }
+        .date-range-calendars {
+            grid-template-columns: 1fr;
+        }
+        .date-range-footer {
+            align-items: stretch;
+            flex-direction: column;
+        }
+        .date-range-actions {
+            width: 100%;
+        }
+        .date-range-actions .btn {
+            flex: 1;
+        }
+        .date-range-actions {
+            margin-left: 0;
+        }
+        .date-range-floating {
+            position: fixed;
+            inset: 72px 12px auto 12px;
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+        }
+        .date-range-floating-calendars {
+            grid-template-columns: 1fr;
+            overflow: visible;
+        }
+        .date-range-floating-actions {
+            flex-wrap: wrap;
+        }
+        .date-range-floating-actions .btn {
+            flex: 1;
+        }
+    }
+</style>

@@ -1,10 +1,15 @@
 from decimal import Decimal
 
+from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin import helpers
+from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.forms import UserChangeForm
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.template.response import TemplateResponse
 from django.utils.formats import number_format
+from django.utils.html import format_html, format_html_join
 
 from .models import (
     Adicional, Categoria, Comprobante, Curso, JornadaCurso,
@@ -118,10 +123,124 @@ class ConfirmacionMatriculaCorreoAdmin(admin.ModelAdmin):
         return False
 
 
+# ─────────────────────────────────────────────────────────
+# Usuarios: color de cada uno en el Registro Estudiantil
+# ─────────────────────────────────────────────────────────
+
+class SelectorColorRegistro(forms.RadioSelect):
+    """Opciones de color con su muestra, para elegir con un clic."""
+
+    automatico_hex = ''
+
+    def render(self, name, value, attrs=None, renderer=None):
+        from .colores_registro import HEX
+
+        base_id = (attrs or {}).get('id') or f'id_{name}'
+        valor = '' if value is None else str(value)
+        return format_html(
+            '<div style="display:flex;flex-wrap:wrap;gap:10px;">{}</div>',
+            format_html_join('', (
+                '<label for="{}" style="display:inline-flex;align-items:center;'
+                'gap:8px;padding:6px 12px;border:1px solid #c7ced8;'
+                'border-radius:999px;cursor:pointer;">'
+                '<input type="radio" name="{}" value="{}" id="{}"{}>'
+                '<span style="display:inline-block;width:22px;height:22px;'
+                'border-radius:5px;border:1px {} rgba(0,0,0,.45);'
+                'background:{};"></span>{}</label>'
+            ), (
+                (
+                    f'{base_id}_{indice}', name, codigo, f'{base_id}_{indice}',
+                    ' checked' if codigo == valor else '',
+                    'solid' if codigo else 'dashed',
+                    HEX.get(codigo) or self.automatico_hex or '#d9d9d9',
+                    etiqueta,
+                )
+                for indice, (codigo, etiqueta) in enumerate(self.choices)
+            )),
+        )
+
+
+class UsuarioColorForm(UserChangeForm):
+    color_registro = forms.ChoiceField(
+        label='Color en el Registro Estudiantil', required=False,
+        widget=SelectorColorRegistro,
+        help_text=(
+            'Color de las filas que registra este usuario en el Registro '
+            'Estudiantil. También lo ve en su perfil.'
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .colores_registro import (
+            HEX, NOMBRES, codigo_automatico_usuario,
+        )
+        from .models import COLORES_REGISTRO
+
+        usuario = self.instance
+        automatico = codigo_automatico_usuario(usuario) if usuario.pk else ''
+        etiqueta = 'Automático (lo elige el sistema)'
+        if automatico:
+            etiqueta = f'Automático (ahora: {NOMBRES[automatico]})'
+        campo = self.fields['color_registro']
+        campo.choices = [('', etiqueta)] + [
+            (codigo, nombre) for codigo, nombre, _hex in COLORES_REGISTRO
+        ]
+        campo.widget.automatico_hex = HEX.get(automatico, '')
+        if usuario.pk:
+            self.initial['color_registro'] = (
+                PerfilUsuario.objects.filter(user_id=usuario.pk)
+                .values_list('color_registro', flat=True).first()
+            ) or ''
+
+
+try:
+    admin.site.unregister(User)
+except admin.sites.NotRegistered:
+    pass
+
+
+@admin.register(User)
+class UsuarioAdmin(UserAdmin):
+    """Usuarios de Django con el color del Registro Estudiantil."""
+
+    form = UsuarioColorForm
+    fieldsets = (
+        UserAdmin.fieldsets[:2]
+        + (('Registro Estudiantil', {'fields': ('color_registro',)}),)
+        + UserAdmin.fieldsets[2:]
+    )
+    list_display = UserAdmin.list_display + ('color_en_registro',)
+    list_select_related = ('perfil_visual',)
+
+    @admin.display(description='Color en el registro')
+    def color_en_registro(self, obj):
+        from .colores_registro import HEX, NOMBRES
+
+        perfil = getattr(obj, 'perfil_visual', None)
+        codigo = perfil.color_registro if perfil else ''
+        if codigo not in HEX:
+            return 'Automático'
+        return format_html(
+            '<span style="display:inline-block;width:14px;height:14px;'
+            'margin-right:6px;vertical-align:middle;border-radius:3px;'
+            'border:1px solid rgba(0,0,0,.45);background:{};"></span>{}',
+            HEX[codigo], NOMBRES[codigo],
+        )
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if 'color_registro' in form.changed_data:
+            PerfilUsuario.objects.update_or_create(
+                user=obj,
+                defaults={'color_registro': form.cleaned_data['color_registro']},
+            )
+
+
 @admin.register(PerfilUsuario)
 class PerfilUsuarioAdmin(admin.ModelAdmin):
-    list_display = ('user', 'avatar', 'portada', 'actualizado')
-    list_filter = ('avatar', 'portada')
+    list_display = ('user', 'avatar', 'portada', 'color_registro', 'actualizado')
+    list_filter = ('avatar', 'portada', 'color_registro')
     search_fields = (
         'user__username', 'user__first_name', 'user__last_name',
         'descripcion_personal',

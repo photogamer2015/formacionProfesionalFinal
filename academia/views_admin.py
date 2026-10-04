@@ -363,7 +363,7 @@ def _ingresos_periodo(desde, hasta):
     ventas_qs = Comprobante.objects.filter(
         fecha_inscripcion__gte=desde, fecha_inscripcion__lte=hasta,
         matricula__isnull=True,
-    )
+    ).select_related('curso')
     ventas = ventas_qs.aggregate(s=Sum('pago_abono'))['s'] or Decimal('0.00')
 
     adicionales_vivos_qs = Adicional.objects.filter(fecha__gte=desde, fecha__lte=hasta).select_related('estudiante')
@@ -920,8 +920,8 @@ def admin_dashboard(request):
             'fecha': v.fecha_inscripcion.date() if isinstance(v.fecha_inscripcion, datetime) else v.fecha_inscripcion,
             'tipo': 'ingreso',
             'categoria': 'Venta (Comprobante)',
-            'concepto': v.concepto_pago or 'Comprobante manual',
-            'involucrado': v.nombre_estudiante or 'N/A',
+            'concepto': v.curso.nombre if v.curso_id else 'Comprobante manual',
+            'involucrado': v.nombre_persona or 'N/A',
             'monto': v.pago_abono
         })
         
@@ -1254,7 +1254,7 @@ def export_libro_mayor(request):
             'fecha': a.fecha.date() if hasattr(a.fecha, 'date') else a.fecha,
             'tipo': 'Ingreso',
             'categoria': f"Abono ({a.get_tipo_pago_display()})",
-            'concepto': f"{curso} - {a.concepto}" if a.concepto else curso,
+            'concepto': f"{curso} - {a.observaciones}" if a.observaciones else curso,
             'involucrado': est_nombre,
             'monto': a.monto
         })
@@ -1274,8 +1274,8 @@ def export_libro_mayor(request):
             'fecha': v.fecha_inscripcion.date() if hasattr(v.fecha_inscripcion, 'date') else v.fecha_inscripcion,
             'tipo': 'Ingreso',
             'categoria': 'Venta (Comprobante)',
-            'concepto': v.concepto_pago or 'Comprobante manual',
-            'involucrado': v.nombre_estudiante or 'N/A',
+            'concepto': v.curso.nombre if v.curso_id else 'Comprobante manual',
+            'involucrado': v.nombre_persona or 'N/A',
             'monto': v.pago_abono
         })
         
@@ -1290,7 +1290,7 @@ def export_libro_mayor(request):
             'fecha': ad.fecha.date() if hasattr(ad.fecha, 'date') else ad.fecha,
             'tipo': 'Ingreso',
             'categoria': 'Adicional',
-            'concepto': ad.get_tipo_adicional_display() + (f" ({ad.descripcion})" if ad.descripcion else ""),
+            'concepto': ad.get_tipo_adicional_display() + (f" ({ad.observaciones})" if ad.observaciones else ""),
             'involucrado': inv,
             'monto': ad.valor
         })

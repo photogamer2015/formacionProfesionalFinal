@@ -283,6 +283,7 @@
         </div>
     </div>
 
+    {# JORNADA: días (y horario) de la jornada; escapejs porque «Otros» es texto libre. #}
     <script>
         function copiarWhatsApp() {
             const texto = `*CURSO:* {{ matricula.curso.nombre|upper }}
@@ -292,11 +293,11 @@
 *CELULAR:* {{ matricula.estudiante.celular }}
 *PAGO/ABONO:* ${{ abono.monto|floatformat:2 }}
 *DIFERENCIA:* ${{ matricula.saldo|floatformat:2 }}
-*JORNADA:* {{ matricula.jornada.nombre|upper|default:"N/A" }}
+*JORNADA:* {% if matricula.jornada %}{{ matricula.jornada.descripcion_legible|upper|escapejs }}{% if matricula.jornada.hora_inicio and matricula.jornada.hora_fin %} ({{ matricula.jornada.hora_inicio|time:"H:i" }} A {{ matricula.jornada.hora_fin|time:"H:i" }}){% endif %}{% else %}N/A{% endif %}
 *INICIO DE CURSO:* {% if matricula.jornada and matricula.jornada.fecha_inicio %}{{ matricula.jornada.fecha_inicio|date:"d \d\e F"|upper }}{% else %}POR DEFINIR{% endif %}
 *VENDEDORA:* {% if matricula.vendedora %}{{ matricula.vendedora.first_name|upper|default:matricula.vendedora.username|upper }}{% elif matricula.registrado_por %}{{ matricula.registrado_por.first_name|upper|default:matricula.registrado_por.username|upper }}{% else %}N/A{% endif %}
 📝 *REGISTRA VENTA:* {% if abono.registrado_por %}{{ abono.registrado_por.first_name|upper|default:abono.registrado_por.username|upper }}{% else %}N/A{% endif %}
-*FACTURA REALIZADA:* {% if abono.factura_realizada == 'si' %}SÍ{% else %}NO{% endif %}
+*FACTURA REALIZADA:* {% if matricula.factura_realizada == 'si' %}SÍ{% if matricula.numero_factura %} (N.º {{ matricula.numero_factura }}){% endif %}{% else %}NO{% endif %}
 🔵*PLATAFORMA:* WHAPIFY
 
 *_📍DATOS PARA FACTURA:_*

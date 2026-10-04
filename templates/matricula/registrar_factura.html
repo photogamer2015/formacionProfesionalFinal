@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block title %}Registrar factura{% endblock %}
+{% block content %}
+<style>
+ .rf-wrap {max-width:920px;margin:0 auto;}
+ .rf-resumen {display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;}
+ .rf-dato {background:var(--fp-surface);border:1px solid rgba(27,42,78,.08);border-radius:10px;padding:12px 14px;}
+ .rf-dato span {display:block;font-size:12px;color:var(--fp-muted);margin-bottom:2px;}
+ .rf-dato strong {font-size:16px;color:var(--fp-ink);}
+ .rf-wrap select:disabled {opacity:1;background:var(--fp-surface-2);color:var(--fp-ink);cursor:not-allowed;}
+ .rf-wrap .form-input[readonly] {background:var(--fp-surface-2);color:var(--fp-muted);cursor:not-allowed;}
+ .rf-titular-head {display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 8px;}
+ .rf-titular-head h4 {font-size:13px;font-weight:600;color:#1A237E;margin:0;}
+ .rf-nota {color:#888;font-size:11px;display:block;margin-top:6px;line-height:1.4;}
+ .rf-numero {max-width:380px;margin-top:22px;}
+ .rf-actions {display:flex;flex-wrap:wrap;gap:12px;margin-top:26px;}
+</style>
+
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}">Matrícula</a> &nbsp;›&nbsp;
+    <a href="{{ lista_url }}">Matrículas sin factura</a> &nbsp;›&nbsp;
+    Registrar factura
+</div>
+
+<div class="rf-wrap">
+ <h2 class="page-title">Registrar factura</h2>
+ <p class="page-subtitle">{{ matricula.estudiante.nombre_completo }} · {{ matricula.curso.nombre }} · Matrícula #{{ matricula.pk }}</p>
+
+ <div class="rf-resumen">
+  <div class="rf-dato"><span>Fecha de matrícula</span><strong>{{ matricula.fecha_matricula|date:"d/m/Y" }}</strong></div>
+  <div class="rf-dato"><span>Valor neto</span><strong>${{ matricula.valor_neto|floatformat:2 }}</strong></div>
+  <div class="rf-dato"><span>Pagado</span><strong style="color:#2e7d32;">${{ matricula.valor_pagado|floatformat:2 }}</strong></div>
+  <div class="rf-dato"><span>Saldo pendiente</span><strong style="color:{% if matricula.saldo > 0 %}#c62828{% else %}#2e7d32{% endif %};">${{ matricula.saldo|floatformat:2 }}</strong></div>
+ </div>
+
+ <form method="post" class="card-box" id="form-registrar-factura">
+  {% csrf_token %}
+  <input type="hidden" name="volver" value="{{ volver }}">
+  <input type="hidden" name="cambiar_datos" id="id_cambiar_datos" value="{% if form.titular_editable %}1{% else %}0{% endif %}">
+  {{ form.non_field_errors }}
+
+  <h3 class="form-section-title" style="margin-top:0;">🧾 Factura</h3>
+  <div class="form-grid">
+   <div>
+    <label class="form-label" for="id_factura_si">¿Factura con datos? *</label>
+    <select id="id_factura_si" class="form-input" disabled><option selected>Sí</option></select>
+    <small class="rf-nota">Al registrar la factura, la matrícula queda con factura Sí.</small>
+   </div>
+  </div>
+
+  <div class="rf-titular-head">
+   <h4>Datos para factura</h4>
+   <button type="button" class="btn btn-secondary btn-sm" id="btn-cambiar-datos">✏️ Cambiar los datos</button>
+  </div>
+  <div class="form-grid">
+   <div>
+    <label class="form-label" for="{{ form.fact_nombres.id_for_label }}">Nombres *</label>
+    {{ form.fact_nombres }}{{ form.fact_nombres.errors }}
+   </div>
+   <div>
+    <label class="form-label" for="{{ form.fact_cedula.id_for_label }}">Número de cédula / RUC *</label>
+    {{ form.fact_cedula }}{{ form.fact_cedula.errors }}
+   </div>
+   <div>
+    <label class="form-label" for="{{ form.fact_correo.id_for_label }}">Correo electrónico (opcional)</label>
+    {{ form.fact_correo }}{{ form.fact_correo.errors }}
+   </div>
+  </div>
+  <small class="rf-nota" id="nota-titular"></small>
+
+  <div class="rf-numero">
+   <label class="form-label" for="{{ form.numero_factura.id_for_label }}">Número de factura *</label>
+   {{ form.numero_factura }}{{ form.numero_factura.errors }}
+   <small class="rf-nota">Solo números. Escríbelo tal como aparece en la factura emitida.</small>
+  </div>
+
+  <div class="rf-actions">
+   <button class="btn btn-success" type="submit">🧾 Registrar factura</button>
+   <a class="btn btn-secondary" href="{{ lista_url }}">Cancelar</a>
+  </div>
+ </form>
+</div>
+{{ form.datos_estudiante|json_script:"datos-estudiante" }}
+
+<script>
+    (function () {
+        const form = document.getElementById('form-registrar-factura');
+        const marca = document.getElementById('id_cambiar_datos');
+        const boton = document.getElementById('btn-cambiar-datos');
+        const nota = document.getElementById('nota-titular');
+        const estudiante = JSON.parse(document.getElementById('datos-estudiante').textContent);
+        const campos = ['fact_nombres', 'fact_cedula', 'fact_correo'].map(function (name) {
+            return form.elements[name];
+        });
+
+        // Por defecto la factura sale con los datos del estudiante. «Cambiar
+        // los datos» abre los campos para facturar a otra persona.
+        function aplicar(editable) {
+            marca.value = editable ? '1' : '0';
+            campos.forEach(function (campo) { campo.readOnly = !editable; });
+            boton.textContent = editable ? '↩️ Usar los datos del estudiante' : '✏️ Cambiar los datos';
+            nota.textContent = editable
+                ? 'Escribe los datos de la persona a cuyo nombre sale la factura. Nombres y cédula/RUC son obligatorios; el correo es opcional.'
+                : 'Son los datos del estudiante. Si la factura va a nombre de otra persona, pulsa «Cambiar los datos».';
+        }
+
+        boton.addEventListener('click', function () {
+            const editable = marca.value !== '1';
+            if (!editable) {
+                campos.forEach(function (campo) { campo.value = estudiante[campo.name] || ''; });
+            }
+            aplicar(editable);
+            if (editable) campos[0].focus();
+        });
+
+        document.querySelectorAll('[data-solo-numeros]').forEach(function (input) {
+            input.addEventListener('input', function () {
+                const limpio = this.value.replace(/\D/g, '');
+                if (this.value !== limpio) this.value = limpio;
+            });
+        });
+
+        aplicar(marca.value === '1');
+    })();
+</script>
+{% endblock %}

@@ -53,13 +53,13 @@
             </p>
         </div>
     </a>
-    <a href="{% url 'academia:matricula_facturas' %}" style="text-decoration:none;">
+    <a href="{% url 'academia:matricula_facturas' %}" id="card-facturas" style="text-decoration:none;">
         <div class="card-box" style="border-left: 4px solid #E45103; cursor:pointer;">
             <div style="font-size:30px; margin-bottom:8px;">▤</div>
-            <h3 style="color:#1a237e; font-size:17px; margin-bottom:6px;">Lista de Facturas</h3>
+            <h3 style="color:#1a237e; font-size:17px; margin-bottom:6px;">Facturas</h3>
             <p style="color:#666; font-size:13px;">
-                Ver solo matrículas con factura emitida, ordenadas por fecha
-                y filtradas por curso, modalidad o estudiante.
+                Registra la factura de las matrículas que aún no la tienen
+                o revisa la lista de facturas emitidas.
             </p>
         </div>
     </a>
@@ -103,4 +103,71 @@
         </div>
     </a>
 </div>
+
+<!-- Ventana de opciones de Facturas: registrar una factura o ver la lista. -->
+<div id="modal-facturas-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-facturas-titulo" style="
+        display:none; position:fixed; inset:0; z-index:10000;
+        background:rgba(0,0,0,0.55); backdrop-filter:blur(4px);
+        align-items:center; justify-content:center;">
+    <div style="
+            background:#fff; border-radius:16px;
+            box-shadow:0 24px 64px rgba(0,0,0,0.25);
+            padding:32px 28px 24px; max-width:480px; width:92%; max-height:90dvh; overflow-y:auto;
+            text-align:center;">
+        <div style="
+                width:60px; height:60px; border-radius:50%;
+                display:flex; align-items:center; justify-content:center;
+                font-size:26px; margin:0 auto 14px; background:#fde7da;">🧾</div>
+        <h3 id="modal-facturas-titulo" style="font-size:19px; font-weight:700; color:#1a237e; margin:0 0 8px;">
+            ¿Qué deseas hacer?
+        </h3>
+        <p style="font-size:14px; color:#666; line-height:1.5; margin:0 0 24px;">
+            Elige una opción de facturas.
+        </p>
+        <div style="display:flex; flex-direction:column; gap:12px; text-align:left;">
+            <a href="{% url 'academia:matricula_sin_factura' %}" style="display:block;padding:14px 16px;border-radius:12px;border:2px solid #b4ded3;background:#edf9f5;text-decoration:none;">
+                <div style="font-size:15px;font-weight:700;color:#176653;margin-bottom:4px;">➕ Registrar factura</div>
+                <div style="font-size:13px;color:#397463;line-height:1.4;">Muestra las matrículas sin factura. Pulsa «Registrar factura» en el estudiante: sus datos salen solos y escribes el número de factura.</div>
+            </a>
+            <a href="{% url 'academia:matricula_facturas' %}" style="display:block;padding:14px 16px;border-radius:12px;border:2px solid #f5c9a8;background:#fff4ec;text-decoration:none;">
+                <div style="font-size:15px;font-weight:700;color:#8a4513;margin-bottom:4px;">📋 Ver lista de facturas</div>
+                <div style="font-size:13px;color:#9a5a2b;line-height:1.4;">Matrículas con factura emitida, con sus datos y número de factura, filtradas por curso, modalidad o estudiante.</div>
+            </a>
+        </div>
+        <button type="button" id="btn-cerrar-facturas" style="
+                margin-top:18px; padding:10px 20px; border-radius:10px;
+                border:2px solid #e0e0e0; background:#fff; color:#555;
+                font-size:14px; font-weight:600; cursor:pointer;
+                font-family:inherit; width:100%;">
+            Cancelar
+        </button>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const overlay = document.getElementById('modal-facturas-overlay');
+        const tarjeta = document.getElementById('card-facturas');
+
+        function cerrar() {
+            overlay.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        tarjeta.addEventListener('click', function (event) {
+            // Ctrl/Cmd + clic sigue abriendo la lista en otra pestaña.
+            if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+            event.preventDefault();
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        });
+        document.getElementById('btn-cerrar-facturas').addEventListener('click', cerrar);
+        overlay.addEventListener('click', function (event) {
+            if (event.target === overlay) cerrar();
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && overlay.style.display === 'flex') cerrar();
+        });
+    })();
+</script>
 {% endblock %}

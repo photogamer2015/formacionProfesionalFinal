@@ -14,8 +14,8 @@ from django.utils import timezone
 from .busqueda import normalizar_texto_busqueda as norm, filtrar_queryset_busqueda
 from .forms import EstudianteForm, MatriculaForm, _normalizar_digitos_formateados
 from .models import (
-    BANCOS_POR_METODO, METODOS_CON_BANCO, Curso, JornadaCurso, Estudiante,
-    Matricula,
+    BANCOS_POR_METODO, METODOS_CON_BANCO, MONTO_RESERVA_MATRICULA, Curso,
+    JornadaCurso, Estudiante, Matricula,
 )
 
 STUDENT_FIELDS = list(EstudianteForm.Meta.fields)
@@ -32,8 +32,13 @@ SKIPPED_FIELDS_BY_TYPE = {
     'otros': {'valor_curso', 'descuento', 'forma_pago', 'valor_pagado', 'tipo_cobro'},
     'inscripcion_gratis': {'forma_pago', 'valor_pagado', 'tipo_cobro'},
 }
-CLOSING_FIELDS = ['talla_camiseta', 'observaciones', 'tipo_registro', 'vendedora_id',
-                  'factura_realizada', 'fact_nombres', 'fact_cedula', 'fact_correo', 'link_comprobante']
+CLOSING_FIELDS = ['talla_camiseta', 'observaciones', 'tipo_registro', 'vendedora_id', 'link_comprobante']
+# La factura ya no se registra al matricular (igual que en el formulario): se
+# hace en Matrícula › Facturas › Registrar factura. Sus nombres se siguen
+# reconociendo para ignorarlos con un aviso, sin mezclar ese texto con otro dato.
+FACTURA_FIELDS = ['factura_realizada', 'fact_nombres', 'fact_cedula', 'fact_correo']
+AVISO_FACTURA = ('La factura ya no se registra con la matrícula: cuando termines, '
+                 'regístrala en Matrícula › Facturas › Registrar factura.')
 LABELS = {
     'cedula': 'cédula / RUC', 'nombres': 'nombres y apellidos',
     'nivel_formacion': 'nivel de formación', 'titulo_profesional': 'título profesional',
@@ -47,8 +52,6 @@ LABELS = {
     'monto_pago_2': 'monto 2 (USD)', 'metodo_pago_2': 'método de pago 2',
     'banco_2': 'banco / aplicación 2', 'talla_camiseta': 'talla de camiseta',
     'tipo_registro': 'origen de la venta', 'vendedora_id': 'asesora / vendedora',
-    'factura_realizada': 'factura con datos', 'fact_nombres': 'nombres del titular de factura',
-    'fact_cedula': 'cédula / RUC de factura', 'fact_correo': 'correo de factura',
     'link_comprobante': 'enlace del comprobante de pago',
 }
 ALIASES = {
@@ -75,7 +78,8 @@ ALIASES = {
     'comprobante': 'link_comprobante', 'link comprobante': 'link_comprobante',
     'enlace comprobante': 'link_comprobante',
 }
-for _field in STUDENT_FIELDS + ['permitir_celular_duplicado'] + ACADEMIC_FIELDS + PAYMENT_FIELDS + CLOSING_FIELDS:
+for _field in (STUDENT_FIELDS + ['permitir_celular_duplicado'] + ACADEMIC_FIELDS + PAYMENT_FIELDS
+               + CLOSING_FIELDS + FACTURA_FIELDS):
     ALIASES.setdefault(_field, _field)
 
 
@@ -219,16 +223,12 @@ def active_fields(data, course):
     # Igual que el formulario: camiseta para categoría Técnico.
     if course and course.categoria and norm(course.categoria.nombre.strip()) == 'tecnico':
         fields += ['talla_camiseta']
-    fields += ['observaciones', 'tipo_registro', 'vendedora_id', 'factura_realizada']
-    if data.get('factura_realizada') == 'si':
-        fields += ['fact_nombres', 'fact_cedula', 'fact_correo']
+    fields += ['observaciones', 'tipo_registro', 'vendedora_id']
     return fields + ['link_comprobante']
 
 
 def required(name, field, data):
     if name in ('tipo_cobro', 'vendedora_id') or name in PAYMENT_FIELDS:
-        return True
-    if data.get('factura_realizada') == 'si' and name in ('celular', 'ciudad', 'fact_nombres', 'fact_cedula'):
         return True
     return field.required
 
@@ -266,6 +266,8 @@ def enrollment_step(request, state, message):
                 data.pop(name, None)
         state.pop('loaded_document', None)
     notices = []
+    if any(name in incoming for name in FACTURA_FIELDS):
+        notices.append(AVISO_FACTURA)
     existing = None
     if data.get('cedula'):
         existing = Estudiante.objects.filter(cedula=data['cedula']).first()
@@ -314,13 +316,12 @@ def enrollment_step(request, state, message):
             for name, value in data.items() if name in allowed and name != 'vendedora_id'}
     post['mat-curso'] = str(course.pk) if course else ''
     post['mat-jornada'] = str(jornada.pk) if jornada else ''
-    student_form = EstudianteForm(post, prefix='est', instance=existing,
-                                  documento_flexible=True, factura_si=data.get('factura_realizada') == 'si')
+    student_form = EstudianteForm(post, prefix='est', instance=existing, documento_flexible=True)
     enrollment_form = MatriculaForm(post, prefix='mat', modalidad=jornada.modalidad if jornada else 'presencial')
     student_form.is_valid()
     enrollment_form.is_valid()
     errors = {**student_form.errors, **enrollment_form.errors}
-    # La factura genera error global en el formulario. Señalar sus campos exactos.
+    # Los datos que el chat exige (pago y asesora) se señalan campo por campo.
     for name in fields:
         if required(name, definitions[name], data) and name in data and data[name] in ('', None):
             errors.setdefault(name, ['Este dato es obligatorio.'])
@@ -381,10 +382,11 @@ def enrollment_step(request, state, message):
                 lines.append('La matrícula con Reserva / Abono utiliza la forma de pago «abono».')
             if name == 'valor_pagado':
                 limits = ['Debe ser mayor a $0']
-                if data.get('tipo_matricula') == 'reserva_abono':
-                    limits.append('la reserva inicial es de al menos $10.00')
                 net = net_amount(data)
-                if net is not None:
+                if data.get('tipo_matricula') == 'reserva_abono':
+                    limits.append(f'en Reserva / Abono el máximo es ${MONTO_RESERVA_MATRICULA} '
+                                  '(lo demás se cobra después en Gestionar Pagos)')
+                elif net is not None:
                     limits.append(f'el máximo a registrar ahora es ${net:.2f} (valor con descuento)')
                 lines.append('; '.join(limits) + '.')
             if name in ('monto_pago_1', 'monto_pago_2') and data.get('valor_pagado'):
@@ -442,7 +444,9 @@ def enrollment_step(request, state, message):
                f'Estado: {matricula.get_estado_display()} · Tipo: {matricula.get_tipo_matricula_display()}',
                *charge,
                f'Asesora: {advisor.get_full_name() or advisor.username}',
-               f'Origen: {matricula.get_tipo_registro_display()} · Factura con datos: {matricula.get_factura_realizada_display()}',
+               f'Origen: {matricula.get_tipo_registro_display()}',
+               'Factura: regístrala en Matrícula › Facturas › Registrar factura.',
                closing]
     return answer('\n'.join(summary), [link('Ver matrícula y pagos', 'matricula_abonos', pk=matricula.pk),
-                                      link('Ver estudiante', 'estudiante_detalle', pk=matricula.estudiante_id)])
+                                      link('Ver estudiante', 'estudiante_detalle', pk=matricula.estudiante_id),
+                                      link('Registrar factura', 'matricula_registrar_factura', pk=matricula.pk)])

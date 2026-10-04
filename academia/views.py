@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import (
-    CategoriaForm, CursoForm, EstudianteForm,
+    CategoriaForm, CursoForm, EstudianteForm, ERROR_TOPE_RESERVA_EDICION,
     JornadaCursoForm, MatriculaForm, es_cedula_ruc_ecuador_valido,
 )
 from .models import (
@@ -581,7 +581,6 @@ def matricula_registrar(request, modalidad):
     error_vendedora = None
 
     if request.method == 'POST':
-        factura_si = request.POST.get('mat-factura_realizada', '') == 'si'
         mat_form = MatriculaForm(request.POST, prefix='mat', modalidad=modalidad)
 
         vendedora_id = request.POST.get('vendedora_id', '').strip()
@@ -600,9 +599,10 @@ def matricula_registrar(request, modalidad):
         ):
             estudiante_existente = Estudiante.objects.filter(cedula=cedula).first()
 
+        # La factura ya no se registra al matricular (se hace en Facturas), así
+        # que celular y ciudad no se vuelven obligatorios por ella.
         est_form_kwargs = {
             'prefix': 'est',
-            'factura_si': factura_si,
             'documento_flexible': True,
         }
         if estudiante_existente:
@@ -698,16 +698,32 @@ def matricula_editar(request, modalidad, pk):
             return HttpResponseBadRequest('Opción de edición inválida.')
         form = EdicionVentaForm(
             request.POST if request.method == 'POST' else None,
-            instance=matricula, seccion=seccion_venta,
+            instance=matricula, seccion=seccion_venta, user=request.user,
+        )
+        # «Editar factura» desde la Lista de Facturas regresa a esa lista.
+        volver_facturas = (
+            (request.POST if request.method == 'POST' else request.GET).get('volver') == 'facturas'
         )
         if request.method == 'POST' and form.is_valid():
             actualizada = form.save(commit=False)
             actualizada.save(update_fields=form.campos_editables)
-            messages.success(request, 'Datos de venta actualizados correctamente.')
+            if seccion_venta == 'matricula' and form.mover_pago_inicial():
+                messages.success(
+                    request,
+                    'Matrícula actualizada correctamente. El pago hecho al matricular '
+                    'pasó a la nueva fecha; los montos de los pagos no cambiaron.'
+                )
+            elif seccion_venta == 'matricula':
+                messages.success(request, 'Matrícula actualizada correctamente. Los pagos se conservaron.')
+            else:
+                messages.success(request, 'Datos de venta actualizados correctamente.')
+            if volver_facturas:
+                return redirect('academia:matricula_facturas')
             return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
         return render(request, 'matricula/editar_venta.html', {
             'form': form, 'matricula': matricula, 'seccion': seccion_venta,
             'titulo': SECCIONES_VENTA[seccion_venta][0],
+            'volver_facturas': volver_facturas,
         })
 
     if request.GET.get('cambiar_jornada') == '1':
@@ -821,6 +837,19 @@ def matricula_editar(request, modalidad, pk):
                 forms_ok = mat_form.is_valid()
             else:
                 forms_ok = est_form.is_valid() and mat_form.is_valid()
+
+        # ── Reserva / Abono: el pago inicial es la reserva, de máximo $10 ──
+        # Un pago inicial antiguo mayor (anterior a esta regla) se puede volver
+        # a guardar sin cambiar el monto; lo que no se acepta es otro monto > $10.
+        if forms_ok and editar_pago and matricula.tipo_matricula == 'reserva_abono':
+            vp_nuevo = mat_form.cleaned_data.get('valor_pagado') or Decimal('0.00')
+            inicial_actual = (
+                Abono.objects.filter(id__in=ids_pago_inicial)
+                .aggregate(s=Sum('monto'))['s'] or Decimal('0.00')
+            )
+            if vp_nuevo > MONTO_RESERVA_MATRICULA and vp_nuevo != inicial_actual:
+                mat_form.add_error('valor_pagado', ERROR_TOPE_RESERVA_EDICION)
+                forms_ok = False
 
         # ── Coherencia del pago inicial con los pagos posteriores ──
         if forms_ok and editar_pago:
@@ -979,6 +1008,9 @@ def matricula_editar(request, modalidad, pk):
         'modulos_a_pagar': 'Módulos incluidos en el pago inicial',
     }.items():
         mat_form.fields[nombre].label = etiqueta
+        # Tras validar, el formulario ya guardó sus campos con la etiqueta
+        # anterior («Metodo pago»): se corrige también ahí.
+        mat_form[nombre].label = etiqueta
     numero_modulos = matricula.curso.get_numero_modulos(matricula.modalidad) or 1
     mat_form.fields['modulos_a_pagar'].widget.choices = [
         (n, str(n)) for n in range(1, numero_modulos + 1)
@@ -1166,8 +1198,30 @@ def matricula_lista(request, modalidad, solo_retirados=False):
     })
 
 
+FILTROS_LISTA_FACTURAS = ('estudiante', 'curso', 'modalidad', 'fecha_desde', 'fecha_hasta')
+
+
+def _querystring_filtros_facturas(datos):
+    """Conserva solo los filtros conocidos de las listas de facturas."""
+    return urlencode({
+        clave: (datos.get(clave) or '').strip()
+        for clave in FILTROS_LISTA_FACTURAS
+        if (datos.get(clave) or '').strip()
+    })
+
+
 @matricula_requerida
 def matricula_facturas(request):
+    return _lista_facturas(request, sin_factura=False)
+
+
+@matricula_requerida
+def matricula_sin_factura(request):
+    """Matrículas sin factura, cada una con su botón «Registrar factura»."""
+    return _lista_facturas(request, sin_factura=True)
+
+
+def _lista_facturas(request, *, sin_factura):
     estudiante_q = request.GET.get('estudiante', '').strip()
     curso_id = request.GET.get('curso', '').strip()
     modalidad_filtro = request.GET.get('modalidad', '').strip()
@@ -1175,9 +1229,12 @@ def matricula_facturas(request):
         _rango_fecha_matricula_desde_request(request)
     )
 
+    if sin_factura:
+        base = Matricula.objects.exclude(factura_realizada='si')
+    else:
+        base = Matricula.objects.filter(factura_realizada='si')
     qs = (
-        Matricula.objects
-        .filter(factura_realizada='si')
+        base
         .select_related(
             'estudiante', 'curso', 'jornada', 'jornada__sede',
             'registrado_por', 'vendedora',
@@ -1228,12 +1285,19 @@ def matricula_facturas(request):
     total_pagado = sum((m.valor_pagado or Decimal('0.00') for m in matriculas), Decimal('0.00'))
     total_saldo = sum((m.saldo for m in matriculas), Decimal('0.00'))
 
-    cursos = (
-        Curso.objects
-        .filter(matriculas__factura_realizada='si')
-        .distinct()
-        .order_by('nombre')
-    )
+    if sin_factura:
+        cursos = (
+            Curso.objects
+            .filter(pk__in=Matricula.objects.exclude(factura_realizada='si').values('curso_id'))
+            .order_by('nombre')
+        )
+    else:
+        cursos = (
+            Curso.objects
+            .filter(matriculas__factura_realizada='si')
+            .distinct()
+            .order_by('nombre')
+        )
     modalidad_opciones = [
         {'value': modalidad, 'label': _label_modalidad(modalidad)}
         for modalidad in MODALIDADES_VALIDAS
@@ -1263,8 +1327,84 @@ def matricula_facturas(request):
         'total_neto': total_neto,
         'total_pagado': total_pagado,
         'total_saldo': total_saldo,
+        'sin_factura': sin_factura,
+        'total_sin_factura': (
+            None if sin_factura
+            else Matricula.objects.exclude(factura_realizada='si').count()
+        ),
     })
 
+
+@matricula_requerida
+@require_http_methods(['GET', 'POST'])
+@transaction.atomic
+def matricula_registrar_factura(request, pk):
+    """Aplica la factura a una matrícula que no la tiene y guarda su número.
+
+    Sigue la regla de edición: cada asesora registra la factura de las
+    matrículas que ella registró; el administrador, de todas.
+    """
+    from django.http import QueryDict
+    from .forms_edicion_venta import RegistrarFacturaForm
+
+    if request.method == 'POST':
+        volver = _querystring_filtros_facturas(QueryDict(request.POST.get('volver', '')))
+    else:
+        volver = _querystring_filtros_facturas(request.GET)
+    lista_url = reverse('academia:matricula_sin_factura') + (f'?{volver}' if volver else '')
+
+    matricula = get_object_or_404(Matricula.objects.select_for_update(), pk=pk)
+    if not puede_editar_matricula_registrada(request.user, matricula):
+        messages.error(
+            request,
+            'No puedes registrar la factura de esta matrícula porque fue registrada '
+            'por otra asesora. Pide a un administrador que la registre.'
+        )
+        return redirect(lista_url)
+    if matricula.factura_realizada == 'si':
+        messages.info(
+            request,
+            f'La matrícula de {matricula.estudiante.nombre_completo} ya tiene factura '
+            'registrada. Si necesitas corregirla, usa «Editar factura».'
+        )
+        return redirect('academia:matricula_facturas')
+
+    form = RegistrarFacturaForm(
+        request.POST if request.method == 'POST' else None,
+        instance=matricula,
+    )
+    if request.method == 'POST' and form.is_valid():
+        matricula = form.save()
+        messages.success(
+            request,
+            f'Factura N.º {matricula.numero_factura} registrada para '
+            f'{matricula.estudiante.nombre_completo}. Ya aparece en la Lista de Facturas.'
+        )
+        # Aviso (no bloquea): una misma factura puede cubrir dos matrículas,
+        # pero lo normal es que el número repetido sea un error de tipeo.
+        repetidas = list(
+            Matricula.objects
+            .filter(numero_factura=matricula.numero_factura)
+            .exclude(pk=matricula.pk)
+            .select_related('estudiante')[:3]
+        )
+        if repetidas:
+            messages.warning(
+                request,
+                f'Revisa el número {matricula.numero_factura}: también está registrado en '
+                + ', '.join(
+                    f'la matrícula #{m.pk} ({m.estudiante.nombre_completo})'
+                    for m in repetidas
+                ) + '.'
+            )
+        return redirect(lista_url)
+
+    return render(request, 'matricula/registrar_factura.html', {
+        'form': form,
+        'matricula': matricula,
+        'volver': volver,
+        'lista_url': lista_url,
+    })
 
 
 @matricula_requerida

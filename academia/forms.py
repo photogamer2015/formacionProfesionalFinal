@@ -8,7 +8,7 @@ from .models import (
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
     METODOS_CON_BANCO, METODOS_PAGO,
     MONTO_RESERVA_MATRICULA, PersonaExterna, RecuperacionPendiente, Sede,
-    TIPOS_SIN_COBRO_INICIAL, banco_corresponde_al_metodo, nombre_banco,
+    TIPOS_SIN_COBRO_INICIAL, TOPE_PAGO_MODULO, banco_corresponde_al_metodo, nombre_banco,
     nombre_metodo_pago,
 )
 
@@ -509,6 +509,20 @@ class EstudianteForm(forms.ModelForm):
         return celular
 
 
+# Reserva / Abono: al matricular se cobra solo la reserva, desde $0.01 hasta
+# $10.00. Lo que el estudiante pague de más se registra después en Gestionar
+# Pagos, para que quede en el módulo que corresponde.
+ERROR_TOPE_RESERVA = (
+    f'En Reserva / Abono el valor pagado es de máximo ${MONTO_RESERVA_MATRICULA}. '
+    'Si paga el curso completo, elige «Programa Completo»; si paga más que la '
+    'reserva, registra el resto en Gestionar Pagos.'
+)
+ERROR_TOPE_RESERVA_EDICION = (
+    f'En Reserva / Abono el pago inicial es de máximo ${MONTO_RESERVA_MATRICULA}. '
+    'Si el estudiante pagó más, registra el resto en Gestionar Pagos.'
+)
+
+
 class MatriculaForm(forms.ModelForm):
     """
     Formulario unificado de matrícula + comprobante.
@@ -519,9 +533,11 @@ class MatriculaForm(forms.ModelForm):
     - Acepta TODAS las jornadas activas del curso (presenciales + online).
     - Incluye `tipo_matricula` (Reserva/Abono, Inscripción gratis, Programa
       Completo y Otros).
-    - Incluye los datos de Comprobante: tipo_registro, factura, datos de factura,
-      link al comprobante. La vendedora se asigna automáticamente desde
-      request.user en la vista (no es un campo del form).
+    - Incluye los datos de Comprobante: tipo_registro y link al comprobante.
+      La vendedora se asigna automáticamente desde request.user en la vista
+      (no es un campo del form).
+    - La factura NO se registra aquí: la matrícula queda con factura «No» y
+      se factura después en Matrícula › Facturas › Registrar factura.
     """
 
     metodo_pago = forms.ChoiceField(
@@ -591,9 +607,6 @@ class MatriculaForm(forms.ModelForm):
             # Datos de comprobante
             'tipo_registro',
             'link_comprobante',
-            'factura_realizada',
-            'fact_nombres',
-            'fact_cedula', 'fact_correo',
         ]
         widgets = {
             'curso': forms.Select(attrs={'class': 'form-input', 'id': 'id_curso'}),
@@ -629,23 +642,6 @@ class MatriculaForm(forms.ModelForm):
             'link_comprobante': forms.URLInput(attrs={
                 'class': 'form-input',
                 'placeholder': 'https://… (Drive / Imgur / WhatsApp Web)',
-            }),
-            'factura_realizada': forms.Select(attrs={'class': 'form-input', 'id': 'id_factura_realizada'}),
-            'fact_nombres': forms.TextInput(attrs={
-                'class': 'form-input',
-                'placeholder': 'Nombres del titular de factura',
-            }),
-            'fact_cedula': forms.TextInput(attrs={
-                'class': 'form-input',
-                'placeholder': 'Cédula / RUC',
-                'inputmode': 'numeric',
-                'pattern': '[0-9]*',
-                'maxlength': '20',
-                'data-digits-only': 'true',
-            }),
-            'fact_correo': forms.TextInput(attrs={
-                'class': 'form-input',
-                'placeholder': 'correo@ejemplo.com',
             }),
         }
 
@@ -687,8 +683,8 @@ class MatriculaForm(forms.ModelForm):
             self.fields['valor_pagado'].label = 'Valor pagado (USD)'
             self.fields['valor_pagado'].help_text = (
                 'Debe ser un valor mayor a $0.00 para poder matricular. '
-                'En Reserva / Abono empieza con $10.00 y puedes registrar un '
-                'abono mayor; el saldo se cobra después según los módulos del curso.'
+                'En Reserva / Abono es de $0.01 hasta $10.00 como máximo; el '
+                'saldo se cobra después según los módulos del curso.'
             )
         else:
             self.fields['valor_pagado'].required = False
@@ -730,7 +726,6 @@ class MatriculaForm(forms.ModelForm):
         self.fields['tipo_matricula'].required = captura_pago
         self.fields['forma_pago'].required = captura_pago
         self.fields['tipo_registro'].required = True
-        self.fields['factura_realizada'].required = True
 
         # «Otros» no tiene costo e «Inscripción (gratis)» no cobra los $10 de
         # inscripción: ninguno cobra al matricular, así que la forma de pago y
@@ -782,10 +777,7 @@ class MatriculaForm(forms.ModelForm):
             'Descuento opcional sobre el valor del curso. Se resta automáticamente '
             'del valor a pagar. Déjalo en 0 si no aplica.'
         )
-        
-        # Datos de factura: opcionales por defecto.
-        for fname in ('fact_nombres', 'fact_cedula', 'fact_correo'):
-            self.fields[fname].required = False
+
         self.fields['link_comprobante'].required = False
 
     def clean_valor_pagado(self):
@@ -794,16 +786,6 @@ class MatriculaForm(forms.ModelForm):
             if valor is None or valor <= 0:
                 raise forms.ValidationError("Para registrar una matrícula es obligatorio realizar un pago inicial mayor a $0.")
         return valor
-
-    def clean_fact_cedula(self):
-        cedula = _normalizar_digitos_formateados(
-            self.cleaned_data.get('fact_cedula')
-        )
-        if cedula and (not cedula.isascii() or not cedula.isdigit()):
-            raise forms.ValidationError(
-                'La cédula o RUC de factura debe contener únicamente números.'
-            )
-        return cedula
 
     def clean_descuento(self):
         """El descuento no puede ser negativo ni mayor al valor del curso."""
@@ -929,15 +911,14 @@ class MatriculaForm(forms.ModelForm):
                         'valor_curso',
                         'El valor a pagar no puede ser menor a la reserva fija de $10.00.'
                     )
-                if vp < MONTO_RESERVA_MATRICULA:
-                    self.add_error(
-                        'valor_pagado',
-                        'La reserva inicial debe ser de al menos $10.00.'
-                    )
+            # La reserva va de $0.01 (lo exige clean_valor_pagado) a $10.00.
+            excede_reserva = es_reserva_nueva and vp > MONTO_RESERVA_MATRICULA
+            if excede_reserva:
+                self.add_error('valor_pagado', ERROR_TOPE_RESERVA)
 
             if vp < 0:
                 vp = Decimal('0.00')
-            if vp > neto:
+            if vp > neto and not excede_reserva:
                 self.add_error(
                     'valor_pagado',
                     f'El valor pagado (${vp}) no puede ser mayor al valor a pagar '
@@ -953,23 +934,6 @@ class MatriculaForm(forms.ModelForm):
                         'monto_pago_2',
                         'La suma del Monto 1 y Monto 2 debe ser exactamente igual al valor pagado.'
                     )
-
-        # Si la factura está marcada como realizada, nombre y documento de
-        # factura son obligatorios; el correo de factura queda opcional.
-        if cleaned.get('factura_realizada') == 'si':
-            faltantes = []
-            for fname, label in [
-                ('fact_nombres', 'Nombres'),
-                
-                ('fact_cedula', 'Cédula / RUC'),
-            ]:
-                if not (cleaned.get(fname) or '').strip():
-                    faltantes.append(label)
-            if faltantes:
-                raise forms.ValidationError(
-                    'Si marcás "Factura realizada = Sí", debés llenar los datos '
-                    'de factura: ' + ', '.join(faltantes) + '.'
-                )
         return cleaned
 
 
@@ -1116,6 +1080,22 @@ class AbonoForm(forms.ModelForm):
         self.es_pago_unico_online = bool(
             matricula and matricula.tiene_pago_unico_online
         )
+        # Tope de cada pago «Solo Módulo»: $20 presencial y $25 online. No
+        # aplica al «Un solo pago» del ciclo corto online (no es por módulo).
+        # Un pago «Solo Módulo» antiguo mayor al tope se puede volver a
+        # guardar mientras no se cambie su monto.
+        self.tope_pago_modulo = None
+        self.monto_modulo_original = None
+        if matricula and not self.es_pago_unico_online:
+            self.tope_pago_modulo = TOPE_PAGO_MODULO.get(matricula.modalidad)
+        if self.instance and self.instance.pk and self.instance.tipo_pago == 'solo_modulo':
+            self.monto_modulo_original = self.instance.monto
+        if self.tope_pago_modulo is not None:
+            attrs = self.fields['monto'].widget.attrs
+            attrs['data-tope-modulo'] = f'{self.tope_pago_modulo:.2f}'
+            attrs['data-modalidad-label'] = matricula.get_modalidad_display()
+            if self.monto_modulo_original is not None:
+                attrs['data-monto-modulo-original'] = f'{self.monto_modulo_original:.2f}'
         self.fields['numero_recibo'].required = False
         self.fields['banco'].required = False
         self.fields['banco'].empty_label = '— Selecciona un banco —'
@@ -1288,6 +1268,20 @@ class AbonoForm(forms.ModelForm):
                 'Este ciclo corto online tiene un solo pago. El Módulo 2 '
                 'es académico y no tiene una cuota independiente.',
             )
+
+        tope = self.tope_pago_modulo
+        if (
+            tipo_pago == 'solo_modulo'
+            and tope is not None
+            and monto is not None
+            and monto > tope
+            and monto != self.monto_modulo_original
+        ):
+            self.add_error('monto', (
+                f'En {self.matricula.get_modalidad_display()} cada módulo se paga '
+                f'hasta ${tope}. Si paga más de un módulo, registra cada módulo '
+                f'por separado.'
+            ))
 
         # Si tipo es abono o pago_completo, el módulo se limpia
         if tipo_pago in ('abono', 'pago_completo'):

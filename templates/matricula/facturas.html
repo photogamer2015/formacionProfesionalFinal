@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Lista de Facturas{% endblock %}
+{% block title %}{% if sin_factura %}Registrar factura{% else %}Lista de Facturas{% endif %}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -427,6 +427,22 @@
     .factura-table td {
         vertical-align: top;
     }
+    .factura-edit-link {
+        display: inline-block;
+        margin-top: 6px;
+        color: var(--fp-navy);
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+    .factura-edit-link:hover {
+        text-decoration: underline;
+    }
+    .factura-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
     @media (max-width: 760px) {
         .factura-filter .matricula-date-range {
             flex: 1 1 240px;
@@ -438,17 +454,37 @@
 <div class="crumb">
     <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
     <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}">Matrícula</a> &nbsp;›&nbsp;
+    {% if sin_factura %}
+    <a href="{% url 'academia:matricula_facturas' %}">Lista de Facturas</a> &nbsp;›&nbsp;
+    Matrículas sin factura
+    {% else %}
     Lista de Facturas
+    {% endif %}
 </div>
 
 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
     <div>
+        {% if sin_factura %}
+        <h2 class="page-title">Registrar factura</h2>
+        <p class="page-subtitle">
+            Matrículas sin factura ({{ total_facturas }}), ordenadas por fecha de matrícula de más reciente a más antigua.
+            Pulsa «Registrar factura» en el estudiante para aplicarle la factura y escribir su número.
+        </p>
+        {% else %}
         <h2 class="page-title">Lista de Facturas</h2>
         <p class="page-subtitle">
             Solo se muestran matrículas donde factura está marcada como Sí, ordenadas por fecha de matrícula de más reciente a más antigua.
         </p>
+        {% endif %}
     </div>
-    <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}" class="btn btn-secondary">Volver a Matrícula</a>
+    <div class="factura-header-actions">
+        {% if sin_factura %}
+        <a href="{% url 'academia:matricula_facturas' %}" class="btn btn-secondary">Ver lista de facturas</a>
+        {% else %}
+        <a href="{% url 'academia:matricula_sin_factura' %}" class="btn btn-warning">Matrículas sin factura ({{ total_sin_factura }})</a>
+        {% endif %}
+        <a href="{% url 'academia:matricula_menu' modalidad='presencial' %}" class="btn btn-secondary">Volver a Matrícula</a>
+    </div>
 </div>
 
 <form method="get" class="card-box factura-filter">
@@ -530,7 +566,7 @@
     </div>
     <button type="submit" class="btn btn-primary">Filtrar</button>
     {% if hay_filtros %}
-    <a href="{% url 'academia:matricula_facturas' %}" class="btn btn-secondary">Limpiar</a>
+    <a href="{% if sin_factura %}{% url 'academia:matricula_sin_factura' %}{% else %}{% url 'academia:matricula_facturas' %}{% endif %}" class="btn btn-secondary">Limpiar</a>
     {% endif %}
 </form>
 
@@ -542,15 +578,21 @@
                 <th>Fecha</th>
                 <th>Estudiante</th>
                 <th>Curso</th>
+                {% if not sin_factura %}
                 <th>Datos de factura</th>
+                {% endif %}
                 <th>Valor neto</th>
                 <th>Pagado</th>
                 <th>Saldo pendiente</th>
                 <th>Tipo de pago</th>
                 <th>Método</th>
+                {% if sin_factura %}
+                <th>Factura</th>
+                {% else %}
                 <th>Registró</th>
                 <th>Comp.</th>
                 <th>Acciones</th>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
@@ -581,6 +623,7 @@
                     </div>
                     {% endif %}
                 </td>
+                {% if not sin_factura %}
                 <td>
                     <span class="badge badge-pagado">Factura Sí</span>
                     <div class="factura-subtext">
@@ -588,7 +631,16 @@
                     </div>
                     <div class="factura-subtext">Céd./RUC: {{ m.fact_cedula|default:m.estudiante.cedula }}</div>
                     <div class="factura-subtext">Correo: {{ m.fact_correo|default:m.estudiante.correo|default:"—" }}</div>
+                    <div class="factura-subtext">
+                        N.º factura:
+                        {% if m.numero_factura %}<strong>{{ m.numero_factura }}</strong>{% else %}<span style="color:#b26a00;">sin registrar</span>{% endif %}
+                    </div>
+                    {% if m.puede_editar_registro %}
+                    <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}?editar_seccion=factura&amp;volver=facturas"
+                        class="factura-edit-link">✏️ Editar factura</a>
+                    {% endif %}
                 </td>
+                {% endif %}
                 <td>
                     <strong>${{ m.valor_neto|floatformat:2 }}</strong>
                     {% if m.tiene_descuento %}
@@ -637,6 +689,17 @@
                     <span style="color:#888;">—</span>
                     {% endif %}
                 </td>
+                {% if sin_factura %}
+                <td>
+                    {% if m.puede_editar_registro %}
+                    <a href="{% url 'academia:matricula_registrar_factura' pk=m.pk %}{% if filtros_query %}?{{ filtros_query }}{% endif %}"
+                        class="btn btn-success btn-sm">🧾 Registrar factura</a>
+                    {% else %}
+                    <span class="btn btn-secondary btn-sm"
+                        title="Solo puede registrarla quien registró la matrícula o un administrador.">Bloqueado</span>
+                    {% endif %}
+                </td>
+                {% else %}
                 <td>
                     {% if m.registrado_por %}
                     <strong>{{ m.registrado_por.get_full_name|default:m.registrado_por.username }}</strong>
@@ -663,6 +726,7 @@
                         <a href="{% url 'academia:matricula_abonos' m.pk %}" class="btn btn-secondary btn-sm">Pagos</a>
                     </div>
                 </td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>
@@ -670,9 +734,13 @@
     {% else %}
     <div class="empty-state">
         <p style="font-size:15px; margin-bottom:8px;">
+            {% if sin_factura %}
+            No hay matrículas sin factura para los filtros seleccionados.
+            {% else %}
             No hay matrículas con factura Sí para los filtros seleccionados.
+            {% endif %}
         </p>
-        <a href="{% url 'academia:matricula_facturas' %}" class="btn btn-secondary">Limpiar filtros</a>
+        <a href="{% if sin_factura %}{% url 'academia:matricula_sin_factura' %}{% else %}{% url 'academia:matricula_facturas' %}{% endif %}" class="btn btn-secondary">Limpiar filtros</a>
     </div>
     {% endif %}
 </div>

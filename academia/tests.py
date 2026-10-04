@@ -19,8 +19,8 @@ from .authentication import (
     LOGIN_MFA_USER_ID_SESSION_KEY,
 )
 from .forms import (
-    AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, EstudianteForm,
-    MatriculaForm, es_cedula_ruc_ecuador_valido, es_ruc_ecuador,
+    AbonoForm, AdicionalSupletorioRapidoForm, CursoForm, ERROR_TOPE_RESERVA,
+    EstudianteForm, MatriculaForm, es_cedula_ruc_ecuador_valido, es_ruc_ecuador,
 )
 from .models import (
     Abono, ActividadUsuario, Adicional, AdicionalArchivado, AmistadUsuario,
@@ -2460,9 +2460,12 @@ class CamposNumericosMatriculaTests(TestCase):
             '(?:[0-9]{10}|[0-9]{10}001)',
         )
 
-        fact_attrs = matricula_form.fields['fact_cedula'].widget.attrs
-        self.assertEqual(fact_attrs['inputmode'], 'numeric')
-        self.assertEqual(fact_attrs['data-digits-only'], 'true')
+        # La cédula/RUC y el número de factura se escriben en «Registrar factura».
+        from .forms_edicion_venta import RegistrarFacturaForm
+        for campo in ('fact_cedula', 'numero_factura'):
+            fact_attrs = RegistrarFacturaForm.base_fields[campo].widget.attrs
+            self.assertEqual(fact_attrs['inputmode'], 'numeric')
+            self.assertEqual(fact_attrs['data-solo-numeros'], 'true')
 
         for campo in (
             'valor_curso', 'descuento', 'valor_pagado',
@@ -2565,23 +2568,101 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data['valor_pagado'], Decimal('10.00'))
 
-    def test_matricula_nueva_acepta_abono_mayor_a_la_reserva(self):
-        form = MatriculaForm(
-            self._matricula_form_data(**{'mat-valor_pagado': '15.00'}),
-            prefix='mat',
-        )
+    def test_matricula_nueva_rechaza_reserva_mayor_a_diez_dolares(self):
+        # También el total del curso ($115) o más: se muestra solo el aviso
+        # del tope de la reserva, no un segundo error por pasar del total.
+        for monto in ('10.01', '15.00', '115.00', '200.00'):
+            with self.subTest(monto=monto):
+                form = MatriculaForm(
+                    self._matricula_form_data(**{'mat-valor_pagado': monto}),
+                    prefix='mat',
+                )
 
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data['valor_pagado'], Decimal('15.00'))
+                self.assertFalse(form.is_valid())
+                self.assertEqual(form.errors['valor_pagado'], [ERROR_TOPE_RESERVA])
 
-    def test_matricula_nueva_rechaza_abono_menor_a_la_reserva(self):
+    def test_matricula_nueva_acepta_reserva_parcial_hasta_diez_dolares(self):
+        for monto in ('0.01', '5.00', '9.99'):
+            with self.subTest(monto=monto):
+                form = MatriculaForm(
+                    self._matricula_form_data(**{'mat-valor_pagado': monto}),
+                    prefix='mat',
+                )
+
+                self.assertTrue(form.is_valid(), form.errors)
+                self.assertEqual(form.cleaned_data['valor_pagado'], Decimal(monto))
+
+    def test_matricula_nueva_rechaza_reserva_en_cero(self):
         form = MatriculaForm(
-            self._matricula_form_data(**{'mat-valor_pagado': '5.00'}),
+            self._matricula_form_data(**{'mat-valor_pagado': '0.00'}),
             prefix='mat',
         )
 
         self.assertFalse(form.is_valid())
         self.assertIn('valor_pagado', form.errors)
+
+    def test_tope_de_reserva_tambien_aplica_al_pago_mixto(self):
+        mixto = {
+            'mat-tipo_cobro': 'mixto', 'mat-metodo_pago': '',
+            'mat-metodo_pago_1': 'efectivo', 'mat-metodo_pago_2': 'efectivo',
+        }
+        form = MatriculaForm(self._matricula_form_data(**mixto, **{
+            'mat-valor_pagado': '12.00',
+            'mat-monto_pago_1': '6.00', 'mat-monto_pago_2': '6.00',
+        }), prefix='mat')
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['valor_pagado'], [ERROR_TOPE_RESERVA])
+
+        form = MatriculaForm(self._matricula_form_data(**mixto, **{
+            'mat-valor_pagado': '10.00',
+            'mat-monto_pago_1': '6.00', 'mat-monto_pago_2': '4.00',
+        }), prefix='mat')
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_programa_completo_sigue_cobrando_el_total(self):
+        form = MatriculaForm(
+            self._matricula_form_data(**{
+                'mat-tipo_matricula': 'programa_completo',
+                'mat-forma_pago': 'pago_completo',
+                'mat-valor_pagado': '115.00',
+            }),
+            prefix='mat',
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['valor_pagado'], Decimal('115.00'))
+
+    def test_registro_con_reserva_mayor_a_diez_no_guarda_nada(self):
+        asesor = User.objects.create_superuser(username='admin_tope_reserva')
+        self.client.force_login(asesor)
+        url = reverse('academia:matricula_registrar', kwargs={'modalidad': 'presencial'})
+
+        response = self.client.post(url, {
+            **self._estudiante_post_data(),
+            **self._matricula_form_data(**{'mat-valor_pagado': '115.00'}),
+            'vendedora_id': str(asesor.pk),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['mat_form'].errors['valor_pagado'], [ERROR_TOPE_RESERVA],
+        )
+        # El aviso de la pantalla no se repite junto al error del servidor.
+        self.assertNotContains(response, 'id="valor-pagado-tope-error"')
+        self.assertFalse(Matricula.objects.filter(estudiante=self.estudiante).exists())
+        self.assertFalse(Abono.objects.exists())
+
+    def test_formulario_de_registro_incluye_el_aviso_del_tope(self):
+        asesor = User.objects.create_superuser(username='admin_aviso_tope')
+        self.client.force_login(asesor)
+
+        response = self.client.get(
+            reverse('academia:matricula_registrar', kwargs={'modalidad': 'presencial'})
+        )
+
+        self.assertContains(response, 'id="valor-pagado-tope-error"')
+        self.assertContains(response, 'function excedeTopeReserva()')
+        self.assertContains(response, 'En Reserva / Abono es de $0.01 hasta $10.00')
 
     def test_matricula_antigua_conserva_reserva_mas_modulo_al_editar(self):
         matricula = Matricula.objects.create(
@@ -2610,7 +2691,7 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('metodo_pago', form.errors)
 
-    def test_matricula_rechaza_letras_en_cedula_ruc_de_factura(self):
+    def test_matricula_ya_no_recibe_datos_de_factura(self):
         form = MatriculaForm(
             self._matricula_form_data(
                 **{
@@ -2623,41 +2704,40 @@ class PagoInicialMatriculaTests(TestCase):
             prefix='mat',
         )
 
-        self.assertFalse(form.is_valid())
-        self.assertIn('fact_cedula', form.errors)
-        self.assertIn('únicamente números', form.errors['fact_cedula'][0])
-
-    def test_matricula_normaliza_cedula_ruc_de_factura_pegada(self):
-        form = MatriculaForm(
-            self._matricula_form_data(
-                **{
-                    'mat-factura_realizada': 'si',
-                    'mat-fact_nombres': 'Cliente Factura',
-                    'mat-fact_cedula': '010 203 0405',
-                    'mat-fact_correo': 'cliente@example.com',
-                }
-            ),
-            prefix='mat',
-        )
-
+        for campo in ('factura_realizada', 'fact_nombres', 'fact_cedula', 'fact_correo'):
+            self.assertNotIn(campo, form.fields)
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data['fact_cedula'], '0102030405')
+        matricula = form.save(commit=False)
+        self.assertEqual(matricula.factura_realizada, 'no')
+        self.assertEqual(matricula.fact_cedula, '')
 
-    def test_matricula_factura_si_no_exige_correo_de_factura(self):
-        form = MatriculaForm(
-            self._matricula_form_data(
-                **{
-                    'mat-factura_realizada': 'si',
-                    'mat-fact_nombres': 'Cliente Factura',
-                    'mat-fact_cedula': '0102030405',
-                    'mat-fact_correo': '',
-                }
-            ),
-            prefix='mat',
-        )
+    def test_registro_sin_factura_indica_donde_registrarla(self):
+        asesor = User.objects.create_superuser(username='admin_registro_sin_factura')
+        self.client.force_login(asesor)
+        url = reverse('academia:matricula_registrar', kwargs={'modalidad': 'presencial'})
 
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data['fact_correo'], '')
+        response = self.client.get(url)
+        self.assertContains(response, 'La factura ya no se registra aquí')
+        self.assertContains(response, 'Matrícula › Facturas › Registrar factura')
+        self.assertNotContains(response, 'name="mat-factura_realizada"')
+        self.assertNotContains(response, 'name="mat-fact_nombres"')
+
+        # Un envío con datos de factura (formulario viejo en caché) se guarda
+        # igual, sin factura, y ya no exige celular ni ciudad por ella.
+        response = self.client.post(url, {
+            **self._estudiante_post_data(**{'est-celular': '', 'est-ciudad': ''}),
+            **self._matricula_form_data(**{
+                'mat-factura_realizada': 'si',
+                'mat-fact_nombres': 'Cliente Factura',
+                'mat-fact_cedula': '0102030405',
+            }),
+            'vendedora_id': str(asesor.pk),
+        })
+        self.assertEqual(response.status_code, 302)
+        matricula = Matricula.objects.get(estudiante=self.estudiante)
+        self.assertEqual(matricula.factura_realizada, 'no')
+        self.assertEqual(matricula.fact_nombres, '')
+        self.assertEqual(matricula.numero_factura, '')
 
     def test_registro_con_estudiante_existente_actualiza_correo_para_confirmacion(self):
         asesor = User.objects.create_superuser(username='admin_matricula_view')
@@ -4790,6 +4870,32 @@ class PagoInicialMatriculaTests(TestCase):
         self.assertIn('Forma de pago *', html)
         self.assertIn('Distribución de pago', html)
 
+    def test_editar_pago_inicial_con_error_conserva_las_etiquetas(self):
+        # Tras un error del servidor la etiqueta salía «Metodo pago».
+        admin = User.objects.create_superuser(username='admin_etiquetas_pago')
+        matricula = Matricula.objects.create(
+            estudiante=self.estudiante, curso=self.curso, jornada=self.jornada,
+            modalidad='presencial', tipo_matricula='reserva_abono',
+            forma_pago='abono', fecha_matricula=date(2026, 7, 5),
+            valor_curso=Decimal('115.00'), tipo_registro='central_ia',
+            registrado_por=admin, vendedora=self.usuario,
+        )
+        self.client.force_login(admin)
+        response = self.client.post(
+            reverse(
+                'academia:matricula_editar',
+                kwargs={'modalidad': 'presencial', 'pk': matricula.pk},
+            ),
+            {'editar_pago': '1', 'mat-valor_pagado': '', 'mat-forma_pago': 'abono',
+             'mat-tipo_cobro': 'un_solo_metodo', 'mat-metodo_pago': 'transferencia',
+             'mat-banco': ''},
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn('No se guardaron los cambios', html)
+        self.assertIn('Método de pago', html)
+        self.assertNotIn('Metodo pago', html)
+
     def test_comprobante_usa_vendedora_de_matricula(self):
         registrador = User.objects.create_user(username='registrador')
         vendedora_1 = User.objects.create_user(
@@ -5483,12 +5589,134 @@ class PagoInicialMatriculaTests(TestCase):
             registrado_por=self.usuario,
         )
 
-        form = AbonoForm(self._abono_data(), matricula=matricula)
+        # Presencial: el módulo se paga hasta $20 (tope de «Solo Módulo»).
+        form = AbonoForm(
+            self._abono_data(monto='20.00', monto_pago_2='10.00'),
+            matricula=matricula,
+        )
 
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data['monto'], Decimal('25.00'))
+        self.assertEqual(form.cleaned_data['monto'], Decimal('20.00'))
         self.assertEqual(form.cleaned_data['monto_pago_1'], Decimal('10.00'))
-        self.assertEqual(form.cleaned_data['monto_pago_2'], Decimal('15.00'))
+        self.assertEqual(form.cleaned_data['monto_pago_2'], Decimal('10.00'))
+
+    def _matricula_para_tope_modulo(self, modalidad):
+        curso = Curso.objects.create(
+            nombre=f'Curso tope módulo {modalidad}',
+            ofrece_presencial=True, valor_presencial=Decimal('90.00'),
+            ofrece_online=True, valor_online=Decimal('60.00'),
+            numero_modulos=4, numero_modulos_online=2,
+        )
+        jornada = JornadaCurso.objects.create(
+            curso=curso, modalidad=modalidad, descripcion='lun_mie_vie',
+            fecha_inicio=date(2026, 7, 6),
+            sede=self.sede if modalidad == 'presencial' else None,
+        )
+        return Matricula.objects.create(
+            estudiante=self.estudiante, curso=curso, jornada=jornada,
+            modalidad=modalidad, tipo_matricula='reserva_abono',
+            forma_pago='abono', fecha_matricula=date(2026, 7, 5),
+            valor_curso=curso.valor_para(modalidad), valor_pagado=Decimal('0.00'),
+            tipo_registro='central_ia', registrado_por=self.usuario,
+        )
+
+    def _pago_modulo(self, monto, **overrides):
+        return self._abono_data(**{
+            'monto': monto, 'tipo_cobro': 'un_solo_metodo',
+            'monto_pago_1': '', 'monto_pago_2': '', **overrides,
+        })
+
+    def test_solo_modulo_presencial_se_paga_hasta_veinte(self):
+        matricula = self._matricula_para_tope_modulo('presencial')
+        for monto in ('0.01', '19.99', '20.00'):
+            with self.subTest(monto=monto):
+                form = AbonoForm(self._pago_modulo(monto), matricula=matricula)
+                self.assertTrue(form.is_valid(), form.errors)
+        for monto in ('20.01', '25.00', '80.00'):
+            with self.subTest(monto=monto):
+                form = AbonoForm(self._pago_modulo(monto), matricula=matricula)
+                self.assertFalse(form.is_valid())
+                self.assertEqual(form.errors['monto'], [
+                    'En Presencial cada módulo se paga hasta $20.00. Si paga más '
+                    'de un módulo, registra cada módulo por separado.'
+                ])
+        self.assertEqual(
+            AbonoForm(matricula=matricula).fields['monto'].widget.attrs['data-tope-modulo'],
+            '20.00',
+        )
+
+    def test_solo_modulo_online_se_paga_hasta_veinticinco(self):
+        matricula = self._matricula_para_tope_modulo('online')
+        form = AbonoForm(self._pago_modulo('25.00'), matricula=matricula)
+        self.assertTrue(form.is_valid(), form.errors)
+        form = AbonoForm(self._pago_modulo('25.01'), matricula=matricula)
+        self.assertFalse(form.is_valid())
+        self.assertIn('En Online cada módulo se paga hasta $25.00', form.errors['monto'][0])
+
+    def test_tope_de_modulo_tambien_aplica_al_pago_mixto(self):
+        matricula = self._matricula_para_tope_modulo('presencial')
+        form = AbonoForm(self._abono_data(), matricula=matricula)  # $25 = 10 + 15
+        self.assertFalse(form.is_valid())
+        self.assertIn('monto', form.errors)
+
+    def test_tope_de_modulo_no_aplica_a_abono_ni_recuperacion(self):
+        matricula = self._matricula_para_tope_modulo('presencial')
+        abono = AbonoForm(
+            self._pago_modulo('30.00', tipo_pago='abono', numero_modulo=''),
+            matricula=matricula,
+        )
+        self.assertTrue(abono.is_valid(), abono.errors)
+        recuperacion = AbonoForm(
+            self._pago_modulo('25.00', tipo_pago='recuperacion', fecha_marcada='2026-07-06'),
+            matricula=matricula,
+        )
+        self.assertTrue(recuperacion.is_valid(), recuperacion.errors)
+
+    def test_un_solo_pago_del_ciclo_corto_online_no_lleva_tope_de_modulo(self):
+        matricula = self._crear_matricula_pago_unico_online()
+        # Saldo de $25 tras la reserva; el «Un solo pago» no es por módulo.
+        form = AbonoForm(self._pago_modulo('25.00'), matricula=matricula)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertNotIn(
+            'data-tope-modulo',
+            AbonoForm(matricula=matricula).fields['monto'].widget.attrs,
+        )
+
+    def test_pago_de_modulo_antiguo_mayor_al_tope_se_edita_sin_cambiar_el_monto(self):
+        matricula = self._matricula_para_tope_modulo('presencial')
+        pago = Abono.objects.create(
+            matricula=matricula, fecha=date(2026, 7, 6), monto=Decimal('25.00'),
+            tipo_pago='solo_modulo', numero_modulo=1, metodo='efectivo',
+        )
+        form = AbonoForm(
+            self._pago_modulo('25.00', observaciones='Corrección de nota'),
+            instance=pago, matricula=matricula,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(
+            form.fields['monto'].widget.attrs['data-monto-modulo-original'], '25.00',
+        )
+        form = AbonoForm(self._pago_modulo('24.00'), instance=pago, matricula=matricula)
+        self.assertFalse(form.is_valid())
+        self.assertIn('monto', form.errors)
+        form = AbonoForm(self._pago_modulo('18.00'), instance=pago, matricula=matricula)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_registrar_pago_de_modulo_mayor_al_tope_no_guarda_nada(self):
+        matricula = self._matricula_para_tope_modulo('presencial')
+        admin = User.objects.create_superuser(username='admin_tope_modulo')
+        self.client.force_login(admin)
+
+        response = self.client.post(
+            reverse('academia:abono_crear', args=[matricula.pk]),
+            self._pago_modulo('25.00'),
+            follow=True,
+        )
+
+        self.assertFalse(matricula.abonos.exists())
+        self.assertContains(response, 'cada módulo se paga hasta $20.00')
+        self.assertContains(response, 'data-tope-modulo="20.00"')
+        self.assertContains(response, 'id="aviso-tope-modulo"')
 
     def _supletorio_data(self, **overrides):
         data = {
@@ -7815,3 +8043,40 @@ class JornadaFeriadoTests(TestCase):
             response,
             'solo se aplica a Sábados Intensivos o Domingos Intensivos',
         )
+
+
+class ComprobanteEspejoSigueLosPagosTests(TestCase):
+    """El comprobante de una matrícula (Comprobantes y ranking) muestra lo
+    cobrado y lo pendiente al día, también tras los pagos posteriores."""
+
+    def test_pagos_posteriores_actualizan_el_comprobante(self):
+        asesora = User.objects.create_user('asesora_espejo')
+        matricula = Matricula.objects.create(
+            estudiante=Estudiante.objects.create(cedula='0933333333', nombres='Rosa Espejo'),
+            curso=Curso.objects.create(nombre='Curso espejo', valor_presencial=Decimal('90.00')),
+            modalidad='presencial', tipo_matricula='reserva_abono', forma_pago='abono',
+            fecha_matricula=date(2026, 10, 1), valor_curso=Decimal('90.00'),
+            tipo_registro='central_1', registrado_por=asesora, vendedora=asesora,
+        )
+        comprobante = Comprobante.objects.get(matricula=matricula)
+        self.assertEqual((comprobante.pago_abono, comprobante.diferencia), (Decimal('0.00'), Decimal('90.00')))
+
+        abono = Abono.objects.create(
+            matricula=matricula, fecha=date(2026, 10, 10), monto=Decimal('20.00'),
+            metodo='efectivo', tipo_pago='por_modulo', numero_modulo=1,
+        )
+        comprobante.refresh_from_db()
+        self.assertEqual((comprobante.pago_abono, comprobante.diferencia), (Decimal('20.00'), Decimal('70.00')))
+
+        # Una recuperación cobrada aparte no cuenta para el saldo del curso.
+        Abono.objects.create(
+            matricula=matricula, fecha=date(2026, 10, 11), monto=Decimal('15.00'),
+            metodo='efectivo', tipo_pago='recuperacion', numero_modulo=1,
+            cuenta_para_saldo=False,
+        )
+        comprobante.refresh_from_db()
+        self.assertEqual(comprobante.pago_abono, Decimal('20.00'))
+
+        abono.delete()
+        comprobante.refresh_from_db()
+        self.assertEqual((comprobante.pago_abono, comprobante.diferencia), (Decimal('0.00'), Decimal('90.00')))

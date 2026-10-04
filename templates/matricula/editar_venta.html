@@ -18,6 +18,7 @@
  <form method="post" class="card-box">
   {% csrf_token %}
   <input type="hidden" name="editar_seccion" value="{{ seccion }}">
+  {% if volver_facturas %}<input type="hidden" name="volver" value="facturas">{% endif %}
   {{ form.non_field_errors }}
   {% for field in form %}
   <div class="venta-field">
@@ -26,13 +27,23 @@
   </div>
   {% endfor %}
   {% if seccion == 'factura' %}
-  <p class="venta-note">Al elegir Sí, completa los nombres y la cédula o RUC del titular. El correo es opcional.</p>
+  <p class="venta-note">Al elegir Sí, completa los nombres y la cédula o RUC del titular. El correo es opcional. El número de factura admite solo números; si eliges No, el número de factura se borra.</p>
   {% elif seccion == 'vendedora' %}
   <p class="venta-note">La venta quedará atribuida al asesor seleccionado en el comprobante y los reportes de ventas.</p>
+  {% elif seccion == 'matricula' %}
+  <p class="venta-note">Los montos de los pagos <strong>no se tocan</strong>: el valor pagado y los abonos quedan igual. Si cambias la fecha, el pago hecho al matricular pasa a la nueva fecha (no puede quedar en o después de un pago posterior). Con <strong>Retiro voluntario</strong> el saldo pendiente se muestra en $0.00. La fecha de matrícula define el mes en que aparece en los reportes.{% if form.estado_bloqueado %}<br><strong>Esta matrícula está en Retiro voluntario: solo un administrador puede volver a activarla.</strong>{% endif %}</p>
   {% else %}
   <p class="venta-note">Selecciona el origen de esta venta para actualizar su registro y comprobante.</p>
   {% endif %}
-  <div class="venta-actions"><button class="btn btn-primary" type="submit">Guardar cambios</button><a class="btn btn-secondary" href="{% url 'academia:matricula_lista' modalidad=matricula.modalidad %}">Cancelar</a></div>
+  <div class="venta-actions"><button class="btn btn-primary" type="submit">Guardar cambios</button><a class="btn btn-secondary" href="{% if volver_facturas %}{% url 'academia:matricula_facturas' %}{% else %}{% url 'academia:matricula_lista' modalidad=matricula.modalidad %}{% endif %}">Cancelar</a></div>
  </form>
 </div>
+<script>
+    document.querySelectorAll('[data-solo-numeros]').forEach(function (input) {
+        input.addEventListener('input', function () {
+            const limpio = this.value.replace(/\D/g, '');
+            if (this.value !== limpio) this.value = limpio;
+        });
+    });
+</script>
 {% endblock %}

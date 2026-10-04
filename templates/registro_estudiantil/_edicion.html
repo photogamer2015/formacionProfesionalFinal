@@ -1,0 +1,956 @@
+{% comment %}
+Edición tipo Excel del Registro Estudiantil (solo administrador).
+
+Cada celda se cambia con un clic: aparece su desplegable o casilla. Los
+cambios NO se guardan solos: la fila queda marcada como «sin actualizar» y
+arriba de la tabla aparece «Actualizar cambios en el sistema». Al pulsarlo se
+muestran los cambios y se pregunta «¿Desea actualizar estos cambios en el
+sistema?». Al confirmar, cada fila se envía al servidor, que la valida con las
+mismas reglas de RegistroEstudiantilForm y la guarda en la matrícula. Si una
+fila no cuadra, no se guarda y se explica por qué; sus cambios quedan en
+pantalla para corregirlos o deshacerlos. Curso, modalidad, jornada y fecha de
+inicio van encadenados: al cambiar el curso se pide elegir la fecha de inicio.
+{% endcomment %}
+{{ datos_edicion|json_script:"registro-datos" }}
+{{ filas_edicion|json_script:"registro-filas" }}
+<input type="hidden" id="registro-csrf" value="{{ csrf_token }}">
+<div class="registro-avisos" id="registro-avisos" aria-live="polite"></div>
+
+<div class="registro-modal" id="registro-modal" hidden>
+    <div class="registro-modal-caja" role="dialog" aria-modal="true" aria-labelledby="registro-modal-titulo" aria-describedby="registro-modal-texto">
+        <div class="registro-modal-icono" aria-hidden="true" data-modal-icono>💾</div>
+        <h3 id="registro-modal-titulo" data-modal-titulo></h3>
+        <p id="registro-modal-texto" class="registro-modal-texto" data-modal-texto></p>
+        <div class="registro-modal-lista" data-modal-lista></div>
+        <p class="registro-modal-progreso" data-modal-progreso aria-live="polite" hidden></p>
+        <div class="registro-modal-acciones">
+            <button type="button" class="btn btn-secondary" data-modal-cancelar>Cancelar</button>
+            <button type="button" class="btn btn-primary" data-modal-confirmar>Sí, actualizar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const tabla = document.querySelector('.registro-tabla');
+    if (!tabla) return;
+    const datos = JSON.parse(document.getElementById('registro-datos').textContent);
+    const filas = JSON.parse(document.getElementById('registro-filas').textContent);
+    const csrf = document.getElementById('registro-csrf').value;
+    const cuerpo = tabla.tBodies[0];
+    const avisos = document.getElementById('registro-avisos');
+    const barra = document.getElementById('registro-barra-cambios');
+    const modal = document.getElementById('registro-modal');
+
+    const porId = lista => Object.fromEntries(lista.map(x => [x.id, x]));
+    const usuarios = porId(datos.usuarios);
+    const cursos = porId(datos.cursos);
+    const jornadas = porId(datos.jornadas);
+    const centrales = Object.fromEntries(datos.centrales);
+    const tipos = Object.fromEntries(datos.tipos);
+    const metodos = Object.fromEntries(datos.metodos);
+
+    const CAMPOS = [
+        'fecha_matricula', 'registrado_por', 'nombres', 'vendedora',
+        'tipo_registro', 'curso', 'modalidad', 'jornada', 'tipo_matricula',
+        'numero_factura',
+    ];
+    const CAMPOS_PAGO = ['valor_pago', 'metodo_pago', 'banco'];
+    const ORDEN = [
+        'fecha', 'registra', 'nombres', 'vendedora', 'central', 'curso',
+        'modalidad', 'dias', 'inicio', 'tipo', 'valor', 'forma', 'banco',
+        'factura',
+    ];
+    const ENCABEZADOS = {
+        fecha: 'Fecha', registra: 'Registra', nombres: 'Nombres del Estudiante',
+        vendedora: 'Vendedora', central: 'Central', curso: 'Programa / Curso',
+        modalidad: 'Modalidad', dias: 'Jornada', inicio: 'Fecha de inicio',
+        tipo: 'Matrícula', valor: 'Valor', forma: 'Forma de Pago',
+        banco: 'Banco', factura: 'No. de Factura',
+    };
+    // Campo del servidor → columna de la hoja (para marcar la celda con error).
+    const COLUMNA_DE_CAMPO = {
+        fecha_matricula: 'fecha', registrado_por: 'registra', nombres: 'nombres',
+        vendedora: 'vendedora', tipo_registro: 'central', curso: 'curso',
+        modalidad: 'modalidad', jornada: 'inicio', tipo_matricula: 'tipo',
+        valor_pago: 'valor', metodo_pago: 'forma', banco: 'banco',
+        numero_factura: 'factura',
+    };
+    const FALTA = {
+        modalidad: 'la modalidad', dias: 'la jornada',
+        inicio: 'la fecha de inicio', banco: 'el banco',
+    };
+
+    // ── Textos ──
+    function primerNombre(texto) {
+        return (texto || '').trim().split(/\s+/)[0] || '';
+    }
+    function fechaCorta(iso) {
+        const partes = (iso || '').split('-');
+        return partes.length === 3 ? partes[2] + '/' + partes[1] + '/' + partes[0] : '';
+    }
+    function dinero(valor) {
+        const n = Number(valor);
+        return valor !== '' && valor != null && Number.isFinite(n) ? n.toFixed(2).replace('.', ',') : '';
+    }
+    function etiquetaModalidad(modalidad, sede) {
+        const texto = modalidad === 'online' ? 'Virtual' : 'Presencial';
+        return sede ? texto + ' ' + sede : texto;
+    }
+    function bancosDe(metodo) {
+        return datos.bancos_por_metodo[metodo] || null;
+    }
+    function nombreBanco(banco) {
+        return banco ? (datos.bancos[banco] || 'Otro banco - ' + banco) : '';
+    }
+    function plural(n, uno, varios) {
+        return n === 1 ? uno : varios;
+    }
+
+    // ── Curso → modalidad → jornada → fecha de inicio ──
+    function jornadasDe(fila, b) {
+        return datos.jornadas.filter(j =>
+            j.curso === b.curso && (j.activo || j.id === fila.valores.jornada));
+    }
+    function combos(fila, b) {
+        const lista = [];
+        const vistos = new Set();
+        jornadasDe(fila, b).forEach(j => {
+            const valor = j.modalidad + '|' + j.sede;
+            if (!vistos.has(valor)) {
+                vistos.add(valor);
+                lista.push({ valor: valor, modalidad: j.modalidad, sede: j.sede });
+            }
+        });
+        return lista.sort((x, y) => x.modalidad === y.modalidad
+            ? x.sede.localeCompare(y.sede)
+            : (x.modalidad === 'presencial' ? -1 : 1));
+    }
+    function diasDe(fila, b) {
+        return [...new Set(jornadasDe(fila, b)
+            .filter(j => j.modalidad === b.modalidad && j.sede === b.sede)
+            .map(j => j.dias))];
+    }
+    function iniciosDe(fila, b) {
+        return jornadasDe(fila, b).filter(j =>
+            j.modalidad === b.modalidad && j.sede === b.sede && j.dias === b.dias);
+    }
+    function textoInicio(j, lista) {
+        let texto = j.fecha_texto;
+        if (lista.some(o => o !== j && o.fecha_texto === j.fecha_texto)) {
+            texto += ' · ' + (j.horario || 'jornada ' + j.id);
+        }
+        return j.activo ? texto : texto + ' (desactivada)';
+    }
+    // Lo que dejó de valer al cambiar un nivel se vuelve a elegir; si solo
+    // queda una opción se elige sola.
+    function cascada(fila, b, nivel) {
+        if (nivel <= 0) {
+            const lista = combos(fila, b);
+            if (!lista.some(c => c.modalidad === b.modalidad && c.sede === b.sede)) {
+                b.modalidad = lista.length === 1 ? lista[0].modalidad : '';
+                b.sede = lista.length === 1 ? lista[0].sede : '';
+            }
+        }
+        if (nivel <= 1) {
+            const lista = b.modalidad ? diasDe(fila, b) : [];
+            if (!lista.includes(b.dias)) b.dias = lista.length === 1 ? lista[0] : '';
+        }
+        if (nivel <= 2) {
+            const lista = b.dias ? iniciosDe(fila, b) : [];
+            if (!lista.some(j => j.id === b.jornada)) {
+                b.jornada = lista.length === 1 ? lista[0].id : '';
+            }
+        }
+    }
+    function requiereJornada(fila, b) {
+        const v = fila.valores;
+        return Boolean(v.jornada) || b.curso !== v.curso || b.modalidad !== v.modalidad
+            || b.sede !== v.sede || b.dias !== v.dias;
+    }
+    function faltante(fila, b) {
+        if (requiereJornada(fila, b)) {
+            if (!b.modalidad) return 'modalidad';
+            if (!b.dias) return 'dias';
+            if (!b.jornada) return 'inicio';
+        }
+        if (fila.pago_editable && bancosDe(b.metodo_pago) && !b.banco) return 'banco';
+        return null;
+    }
+
+    // ── Columnas ──
+    function opcionesUsuario(fila, campo, vacio) {
+        const lista = datos.usuarios
+            .filter(u => u.general || u.id === fila.valores[campo])
+            .map(u => [u.id, u.nombre]);
+        return fila.obligatorios.includes(campo) ? lista : [['', vacio]].concat(lista);
+    }
+    function opcionesBanco(fila, b) {
+        const permitidos = bancosDe(b.metodo_pago) || [];
+        const lista = permitidos.map(x => [x, nombreBanco(x)]);
+        const guardado = fila.valores.banco;
+        // Un pago antiguo conserva su banco mientras no cambie el método.
+        if (b.metodo_pago === fila.valores.metodo_pago && guardado && !permitidos.includes(guardado)) {
+            lista.push([guardado, nombreBanco(guardado)]);
+        }
+        return lista;
+    }
+    const COLUMNAS = {
+        fecha: { tipo: 'fecha', campo: 'fecha_matricula' },
+        registra: { tipo: 'lista', campo: 'registrado_por',
+            opciones: f => opcionesUsuario(f, 'registrado_por', '— Sin registrar —') },
+        nombres: { tipo: 'texto', campo: 'nombres' },
+        vendedora: { tipo: 'lista', campo: 'vendedora',
+            opciones: f => opcionesUsuario(f, 'vendedora', '— Sin vendedora —') },
+        central: { tipo: 'lista', campo: 'tipo_registro',
+            opciones: f => (f.obligatorios.includes('tipo_registro') ? [] : [['', '— Sin central —']])
+                .concat(datos.centrales) },
+        curso: { tipo: 'lista', campo: 'curso',
+            opciones: f => datos.cursos
+                .filter(c => c.general || c.id === f.valores.curso)
+                .map(c => [c.id, c.nombre]) },
+        modalidad: { tipo: 'lista', valor: b => (b.modalidad ? b.modalidad + '|' + b.sede : ''),
+            opciones: (f, b) => combos(f, b).map(c => [c.valor, etiquetaModalidad(c.modalidad, c.sede)]) },
+        dias: { tipo: 'lista', campo: 'dias', opciones: (f, b) => diasDe(f, b).map(d => [d, d]) },
+        inicio: { tipo: 'lista', campo: 'jornada',
+            opciones: (f, b) => {
+                const lista = iniciosDe(f, b);
+                return lista.map(j => [j.id, textoInicio(j, lista)]);
+            } },
+        tipo: { tipo: 'lista', campo: 'tipo_matricula',
+            opciones: f => datos.tipos.filter(t => t[0] !== 'reserva_modulo_1'
+                || f.valores.tipo_matricula === 'reserva_modulo_1') },
+        valor: { tipo: 'numero', campo: 'valor_pago', pago: true },
+        forma: { tipo: 'lista', campo: 'metodo_pago', pago: true, opciones: () => datos.metodos },
+        banco: { tipo: 'lista', campo: 'banco', pago: true, opciones: opcionesBanco },
+        factura: { tipo: 'texto', campo: 'numero_factura', soloNumeros: true },
+    };
+    Object.values(COLUMNAS).forEach(def => {
+        if (!def.valor) def.valor = b => String(b[def.campo] == null ? '' : b[def.campo]);
+    });
+
+    // Texto de una columna para unos valores (guardados o sin actualizar).
+    function etiquetaDe(col, b, completo) {
+        switch (col) {
+            case 'fecha': return fechaCorta(b.fecha_matricula);
+            case 'registra':
+            case 'vendedora': {
+                const usuario = usuarios[col === 'registra' ? b.registrado_por : b.vendedora];
+                const nombre = usuario ? usuario.nombre : '';
+                return completo ? nombre : primerNombre(nombre);
+            }
+            case 'nombres': return b.nombres;
+            case 'central': return centrales[b.tipo_registro] || '';
+            case 'curso': return (cursos[b.curso] || {}).nombre || '';
+            case 'modalidad': return b.modalidad ? etiquetaModalidad(b.modalidad, b.sede) : '';
+            case 'dias': return b.dias;
+            case 'inicio': return b.jornada ? (jornadas[b.jornada] || {}).fecha_texto || '' : '';
+            case 'tipo': return tipos[b.tipo_matricula] || b.tipo_matricula;
+            case 'valor': return dinero(b.valor_pago);
+            case 'forma': return metodos[b.metodo_pago] || '';
+            case 'banco': return nombreBanco(b.banco);
+            case 'factura': return b.numero_factura;
+        }
+        return '';
+    }
+    function textoCelda(col, fila) {
+        return fila.borrador ? etiquetaDe(col, fila.borrador, false) : (fila.etiquetas[col] || '');
+    }
+    function columnaCambiada(col, fila) {
+        const def = COLUMNAS[col];
+        if (!fila.borrador || (def.pago && !fila.pago_editable)) return false;
+        return def.valor(fila.borrador) !== def.valor(fila.valores);
+    }
+    // Valor del curso que quedará, con las mismas reglas del servidor
+    // (RegistroEstudiantilForm.clean): precio vigente al cambiar de curso o
+    // modalidad; ±$10 al pasar a o desde «Inscripción (gratis)»; $0 en «Otros».
+    function valorCursoNuevo(fila, b) {
+        const v = fila.valores;
+        if (b.tipo_matricula === 'otros') return { valor: 0, descuento: 0, motivo: '«Otros» no tiene costo' };
+        const descuento = Number(fila.descuento);
+        const ajuste = b.tipo_matricula === 'inscripcion_gratis' ? 10 : 0;
+        if (b.curso !== v.curso || b.modalidad !== v.modalidad || v.tipo_matricula === 'otros') {
+            const curso = cursos[b.curso] || {};
+            const precio = Number(b.modalidad === 'online' ? curso.valor_online : curso.valor_presencial);
+            return {
+                valor: precio - ajuste,
+                descuento: descuento,
+                motivo: ajuste ? 'precio vigente del curso sin los $10 de inscripción' : 'precio vigente del curso',
+            };
+        }
+        let valor = Number(fila.valor_curso);
+        let motivo = '';
+        if (b.tipo_matricula !== v.tipo_matricula) {
+            if (b.tipo_matricula === 'inscripcion_gratis') {
+                valor -= 10;
+                motivo = 'sin los $10 de inscripción';
+            } else if (v.tipo_matricula === 'inscripcion_gratis') {
+                valor += 10;
+                motivo = 'vuelven los $10 de inscripción';
+            }
+        }
+        return { valor: valor, descuento: descuento, motivo: motivo };
+    }
+
+    // Lista «antes → después» de una fila, para la confirmación.
+    function cambiosDeFila(fila) {
+        const cambios = cambiosDeColumnas(fila);
+        const nuevo = valorCursoNuevo(fila, fila.borrador);
+        if (Math.abs(nuevo.valor - Number(fila.valor_curso)) >= 0.005) {
+            cambios.push({
+                columna: 'Valor del curso',
+                antes: '$' + dinero(fila.valor_curso),
+                despues: '$' + dinero(nuevo.valor) + (nuevo.motivo ? ' (' + nuevo.motivo + ')' : ''),
+            });
+        }
+        if (Math.abs(nuevo.descuento - Number(fila.descuento)) >= 0.005) {
+            cambios.push({
+                columna: 'Descuento',
+                antes: '$' + dinero(fila.descuento),
+                despues: '$' + dinero(nuevo.descuento),
+            });
+        }
+        return cambios;
+    }
+    function cambiosDeColumnas(fila) {
+        return ORDEN.filter(col => columnaCambiada(col, fila)).map(col => {
+            const completo = col === 'registra' || col === 'vendedora';
+            let antes = completo ? fila.etiquetas[col + '_completo'] : fila.etiquetas[col];
+            let despues = etiquetaDe(col, fila.borrador, true);
+            if (col === 'valor') {
+                antes = antes ? '$' + antes : antes;
+                despues = despues ? '$' + despues : despues;
+            }
+            return { columna: ENCABEZADOS[col], antes: antes || '—', despues: despues || '—' };
+        });
+    }
+
+    // ── Pintar una fila ──
+    function pintar(tr, fila) {
+        const b = fila.borrador || fila.valores;
+        const falta = fila.borrador ? faltante(fila, b) : null;
+        const errores = fila.columnasError || [];
+        tr.classList.toggle('is-pendiente', Boolean(fila.borrador));
+        tr.classList.toggle('is-con-error', Boolean(fila.error));
+        tr.style.setProperty('--fila', fila.color);
+        tr.dataset.registra = fila.etiquetas.registra_completo || '';
+        tr.querySelectorAll('td[data-col]').forEach(td => {
+            const col = td.dataset.col;
+            td.classList.toggle('is-falta', col === falta);
+            td.classList.toggle('is-error', errores.includes(col));
+            if (col === 'numero') {
+                td.textContent = fila.numero;
+                return;
+            }
+            if (col === 'estado') {
+                pintarEstado(td, fila, falta);
+                return;
+            }
+            const def = COLUMNAS[col];
+            if (!def) return;
+            td.classList.toggle('is-cambiada', columnaCambiada(col, fila));
+            if (def.pago && !fila.pago_editable) {
+                td.replaceChildren(document.createTextNode(fila.etiquetas[col] || '—'));
+                if (col === 'valor' && fila.enlace_pago) {
+                    const enlace = document.createElement('a');
+                    enlace.href = fila.enlace_pago;
+                    enlace.className = 'celda-enlace';
+                    enlace.textContent = '✎';
+                    enlace.title = fila.etiquetas.valor
+                        ? 'Pago mixto o en varios abonos: se corrige en «Editar pago inicial».'
+                        : 'Sin pago el día de la matrícula: se registra en «Gestionar pagos».';
+                    td.append(' ', enlace);
+                }
+                return;
+            }
+            if (col === 'banco' && !bancosDe(b.metodo_pago)) {
+                td.textContent = '—';
+                return;
+            }
+            const texto = textoCelda(col, fila);
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'chip ' + (def.tipo === 'lista' ? 'chip-lista' : 'chip-texto');
+            chip.dataset.editar = col;
+            const valor = document.createElement('span');
+            valor.className = 'chip-valor';
+            valor.textContent = texto || (col === falta ? 'Elige' : '—');
+            chip.append(valor);
+            if (def.tipo === 'lista') {
+                const flecha = document.createElement('span');
+                flecha.className = 'chip-flecha';
+                flecha.setAttribute('aria-hidden', 'true');
+                flecha.textContent = '▼';
+                chip.append(flecha);
+            }
+            chip.setAttribute('aria-label', ENCABEZADOS[col] + ': ' + (texto || 'vacío') + '. Cambiar');
+            if (col === 'registra' || col === 'vendedora') {
+                chip.title = fila.borrador
+                    ? etiquetaDe(col, fila.borrador, true)
+                    : fila.etiquetas[col + '_completo'] || '';
+            }
+            td.replaceChildren(chip);
+            if (col === 'nombres' && fila.retiro) {
+                const etiqueta = document.createElement('span');
+                etiqueta.className = 'registro-tag';
+                etiqueta.textContent = 'Retiro';
+                td.append(etiqueta);
+            }
+        });
+    }
+    function boton(texto, accion, clase) {
+        const elemento = document.createElement('button');
+        elemento.type = 'button';
+        elemento.className = clase;
+        elemento.dataset.accion = accion;
+        elemento.textContent = texto;
+        return elemento;
+    }
+    function pintarEstado(td, fila, falta) {
+        td.replaceChildren();
+        if (fila.guardando) {
+            td.textContent = 'Actualizando…';
+            return;
+        }
+        if (fila.error) {
+            const error = document.createElement('span');
+            error.className = 'estado-error';
+            error.textContent = fila.error;
+            td.append(error);
+        }
+        if (fila.borrador) {
+            const mensaje = document.createElement('span');
+            mensaje.className = 'estado-falta';
+            if (falta) {
+                const sinOpciones = COLUMNAS[falta].opciones(fila, fila.borrador).length === 0;
+                mensaje.textContent = !sinOpciones
+                    ? 'Falta elegir ' + FALTA[falta] + '.'
+                    : (falta === 'banco'
+                        ? 'Esta forma de pago no tiene bancos.'
+                        : 'Este curso no tiene jornadas activas en esa modalidad.');
+            } else {
+                mensaje.textContent = 'Cambios sin actualizar.';
+            }
+            const acciones = document.createElement('div');
+            acciones.className = 'estado-acciones';
+            if (!falta) acciones.append(boton('Actualizar', 'actualizar', 'btn-actualizar'));
+            acciones.append(boton('Deshacer', 'deshacer', 'btn-deshacer'));
+            td.append(mensaje, acciones);
+            return;
+        }
+        if (fila.recienGuardada) td.textContent = '✓ Actualizado';
+    }
+
+    // ── Editar una celda ──
+    function abrir(td) {
+        const tr = td.closest('tr');
+        const fila = filas[tr.dataset.clave];
+        const col = td.dataset.col;
+        const def = COLUMNAS[col];
+        if (!fila || !def || fila.guardando) return;
+        const b = fila.borrador || fila.valores;
+        let cerrado = false;
+        let control;
+        const cancelar = () => {
+            if (cerrado) return;
+            cerrado = true;
+            pintar(tr, fila);
+        };
+
+        if (def.tipo === 'lista') {
+            control = document.createElement('select');
+            const actual = def.valor(b);
+            const opciones = def.opciones(fila, b).slice();
+            if (!opciones.some(o => o[0] === actual)) {
+                opciones.unshift([actual, actual ? textoCelda(col, fila) || actual : '— Elige —']);
+            }
+            opciones.forEach(o => control.add(new Option(o[1], o[0], o[0] === actual, o[0] === actual)));
+            control.addEventListener('change', () => {
+                cerrado = true;
+                aplicar(tr, fila, col, control.value);
+            });
+            control.addEventListener('blur', cancelar);
+            control.addEventListener('keydown', e => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelar();
+                }
+            });
+        } else {
+            control = document.createElement('input');
+            control.type = { fecha: 'date', numero: 'number', texto: 'text' }[def.tipo];
+            if (def.tipo === 'numero') {
+                control.step = '0.01';
+                control.min = '0.01';
+                control.inputMode = 'decimal';
+            }
+            if (def.soloNumeros) {
+                control.inputMode = 'numeric';
+                control.maxLength = 20;
+                control.addEventListener('input', () => {
+                    const limpio = control.value.replace(/\D/g, '');
+                    if (limpio !== control.value) control.value = limpio;
+                });
+            }
+            if (col === 'nombres') control.maxLength = 200;
+            control.value = def.valor(b);
+            const confirmar = () => {
+                if (cerrado) return;
+                cerrado = true;
+                let valor = control.value.trim();
+                if (col === 'nombres') valor = valor.replace(/\s+/g, ' ');
+                if (def.tipo === 'numero') {
+                    const n = Number(valor);
+                    if (!valor || !Number.isFinite(n) || n <= 0) {
+                        avisar('error', 'El valor debe ser mayor a $0.');
+                        pintar(tr, fila);
+                        return;
+                    }
+                    valor = n.toFixed(2);
+                }
+                if (!valor && (col === 'nombres' || def.tipo === 'fecha')) {
+                    avisar('error', col === 'nombres' ? 'Escribe los nombres del estudiante.' : 'Elige una fecha.');
+                    pintar(tr, fila);
+                    return;
+                }
+                if (valor === def.valor(b)) {
+                    pintar(tr, fila);
+                    return;
+                }
+                aplicar(tr, fila, col, valor);
+            };
+            control.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    confirmar();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelar();
+                }
+            });
+            control.addEventListener('blur', confirmar);
+        }
+        control.className = 'celda-editor';
+        control.setAttribute('aria-label', ENCABEZADOS[col]);
+        td.replaceChildren(control);
+        control.focus();
+        if (def.tipo === 'lista' && typeof control.showPicker === 'function') {
+            try { control.showPicker(); } catch (e) { /* el navegador no lo permite: basta un clic */ }
+        }
+    }
+
+    // Cambia el valor en pantalla. No guarda: la fila queda «sin actualizar».
+    function aplicar(tr, fila, col, valor) {
+        const b = Object.assign({}, fila.borrador || fila.valores);
+        if (col === 'curso') {
+            b.curso = valor;
+            cascada(fila, b, 0);
+        } else if (col === 'modalidad') {
+            const corte = valor.indexOf('|');
+            b.modalidad = corte >= 0 ? valor.slice(0, corte) : valor;
+            b.sede = corte >= 0 ? valor.slice(corte + 1) : '';
+            cascada(fila, b, 1);
+        } else if (col === 'dias') {
+            b.dias = valor;
+            cascada(fila, b, 2);
+        } else if (col === 'inicio') {
+            const j = jornadas[valor];
+            b.jornada = j ? j.id : '';
+            if (j) {
+                b.modalidad = j.modalidad;
+                b.sede = j.sede;
+                b.dias = j.dias;
+            }
+        } else if (col === 'forma') {
+            b.metodo_pago = valor;
+            const permitidos = bancosDe(valor);
+            const guardado = valor === fila.valores.metodo_pago && b.banco === fila.valores.banco;
+            if (!permitidos || (!permitidos.includes(b.banco) && !guardado)) b.banco = '';
+        } else {
+            b[COLUMNAS[col].campo] = valor;
+        }
+
+        const campos = CAMPOS.concat(fila.pago_editable ? CAMPOS_PAGO : []);
+        const igual = campos.every(c =>
+            String(b[c] == null ? '' : b[c]) === String(fila.valores[c] == null ? '' : fila.valores[c]));
+        fila.borrador = igual ? null : b;
+        fila.error = null;
+        fila.columnasError = [];
+        pintar(tr, fila);
+        actualizarBarra();
+        const falta = fila.borrador ? faltante(fila, b) : null;
+        if (falta) {
+            const td = tr.querySelector('td[data-col="' + falta + '"]');
+            if (td && COLUMNAS[falta].opciones(fila, b).length) abrir(td);
+        }
+    }
+
+    // ── Barra de cambios sin actualizar ──
+    function filasPendientes() {
+        return [...cuerpo.querySelectorAll('tr[data-clave]')]
+            .map(tr => ({ tr: tr, fila: filas[tr.dataset.clave] }))
+            .filter(x => x.fila && x.fila.borrador && !x.fila.guardando);
+    }
+    function actualizarBarra() {
+        if (!barra) return;
+        const lista = filasPendientes();
+        barra.hidden = !lista.length;
+        if (!lista.length) return;
+        const incompletas = lista.filter(x => faltante(x.fila, x.fila.borrador)).length;
+        let texto = 'Tienes cambios sin actualizar en ' + lista.length + ' '
+            + plural(lista.length, 'fila', 'filas') + '.';
+        if (incompletas) {
+            texto += ' ' + incompletas + ' ' + plural(incompletas, 'fila necesita', 'filas necesitan')
+                + ' que elijas un dato antes de actualizar.';
+        }
+        barra.querySelector('[data-barra-texto]').textContent = texto;
+    }
+
+    // ── Ventana de confirmación ──
+    let alConfirmar = null;
+    let modalOcupado = false;
+    let focoPrevio = null;
+
+    function abrirModal(opciones) {
+        focoPrevio = document.activeElement;
+        modal.querySelector('[data-modal-icono]').textContent = opciones.icono;
+        modal.querySelector('[data-modal-titulo]').textContent = opciones.titulo;
+        modal.querySelector('[data-modal-texto]').textContent = opciones.texto;
+        modal.querySelector('[data-modal-lista]').replaceChildren(...(opciones.contenido || []));
+        const progreso = modal.querySelector('[data-modal-progreso]');
+        progreso.hidden = true;
+        progreso.textContent = '';
+        const confirmar = modal.querySelector('[data-modal-confirmar]');
+        confirmar.hidden = !opciones.confirmar;
+        confirmar.disabled = false;
+        confirmar.className = 'btn ' + (opciones.peligro ? 'btn-danger' : 'btn-primary');
+        if (opciones.confirmar) confirmar.textContent = opciones.confirmar;
+        modal.querySelector('[data-modal-cancelar]').disabled = false;
+        modal.querySelector('[data-modal-cancelar]').textContent = opciones.confirmar ? 'Cancelar' : 'Cerrar';
+        alConfirmar = opciones.alConfirmar || null;
+        modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+        (opciones.confirmar ? confirmar : modal.querySelector('[data-modal-cancelar]')).focus();
+    }
+    function cerrarModal() {
+        if (modalOcupado) return;
+        modal.hidden = true;
+        document.body.style.overflow = '';
+        alConfirmar = null;
+        if (focoPrevio && document.contains(focoPrevio)) focoPrevio.focus();
+    }
+    function ocuparModal(ocupado, texto) {
+        modalOcupado = ocupado;
+        modal.querySelector('[data-modal-confirmar]').disabled = ocupado;
+        modal.querySelector('[data-modal-cancelar]').disabled = ocupado;
+        const progreso = modal.querySelector('[data-modal-progreso]');
+        progreso.hidden = !texto;
+        progreso.textContent = texto || '';
+    }
+    modal.querySelector('[data-modal-cancelar]').addEventListener('click', cerrarModal);
+    modal.querySelector('[data-modal-confirmar]').addEventListener('click', () => {
+        if (alConfirmar && !modalOcupado) alConfirmar();
+    });
+    modal.addEventListener('click', e => {
+        if (e.target === modal) cerrarModal();
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && !modal.hidden) cerrarModal();
+    });
+
+    function seccionFila(fila, titulo, elementos, aviso) {
+        const seccion = document.createElement('section');
+        seccion.className = 'registro-modal-fila' + (aviso ? ' is-aviso' : '');
+        const encabezado = document.createElement('h4');
+        encabezado.textContent = titulo;
+        seccion.append(encabezado);
+        if (aviso) {
+            const parrafo = document.createElement('p');
+            parrafo.textContent = aviso;
+            seccion.append(parrafo);
+        }
+        if (elementos.length) {
+            const lista = document.createElement('ul');
+            elementos.forEach(cambio => {
+                const item = document.createElement('li');
+                const nombre = document.createElement('strong');
+                nombre.textContent = cambio.columna + ': ';
+                item.append(nombre, cambio.antes + ' → ' + cambio.despues);
+                lista.append(item);
+            });
+            seccion.append(lista);
+        }
+        return seccion;
+    }
+    function tituloFila(fila) {
+        return 'N.º ' + fila.numero + ' · ' + (fila.etiquetas.nombres || 'Matrícula');
+    }
+
+    function revisar(lista) {
+        const preparadas = lista.filter(x => !faltante(x.fila, x.fila.borrador));
+        const incompletas = lista.filter(x => faltante(x.fila, x.fila.borrador));
+        const contenido = preparadas.map(x => seccionFila(x.fila, tituloFila(x.fila), cambiosDeFila(x.fila)))
+            .concat(incompletas.map(x => seccionFila(
+                x.fila, tituloFila(x.fila), [],
+                'Falta elegir ' + FALTA[faltante(x.fila, x.fila.borrador)]
+                    + ': esta fila se actualizará cuando la completes.'
+            )));
+        abrirModal({
+            icono: '💾',
+            titulo: preparadas.length
+                ? '¿Desea actualizar estos cambios en el sistema?'
+                : 'Completa los datos que faltan',
+            texto: preparadas.length
+                ? 'Se guardan en la matrícula de cada estudiante. La lista de matriculados, '
+                  + 'los pagos, las facturas y los comprobantes quedan con estos datos.'
+                : 'Todavía no hay filas listas para actualizar.',
+            contenido: contenido,
+            confirmar: preparadas.length
+                ? (preparadas.length === 1 ? 'Sí, actualizar' : 'Sí, actualizar ' + preparadas.length + ' filas')
+                : null,
+            alConfirmar: () => actualizarFilas(preparadas),
+        });
+    }
+
+    function descartarTodo() {
+        const lista = filasPendientes();
+        if (!lista.length) return;
+        abrirModal({
+            icono: '↩️',
+            titulo: '¿Descartar los cambios sin actualizar?',
+            texto: 'Las celdas vuelven a los datos que ya están guardados en el sistema.',
+            contenido: [],
+            confirmar: 'Sí, descartar',
+            peligro: true,
+            alConfirmar: () => {
+                lista.forEach(x => {
+                    x.fila.borrador = null;
+                    x.fila.error = null;
+                    x.fila.columnasError = [];
+                    pintar(x.tr, x.fila);
+                });
+                actualizarBarra();
+                cerrarModal();
+            },
+        });
+    }
+
+    async function actualizarFilas(lista) {
+        const resultados = [];
+        for (let i = 0; i < lista.length; i += 1) {
+            ocuparModal(true, 'Actualizando ' + (i + 1) + ' de ' + lista.length + '…');
+            resultados.push(await guardar(lista[i].tr, lista[i].fila));
+        }
+        ocuparModal(false, '');
+        cerrarModal();
+        actualizarBarra();
+        actualizarLeyenda();
+
+        const buenos = resultados.filter(r => r.ok);
+        const malos = resultados.filter(r => !r.ok);
+        if (buenos.length) {
+            let texto = buenos.length === 1
+                ? 'Se actualizó en el sistema la matrícula de ' + buenos[0].nombre + ': '
+                  + (buenos[0].cambios.join('; ') || 'sin cambios') + '.'
+                : 'Se actualizaron en el sistema ' + buenos.length + ' matrículas.';
+            buenos.filter(r => r.movida).forEach(r => {
+                texto += ' ' + r.nombre + ' pasó a la hoja del ' + fechaCorta(r.movida) + '.';
+            });
+            avisar('ok', texto);
+        }
+        if (malos.length) {
+            avisar(
+                'error',
+                'No se ' + plural(malos.length, 'actualizó', 'actualizaron') + ': '
+                    + malos.map(r => r.nombre + ' — ' + r.mensajes.join(' ')).join(' · ')
+                    + ' Sus cambios siguen en pantalla para corregirlos o deshacerlos.',
+                malos.some(r => r.conflicto) ? { texto: 'Recargar', accion: () => location.reload() } : null
+            );
+        }
+    }
+
+    // ── Guardar una fila en el sistema ──
+    function guardar(tr, fila) {
+        const b = fila.borrador;
+        const nombre = fila.etiquetas.nombres;
+        const cuerpoPeticion = new URLSearchParams();
+        cuerpoPeticion.append('version', fila.version);
+        CAMPOS.concat(fila.pago_editable ? CAMPOS_PAGO : []).forEach(c => {
+            cuerpoPeticion.append(c, b[c] == null ? '' : b[c]);
+        });
+        fila.guardando = true;
+        fila.error = null;
+        fila.columnasError = [];
+        pintar(tr, fila);
+        return fetch(datos.url_guardar.replace('/0/', '/' + fila.pk + '/'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRFToken': csrf,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            },
+            body: cuerpoPeticion,
+        })
+            .then(respuesta => respuesta.json().catch(() => ({
+                ok: false,
+                mensajes: ['La sesión pudo haber expirado. Recarga la página e inténtalo otra vez.'],
+            })))
+            .catch(() => ({
+                ok: false,
+                mensajes: ['Sin conexión con el sistema. Revisa tu internet e inténtalo otra vez.'],
+            }))
+            .then(resultado => terminar(tr, fila, resultado, nombre));
+    }
+
+    function terminar(tr, fila, resultado, nombre) {
+        fila.guardando = false;
+        if (!resultado.ok) {
+            const mensajes = resultado.mensajes && resultado.mensajes.length
+                ? resultado.mensajes : ['No se pudo actualizar.'];
+            // Los cambios quedan en pantalla para corregirlos o deshacerlos.
+            fila.error = mensajes.join(' ');
+            fila.columnasError = (resultado.campos || [])
+                .map(campo => COLUMNA_DE_CAMPO[campo]).filter(Boolean);
+            pintar(tr, fila);
+            return { ok: false, nombre: nombre, mensajes: mensajes, conflicto: Boolean(resultado.conflicto) };
+        }
+        const nueva = resultado.fila;
+        nueva.numero = fila.numero;
+        filas[nueva.clave] = nueva;
+        const cambios = resultado.cambios || [];
+        if (!enVista(nueva.fecha)) {
+            sacarDeLaHoja(tr, fila.fecha, nueva.fecha);
+            return { ok: true, nombre: nueva.etiquetas.nombres, cambios: cambios, movida: nueva.fecha };
+        }
+        nueva.recienGuardada = true;
+        pintar(tr, nueva);
+        tr.classList.add('is-guardada');
+        setTimeout(() => {
+            tr.classList.remove('is-guardada');
+            nueva.recienGuardada = false;
+            const td = tr.querySelector('td[data-col="estado"]');
+            if (td && filas[nueva.clave] === nueva && !nueva.borrador && !nueva.guardando) {
+                pintarEstado(td, nueva, null);
+            }
+        }, 3000);
+        return { ok: true, nombre: nueva.etiquetas.nombres, cambios: cambios };
+    }
+
+    function enVista(fecha) {
+        const vista = datos.vista;
+        if (vista.modo === 'hoja') return fecha === vista.hoja;
+        return fecha >= vista.desde && fecha <= vista.hasta;
+    }
+
+    function sacarDeLaHoja(tr, de, a) {
+        tr.remove();
+        const restantes = cuerpo.querySelectorAll('tr[data-clave]');
+        restantes.forEach((fila, indice) => {
+            const datosFila = filas[fila.dataset.clave];
+            if (datosFila) datosFila.numero = indice + 1;
+            const celda = fila.querySelector('td[data-col="numero"]');
+            if (celda) celda.textContent = indice + 1;
+        });
+        if (!restantes.length) {
+            const vacia = cuerpo.insertRow();
+            vacia.className = 'registro-fila-vacia';
+            const celda = vacia.insertCell();
+            celda.colSpan = tabla.tHead.rows[0].cells.length;
+            celda.className = 'registro-vacio';
+            celda.textContent = 'No quedan matrículas en esta hoja.';
+        }
+        [[de, -1], [a, 1]].forEach(par => {
+            const total = document.querySelector('[data-hoja="' + par[0] + '"] .hoja-total');
+            if (total) total.textContent = Math.max(0, Number(total.textContent) + par[1]);
+        });
+    }
+
+    function actualizarLeyenda() {
+        const leyenda = document.getElementById('registro-leyenda');
+        if (!leyenda) return;
+        const conteo = new Map();
+        cuerpo.querySelectorAll('tr[data-clave]').forEach(tr => {
+            const nombre = tr.dataset.registra || 'Sin registrar';
+            const color = tr.style.getPropertyValue('--fila').trim();
+            const clave = nombre + '\u0000' + color;
+            conteo.set(clave, (conteo.get(clave) || 0) + 1);
+        });
+        const items = [...conteo.entries()]
+            .map(([clave, total]) => ({ nombre: clave.split('\u0000')[0], color: clave.split('\u0000')[1], total }))
+            .sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre));
+        leyenda.replaceChildren(...items.map(item => {
+            const li = document.createElement('li');
+            const muestra = document.createElement('span');
+            muestra.className = 'muestra';
+            muestra.style.background = item.color;
+            muestra.setAttribute('aria-hidden', 'true');
+            li.append(muestra, item.nombre + ' · ' + item.total);
+            return li;
+        }));
+    }
+
+    function avisar(tipo, texto, accion) {
+        const aviso = document.createElement('div');
+        aviso.className = 'registro-toast ' + (tipo === 'ok' ? 'is-ok' : 'is-error');
+        aviso.setAttribute('role', tipo === 'ok' ? 'status' : 'alert');
+        const parrafo = document.createElement('p');
+        parrafo.textContent = texto;
+        aviso.append(parrafo);
+        if (accion) {
+            const accionBoton = document.createElement('button');
+            accionBoton.type = 'button';
+            accionBoton.textContent = accion.texto;
+            accionBoton.addEventListener('click', accion.accion);
+            aviso.append(accionBoton);
+        }
+        const cerrar = document.createElement('button');
+        cerrar.type = 'button';
+        cerrar.textContent = '✕';
+        cerrar.setAttribute('aria-label', 'Cerrar aviso');
+        cerrar.addEventListener('click', () => aviso.remove());
+        aviso.append(cerrar);
+        avisos.append(aviso);
+        setTimeout(() => aviso.remove(), tipo === 'ok' ? 8000 : 16000);
+    }
+
+    cuerpo.addEventListener('click', e => {
+        const accion = e.target.closest('[data-accion]');
+        if (accion) {
+            const tr = accion.closest('tr');
+            const fila = filas[tr.dataset.clave];
+            if (accion.dataset.accion === 'deshacer') {
+                fila.borrador = null;
+                fila.error = null;
+                fila.columnasError = [];
+                pintar(tr, fila);
+                actualizarBarra();
+            } else if (accion.dataset.accion === 'actualizar') {
+                revisar([{ tr: tr, fila: fila }]);
+            }
+            return;
+        }
+        const chip = e.target.closest('[data-editar]');
+        if (chip) abrir(chip.closest('td'));
+    });
+
+    if (barra) {
+        barra.querySelector('[data-revisar-cambios]').addEventListener('click', () => revisar(filasPendientes()));
+        barra.querySelector('[data-descartar-cambios]').addEventListener('click', descartarTodo);
+    }
+
+    // Avisa antes de salir de la página con cambios sin actualizar.
+    window.addEventListener('beforeunload', e => {
+        if (Object.values(filas).some(f => f.borrador || f.guardando)) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    cuerpo.querySelectorAll('tr[data-clave]').forEach(tr => {
+        const fila = filas[tr.dataset.clave];
+        if (fila) pintar(tr, fila);
+    });
+    actualizarBarra();
+})();
+</script>
