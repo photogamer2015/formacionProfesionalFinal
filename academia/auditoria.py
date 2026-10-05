@@ -27,6 +27,7 @@ ACCIONES_POST = {
     'curso_crear': ('creacion', 'Creó un curso'),
     'curso_editar': ('edicion', 'Editó un curso'),
     'curso_eliminar': ('eliminacion', 'Eliminó un curso'),
+    'curso_intercambiar_valor': ('edicion', 'Intercambió el valor principal y el anterior de un curso'),
     'curso_jornadas': ('creacion', 'Agregó una jornada a un curso'),
     'jornada_editar': ('edicion', 'Editó una jornada'),
     'jornada_eliminar': ('eliminacion', 'Eliminó una jornada'),

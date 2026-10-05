@@ -185,6 +185,11 @@ TOPE_PAGO_MODULO = {
     'presencial': Decimal('20.00'),
     'online': Decimal('25.00'),
 }
+# Las matrículas con valor del curso de $110 (el precio con módulos de $25,
+# antes de que los cursos presenciales bajaran a $90 con módulos de $20)
+# pagan cada «Solo Módulo» hasta $25 también en Presencial.
+VALOR_CURSO_MODULOS_DE_25 = Decimal('110.00')
+TOPE_PAGO_MODULO_DE_25 = Decimal('25.00')
 CENTAVO = Decimal('0.01')
 DOLAR = Decimal('1.00')
 
@@ -409,6 +414,20 @@ class Curso(models.Model):
         help_text='Costo del curso online (USD).'
     )
 
+    # Precio que tenía antes el curso en cada modalidad. Al matricular solo se
+    # usa el valor principal; el anterior queda como referencia en la lista de
+    # cursos y se puede intercambiar con el principal. El tope de los pagos por
+    # módulo no depende de él, sino del valor de cada matrícula
+    # (ver Matricula.tope_pago_modulo).
+    valor_anterior_presencial = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Valor que tenía antes el curso presencial (USD). Opcional.'
+    )
+    valor_anterior_online = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Valor que tenía antes el curso online (USD). Opcional.'
+    )
+
     # Campo legado (se conserva para no romper datos antiguos).
     valor = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0.00'),
@@ -494,6 +513,27 @@ class Curso(models.Model):
         if modalidad == 'online':
             return self.valor_online
         return self.valor_presencial
+
+    def valor_anterior_para(self, modalidad):
+        """Valor anterior del curso según la modalidad, o None si no tiene."""
+        if modalidad == 'online':
+            valor = self.valor_anterior_online
+        else:
+            valor = self.valor_anterior_presencial
+        return valor if valor and valor > 0 else None
+
+    def intercambiar_valores(self, modalidad):
+        """El valor anterior pasa a ser el principal y viceversa (sin guardar).
+        Devuelve los nombres de los campos que cambiaron."""
+        anterior = self.valor_anterior_para(modalidad)
+        if anterior is None:
+            raise ValueError('El curso no tiene valor anterior en esa modalidad.')
+        actual = self.valor_para(modalidad)
+        if modalidad == 'online':
+            self.valor_online, self.valor_anterior_online = anterior, actual
+            return ['valor_online', 'valor_anterior_online']
+        self.valor_presencial, self.valor_anterior_presencial = anterior, actual
+        return ['valor_presencial', 'valor_anterior_presencial']
 
     def ofrece(self, modalidad):
         """¿El curso se ofrece en esa modalidad?"""
@@ -832,6 +872,47 @@ class Matricula(models.Model):
             self.curso_id
             and self.curso.usa_pago_unico_recaudacion(self.modalidad)
         )
+
+    @property
+    def valor_curso_lista(self):
+        """Precio del curso con el que se registró la matrícula, antes del
+        descuento. En «Inscripción (gratis)» el valor guardado ya descuenta los
+        $10, así que se suman para compararlo con el precio del curso."""
+        valor = self.valor_curso or Decimal('0.00')
+        if self.es_inscripcion_gratis:
+            valor += MONTO_RESERVA_MATRICULA
+        return valor
+
+    @property
+    def tiene_valor_anterior_del_curso(self):
+        """El precio de la matrícula es el valor anterior del curso."""
+        if not self.curso_id or self.es_sin_costo:
+            return False
+        return self.valor_curso_lista == self.curso.valor_anterior_para(self.modalidad)
+
+    @property
+    def usa_tope_modulo_de_25(self):
+        """Matrícula presencial con valor del curso de $110: sus módulos se
+        pagan hasta $25 y no hasta $20. Solo cuenta el valor de la matrícula,
+        con o sin valor anterior en el curso (en Online ya es $25)."""
+        tope = TOPE_PAGO_MODULO.get(self.modalidad)
+        return bool(
+            tope is not None
+            and tope < TOPE_PAGO_MODULO_DE_25
+            and not self.tiene_pago_unico_online
+            and self.valor_curso_lista == VALOR_CURSO_MODULOS_DE_25
+        )
+
+    @property
+    def tope_pago_modulo(self):
+        """Máximo de un pago «Solo Módulo»: $20 presencial y $25 online, y $25
+        en las matrículas de $110. None en el «Un solo pago» del ciclo corto
+        online, que no se cobra por módulo."""
+        if self.tiene_pago_unico_online:
+            return None
+        if self.usa_tope_modulo_de_25:
+            return TOPE_PAGO_MODULO_DE_25
+        return TOPE_PAGO_MODULO.get(self.modalidad)
 
     @property
     def numero_cuotas_pago(self):

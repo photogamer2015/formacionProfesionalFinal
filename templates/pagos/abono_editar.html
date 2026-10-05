@@ -400,13 +400,16 @@
     }
 
     // ── Solo Módulo: cada módulo se paga hasta $20 (Presencial) o $25
-    //    (Online). Un pago antiguo mayor se puede guardar sin cambiar su monto. ──
+    //    (Online), y $25 en las matrículas de $110. Un pago antiguo mayor se
+    //    puede guardar sin cambiar su monto. ──
     const avisoTopeModulo = document.getElementById('aviso-tope-modulo');
     const topeModulo = montoInput && montoInput.dataset.topeModulo
         ? Number(montoInput.dataset.topeModulo) : null;
     const montoModuloOriginal = montoInput && montoInput.dataset.montoModuloOriginal
         ? Number(montoInput.dataset.montoModuloOriginal) : null;
     const modalidadTopeLabel = montoInput ? (montoInput.dataset.modalidadLabel || '') : '';
+    const textoAvisoTope = montoInput ? (montoInput.dataset.topeAviso || '') : '';
+    const textoErrorTope = montoInput ? (montoInput.dataset.topeError || '') : '';
 
     function aplicaTopeModulo() {
         return topeModulo !== null && !!tipoSel && tipoSel.value === 'solo_modulo';
@@ -437,8 +440,8 @@
         avisoTopeModulo.style.color = excede ? '#c62828' : '#666';
         avisoTopeModulo.style.fontWeight = excede ? '700' : '400';
         avisoTopeModulo.textContent = excede
-            ? `⚠️ En ${modalidadTopeLabel} cada módulo se paga hasta ${tope}. Si paga más de un módulo, registra cada módulo por separado.`
-            : `Máximo por módulo en ${modalidadTopeLabel}: ${tope}.`;
+            ? '⚠️ ' + (textoErrorTope || `En ${modalidadTopeLabel} cada módulo se paga hasta ${tope}. Si paga más de un módulo, registra cada módulo por separado.`)
+            : (textoAvisoTope || `Máximo por módulo en ${modalidadTopeLabel}: ${tope}.`);
     }
 
     function mostrarErrorMixto(mostrar, mensaje = '') {

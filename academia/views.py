@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -1560,6 +1560,57 @@ def curso_editar(request, pk):
         'titulo': f'Editar: {curso.nombre}',
         'modalidad_pref': 'online' if (curso.ofrece_online and not curso.ofrece_presencial) else 'presencial',
     })
+
+
+@permiso_requerido('academia.change_curso', 'No tienes permiso para editar cursos.')
+@require_POST
+def curso_intercambiar_valor(request, pk):
+    """Flecha de la tarjeta del curso: el valor anterior pasa a ser el
+    principal (el que se usa al matricular) y viceversa. Las matrículas ya
+    registradas conservan su valor."""
+    modalidad = request.POST.get('modalidad', '')
+    if modalidad not in MODALIDADES_VALIDAS:
+        messages.error(request, 'Modalidad no válida.')
+        return redirect('academia:cursos_lista', modalidad='presencial')
+    try:
+        # Valor principal que se veía en la tarjeta: si ya no es el mismo
+        # (doble clic u otra persona lo cambió), no se vuelve a intercambiar.
+        esperado = Decimal(request.POST.get('valor_actual', ''))
+    except InvalidOperation:
+        esperado = None
+    if esperado is not None and not esperado.is_finite():
+        esperado = None
+
+    with transaction.atomic():
+        curso = get_object_or_404(Curso.objects.select_for_update(), pk=pk)
+        actual = curso.valor_para(modalidad)
+        anterior = curso.valor_anterior_para(modalidad)
+        etiqueta = f'«{curso.nombre}» ({_label_modalidad(modalidad)})'
+        if anterior is None:
+            messages.error(request, f'{etiqueta} no tiene valor anterior para intercambiar.')
+        elif esperado is None:
+            messages.error(
+                request,
+                'No se pudo leer el valor de la tarjeta. Recarga la página e '
+                'inténtalo de nuevo.',
+            )
+        elif esperado != actual:
+            messages.warning(
+                request,
+                f'Los valores de {etiqueta} cambiaron mientras tanto: ahora el '
+                f'valor principal es ${actual:.2f} y el anterior ${anterior:.2f}. '
+                'No se hizo ningún cambio.',
+            )
+        else:
+            curso.save(update_fields=curso.intercambiar_valores(modalidad))
+            messages.success(
+                request,
+                f'{etiqueta}: el valor principal ahora es ${anterior:.2f} y el '
+                f'valor anterior ${actual:.2f}. Las matrículas nuevas se '
+                f'registran con ${anterior:.2f}; las ya registradas no cambian.',
+            )
+    url = reverse('academia:cursos_lista', kwargs={'modalidad': modalidad})
+    return redirect(f'{url}#curso-{curso.pk}')
 
 
 @permiso_requerido('academia.delete_curso', 'No tienes permiso para eliminar cursos.')

@@ -291,8 +291,8 @@ class JornadaCursoInline(admin.TabularInline):
 class CursoAdmin(admin.ModelAdmin):
     list_display = (
         'nombre', 'categoria',
-        'ofrece_presencial', 'valor_presencial',
-        'ofrece_online', 'valor_online',
+        'ofrece_presencial', 'valor_presencial', 'valor_anterior_presencial',
+        'ofrece_online', 'valor_online', 'valor_anterior_online',
         'duracion', 'activo',
     )
     list_filter = ('categoria', 'activo', 'ofrece_presencial', 'ofrece_online')
@@ -304,10 +304,10 @@ class CursoAdmin(admin.ModelAdmin):
             'fields': ('categoria', 'nombre', 'descripcion', 'duracion', 'activo'),
         }),
         ('Modalidad presencial', {
-            'fields': ('ofrece_presencial', 'valor_presencial'),
+            'fields': ('ofrece_presencial', 'valor_presencial', 'valor_anterior_presencial'),
         }),
         ('Modalidad online', {
-            'fields': ('ofrece_online', 'valor_online', 'pago_unico_online'),
+            'fields': ('ofrece_online', 'valor_online', 'valor_anterior_online', 'pago_unico_online'),
         }),
         ('Calendario de pagos', {
             'fields': ('pagos_cada_dos_semanas',),

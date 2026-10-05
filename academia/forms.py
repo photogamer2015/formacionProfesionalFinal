@@ -8,7 +8,7 @@ from .models import (
     Estudiante, EstudianteArchivado, JornadaCurso, Matricula, MatriculaArchivada,
     METODOS_CON_BANCO, METODOS_PAGO,
     MONTO_RESERVA_MATRICULA, PersonaExterna, RecuperacionPendiente, Sede,
-    TIPOS_SIN_COBRO_INICIAL, TOPE_PAGO_MODULO, banco_corresponde_al_metodo, nombre_banco,
+    TIPOS_SIN_COBRO_INICIAL, banco_corresponde_al_metodo, nombre_banco,
     nombre_metodo_pago,
 )
 
@@ -141,8 +141,8 @@ class CursoForm(forms.ModelForm):
         model = Curso
         fields = [
             'categoria', 'nombre', 'descripcion',
-            'ofrece_presencial', 'valor_presencial',
-            'ofrece_online', 'valor_online',
+            'ofrece_presencial', 'valor_presencial', 'valor_anterior_presencial',
+            'ofrece_online', 'valor_online', 'valor_anterior_online',
             'duracion', 'numero_modulos', 'numero_modulos_online',
             'es_ciclo_corto', 'pago_unico_online',
             'pagos_cada_dos_semanas',
@@ -154,6 +154,12 @@ class CursoForm(forms.ModelForm):
             'descripcion': forms.Textarea(attrs={'class': 'form-input', 'rows': 3}),
             'valor_presencial': forms.NumberInput(attrs={'class': 'form-input', 'step': '0.01', 'min': '0'}),
             'valor_online': forms.NumberInput(attrs={'class': 'form-input', 'step': '0.01', 'min': '0'}),
+            'valor_anterior_presencial': forms.NumberInput(attrs={
+                'class': 'form-input', 'step': '0.01', 'min': '0', 'placeholder': 'Opcional',
+            }),
+            'valor_anterior_online': forms.NumberInput(attrs={
+                'class': 'form-input', 'step': '0.01', 'min': '0', 'placeholder': 'Opcional',
+            }),
             'duracion': forms.TextInput(attrs={'class': 'form-input', 'placeholder': 'Ej.: 3 meses, 40 horas…'}),
             'numero_modulos': forms.NumberInput(attrs={
                 'class': 'form-input', 'min': '1', 'max': '20', 'step': '1',
@@ -187,6 +193,25 @@ class CursoForm(forms.ModelForm):
             raise forms.ValidationError(
                 'Debes seleccionar al menos una modalidad (presencial u online).'
             )
+
+        # Valor anterior: opcional; $0 equivale a no tener.
+        for campo_valor, campo_anterior in (
+            ('valor_presencial', 'valor_anterior_presencial'),
+            ('valor_online', 'valor_anterior_online'),
+        ):
+            anterior = cleaned.get(campo_anterior)
+            if anterior is None:
+                continue
+            if anterior < 0:
+                self.add_error(campo_anterior, 'El valor anterior no puede ser negativo.')
+            elif anterior == 0:
+                cleaned[campo_anterior] = None
+            elif anterior == cleaned.get(campo_valor):
+                self.add_error(
+                    campo_anterior,
+                    'Es igual al valor principal. Si el precio no cambió, deja '
+                    'el valor anterior vacío.',
+                )
 
         pago_unico_online = cleaned.get('pago_unico_online', False)
         if pago_unico_online and not cleaned.get('es_ciclo_corto'):
@@ -521,6 +546,32 @@ ERROR_TOPE_RESERVA_EDICION = (
     f'En Reserva / Abono el pago inicial es de máximo ${MONTO_RESERVA_MATRICULA}. '
     'Si el estudiante pagó más, registra el resto en Gestionar Pagos.'
 )
+
+
+def textos_tope_pago_modulo(matricula, tope):
+    """(aviso, error) del tope de un pago «Solo Módulo» de la matrícula.
+
+    Cuando el tope sube a $25 por ser una matrícula de $110 (p. ej. en un
+    curso que bajó a $90) se dice el motivo.
+    """
+    tope = f'${tope:.2f}'
+    if matricula.usa_tope_modulo_de_25:
+        valor = f'${matricula.valor_curso_lista:.2f}'
+        if matricula.es_inscripcion_gratis:
+            # Se guarda $10 menos ($100), pero el curso es de $110.
+            aviso = f'Máximo por módulo: {tope} (curso de {valor} con inscripción gratis).'
+            error = f'Esta matrícula es de un curso de {valor} con inscripción gratis: cada módulo se paga hasta {tope}.'
+        elif matricula.tiene_valor_anterior_del_curso:
+            aviso = f'Máximo por módulo: {tope} (matrícula con el valor anterior del curso, {valor}).'
+            error = f'Esta matrícula tiene el valor anterior del curso ({valor}): cada módulo se paga hasta {tope}.'
+        else:
+            aviso = f'Máximo por módulo: {tope} (matrícula de {valor}).'
+            error = f'Esta matrícula es de {valor}: cada módulo se paga hasta {tope}.'
+    else:
+        modalidad = matricula.get_modalidad_display()
+        aviso = f'Máximo por módulo en {modalidad}: {tope}.'
+        error = f'En {modalidad} cada módulo se paga hasta {tope}.'
+    return aviso, error + ' Si paga más de un módulo, registra cada módulo por separado.'
 
 
 class MatriculaForm(forms.ModelForm):
@@ -1082,20 +1133,25 @@ class AbonoForm(forms.ModelForm):
         self.es_pago_unico_online = bool(
             matricula and matricula.tiene_pago_unico_online
         )
-        # Tope de cada pago «Solo Módulo»: $20 presencial y $25 online. No
-        # aplica al «Un solo pago» del ciclo corto online (no es por módulo).
-        # Un pago «Solo Módulo» antiguo mayor al tope se puede volver a
-        # guardar mientras no se cambie su monto.
+        # Tope de cada pago «Solo Módulo»: $20 presencial y $25 online, y $25
+        # en las matrículas con valor del curso de $110.
+        # No aplica al «Un solo pago» del ciclo corto online (no es por
+        # módulo). Un pago «Solo Módulo» antiguo mayor al tope se puede volver
+        # a guardar mientras no se cambie su monto.
         self.tope_pago_modulo = None
         self.monto_modulo_original = None
         if matricula and not self.es_pago_unico_online:
-            self.tope_pago_modulo = TOPE_PAGO_MODULO.get(matricula.modalidad)
+            self.tope_pago_modulo = matricula.tope_pago_modulo
         if self.instance and self.instance.pk and self.instance.tipo_pago == 'solo_modulo':
             self.monto_modulo_original = self.instance.monto
         if self.tope_pago_modulo is not None:
+            aviso, error = textos_tope_pago_modulo(matricula, self.tope_pago_modulo)
+            self.error_tope_pago_modulo = error
             attrs = self.fields['monto'].widget.attrs
             attrs['data-tope-modulo'] = f'{self.tope_pago_modulo:.2f}'
             attrs['data-modalidad-label'] = matricula.get_modalidad_display()
+            attrs['data-tope-aviso'] = aviso
+            attrs['data-tope-error'] = error
             if self.monto_modulo_original is not None:
                 attrs['data-monto-modulo-original'] = f'{self.monto_modulo_original:.2f}'
         self.fields['numero_recibo'].required = False
@@ -1279,11 +1335,7 @@ class AbonoForm(forms.ModelForm):
             and monto > tope
             and monto != self.monto_modulo_original
         ):
-            self.add_error('monto', (
-                f'En {self.matricula.get_modalidad_display()} cada módulo se paga '
-                f'hasta ${tope}. Si paga más de un módulo, registra cada módulo '
-                f'por separado.'
-            ))
+            self.add_error('monto', self.error_tope_pago_modulo)
 
         # Si tipo es abono o pago_completo, el módulo se limpia
         if tipo_pago in ('abono', 'pago_completo'):

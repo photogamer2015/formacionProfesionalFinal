@@ -87,6 +87,12 @@
                 <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase;">Valor curso</div>
                 <div style="font-size:22px; font-weight:700; color:#1a237e;">${{ matricula.valor_curso|floatformat:2 }}
                 </div>
+                {% if matricula.usa_tope_modulo_de_25 %}
+                <div style="font-size:11px; color:#5e35b1; font-weight:600; margin-top:2px;"
+                     title="Matrícula de un curso de ${{ matricula.valor_curso_lista|floatformat:2 }}: cada pago «Solo Módulo» puede ser de hasta ${{ matricula.tope_pago_modulo|floatformat:2 }}.">
+                    {% if matricula.es_inscripcion_gratis %}Curso de ${{ matricula.valor_curso_lista|floatformat:2 }} con inscripción gratis · {% elif matricula.tiene_valor_anterior_del_curso %}Valor anterior del curso · {% endif %}Módulos hasta ${{ matricula.tope_pago_modulo|floatformat:2 }}
+                </div>
+                {% endif %}
                 {% if matricula.tiene_descuento %}
                 <div style="font-size:11px; color:#c9a227; font-weight:600; margin-top:2px;">
                     Descuento: ${{ matricula.descuento|floatformat:2 }}
@@ -1029,11 +1035,14 @@
     }
 
     // ── Solo Módulo: cada módulo se paga hasta $20 (Presencial) o $25
-    //    (Online). El tope viene del servidor, que también lo valida. ──
+    //    (Online), y $25 en las matrículas de $110. El tope y sus textos
+    //    vienen del servidor, que también lo valida. ──
     const avisoTopeModulo = document.getElementById('aviso-tope-modulo');
     const topeModulo = montoInput && montoInput.dataset.topeModulo
         ? Number(montoInput.dataset.topeModulo) : null;
     const modalidadTopeLabel = montoInput ? (montoInput.dataset.modalidadLabel || '') : '';
+    const textoAvisoTope = montoInput ? (montoInput.dataset.topeAviso || '') : '';
+    const textoErrorTope = montoInput ? (montoInput.dataset.topeError || '') : '';
 
     function aplicaTopeModulo() {
         return topeModulo !== null && !!tipoSel && tipoSel.value === 'solo_modulo';
@@ -1060,8 +1069,8 @@
         avisoTopeModulo.style.color = excede ? '#c62828' : '#666';
         avisoTopeModulo.style.fontWeight = excede ? '700' : '400';
         avisoTopeModulo.textContent = excede
-            ? `⚠️ En ${modalidadTopeLabel} cada módulo se paga hasta ${tope}. Si paga más de un módulo, registra cada módulo por separado.`
-            : `Máximo por módulo en ${modalidadTopeLabel}: ${tope}.`;
+            ? '⚠️ ' + (textoErrorTope || `En ${modalidadTopeLabel} cada módulo se paga hasta ${tope}. Si paga más de un módulo, registra cada módulo por separado.`)
+            : (textoAvisoTope || `Máximo por módulo en ${modalidadTopeLabel}: ${tope}.`);
     }
 
     function agregarFaltante(faltantes, label) {

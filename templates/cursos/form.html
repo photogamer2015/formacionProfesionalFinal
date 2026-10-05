@@ -235,6 +235,18 @@
     body.dark-mode .cat-picker-footer {
         border-top-color: #333;
     }
+
+    /* ─── Valor anterior + flecha para intercambiar ─── */
+    .valor-anterior-fila { display: flex; gap: 6px; align-items: center; }
+    .valor-anterior-fila .form-input { flex: 1; min-width: 0; }
+    .valor-intercambiar {
+        flex-shrink: 0; width: 38px; height: 38px; padding: 0; border-radius: 8px;
+        border: 1px solid #c5cae9; background: #fff; color: #3949ab;
+        font-size: 16px; font-weight: 800; line-height: 1; cursor: pointer;
+    }
+    .valor-intercambiar:hover { background: #e8eaf6; }
+    .valor-intercambiar:focus-visible { outline: 2px solid #1565c0; outline-offset: 2px; }
+    body.dark-mode .valor-intercambiar { background: #1e1e1e; border-color: #3949ab; color: #9fa8da; }
 </style>
 {% endblock %}
 
@@ -322,6 +334,15 @@
             <label class="form-label" style="font-size:12px;">Valor presencial (USD)</label>
             {{ form.valor_presencial }}
             {{ form.valor_presencial.errors }}
+            <label class="form-label" style="font-size:12px; margin-top:10px;" for="{{ form.valor_anterior_presencial.id_for_label }}">Valor anterior presencial (USD)</label>
+            <div class="valor-anterior-fila">
+                {{ form.valor_anterior_presencial }}
+                <button type="button" class="valor-intercambiar" data-intercambiar-valor
+                        data-principal="id_valor_presencial" data-anterior="id_valor_anterior_presencial"
+                        title="Intercambiar el valor presencial con el valor anterior"
+                        aria-label="Intercambiar el valor presencial con el valor anterior">⇅</button>
+            </div>
+            {{ form.valor_anterior_presencial.errors }}
         </div>
 
         {# Card Online #}
@@ -334,9 +355,24 @@
             <label class="form-label" style="font-size:12px;">Valor online (USD)</label>
             {{ form.valor_online }}
             {{ form.valor_online.errors }}
+            <label class="form-label" style="font-size:12px; margin-top:10px;" for="{{ form.valor_anterior_online.id_for_label }}">Valor anterior online (USD)</label>
+            <div class="valor-anterior-fila">
+                {{ form.valor_anterior_online }}
+                <button type="button" class="valor-intercambiar" data-intercambiar-valor
+                        data-principal="id_valor_online" data-anterior="id_valor_anterior_online"
+                        title="Intercambiar el valor online con el valor anterior"
+                        aria-label="Intercambiar el valor online con el valor anterior">⇅</button>
+            </div>
+            {{ form.valor_anterior_online.errors }}
         </div>
 
     </div>
+    <p style="font-size:11.5px; color:#666; line-height:1.45; margin:10px 0 0;">
+        <strong>Valor anterior</strong> (opcional): el precio que tenía antes el curso. Al registrar una matrícula
+        solo se usa el valor principal. En los pagos «Solo Módulo» presenciales, las matrículas de $110 pagan hasta
+        $25 por módulo y las demás (por ejemplo, las de $90) hasta $20, con o sin valor anterior. La flecha ⇅
+        intercambia los dos valores; se guarda al presionar Guardar.
+    </p>
 
     <h3 class="form-section-title">Otros datos</h3>
     <div class="form-grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px;">
@@ -556,6 +592,19 @@
         chkOnl.addEventListener('change', actualizarCards);
         actualizarCards();
     }
+
+    /* ── Flecha ⇅: intercambia el valor principal con el valor anterior
+       (solo en pantalla; se guarda con el botón Guardar) ── */
+    document.querySelectorAll('[data-intercambiar-valor]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const principal = document.getElementById(btn.dataset.principal);
+            const anterior = document.getElementById(btn.dataset.anterior);
+            if (!principal || !anterior || !anterior.value) return;
+            const valor = principal.value;
+            principal.value = anterior.value;
+            anterior.value = valor;
+        });
+    });
 
     /* ── Lógica de Ciclo Corto ── */
     const chkCicloCorto = document.getElementById('id_es_ciclo_corto');

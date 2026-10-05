@@ -1,0 +1,22 @@
+{% load l10n %}
+{# Precio de la tarjeta del curso: el valor principal en grande y, si tiene, el valor anterior con la flecha para intercambiarlos. #}
+<div class="crm-precio-bloque">
+    <span class="crm-precio {% if not valor %}cero{% endif %}">${{ valor }}</span>
+    {% if valor_anterior %}
+    <div class="crm-precio-anterior">
+        <span>Valor anterior: <strong>${{ valor_anterior }}</strong></span>
+        {% if puede_cambiar_cursos %}
+        <form method="post" action="{% url 'academia:curso_intercambiar_valor' curso.pk %}"
+              style="display:inline-flex; margin:0;" onsubmit="return false;">
+            {% csrf_token %}
+            <input type="hidden" name="modalidad" value="{{ modalidad }}">
+            <input type="hidden" name="valor_actual" value="{{ valor|unlocalize }}">
+            <button type="button" class="crm-precio-intercambiar"
+                    title="Intercambiar: el valor anterior pasa a ser el valor principal"
+                    aria-label="Intercambiar el valor principal ${{ valor }} con el valor anterior ${{ valor_anterior }} de {{ curso.nombre }}"
+                    onclick="confirmarAccion(this.closest('form'), '¿Intercambiar los valores de «{{ curso.nombre|escapejs }}» ({{ modalidad_label }})? El valor principal pasará de ${{ valor }} a ${{ valor_anterior }} y el valor anterior quedará en ${{ valor }}. Las matrículas nuevas se registrarán con ${{ valor_anterior }}; las ya registradas no cambian.', 'warning')">⇅</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
