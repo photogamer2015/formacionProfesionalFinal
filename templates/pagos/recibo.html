@@ -284,10 +284,12 @@
     </div>
 
     {# JORNADA: días (y horario) de la jornada; escapejs porque «Otros» es texto libre. #}
+    {# MODALIDAD: Online sale como VIRTUAL y sin línea de CIUDAD; Presencial lleva CIUDAD aparte. #}
     <script>
         function copiarWhatsApp() {
             const texto = `*CURSO:* {{ matricula.curso.nombre|upper }}
-*CIUDAD:* {{ matricula.get_modalidad_display|upper }}{% if matricula.estudiante.ciudad %} - {{ matricula.estudiante.ciudad|upper }}{% endif %}
+*MODALIDAD:* {% if matricula.modalidad == 'online' %}VIRTUAL{% else %}{{ matricula.get_modalidad_display|upper }}
+*CIUDAD:* {{ matricula.estudiante.ciudad|upper|escapejs }}{% endif %}
 *FECHA DE INSCRIPCIÓN:* {{ abono.fecha|date:"d \d\e F"|upper }}
 *NOMBRES:* {{ matricula.estudiante.nombre_completo|title }}
 *CELULAR:* {{ matricula.estudiante.celular }}

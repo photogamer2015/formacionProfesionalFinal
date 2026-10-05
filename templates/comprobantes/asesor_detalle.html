@@ -52,15 +52,6 @@
         color: var(--fp-navy);
         font-size: 15px;
     }
-    .profile-pagos-total {
-        color: #6f7889;
-        font-size: 13px;
-        font-weight: 700;
-    }
-    .profile-pagos-total strong {
-        color: #278441;
-        font-size: 15px;
-    }
     .profile-pagos-nav {
         display: flex;
         align-items: center;
@@ -141,13 +132,9 @@
     body.dark-mode .profile-pagos-dia > strong {
         color: var(--fp-dark-text);
     }
-    body.dark-mode .profile-pagos-total,
     body.dark-mode .profile-pagos-dias-titulo,
     body.dark-mode .profile-pagos-dia-chip small {
         color: var(--fp-dark-muted);
-    }
-    body.dark-mode .profile-pagos-total strong {
-        color: #6fd38c;
     }
     body.dark-mode .profile-pagos-nav input[type="date"],
     body.dark-mode .profile-pagos-dia-chip {
@@ -749,7 +736,6 @@
         <div class="profile-pagos-dia">
             <strong>{{ pr.dia|date:"l, j \d\e F \d\e Y"|capfirst }}</strong>
             {% if pr.es_hoy %}<span class="profile-pill profile-pill-active">Hoy</span>{% endif %}
-            <span class="profile-pagos-total">Total del día: <strong>${{ pr.total|floatformat:2 }}</strong></span>
         </div>
         <form method="get" action="#pagos" class="profile-pagos-nav" aria-label="Elegir el día de los pagos">
             <a href="?pagos_dia={{ pr.dia_anterior|date:'Y-m-d' }}#pagos" class="profile-row-link">‹ Día anterior</a>

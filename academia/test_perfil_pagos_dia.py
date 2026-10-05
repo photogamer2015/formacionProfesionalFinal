@@ -63,7 +63,7 @@ class PerfilPagosPorDiaTests(TestCase):
         self.assertContains(response, mio.numero_recibo)
         self.assertContains(response, 'Transferencia bancaria · Pichincha')
         self.assertContains(response, 'Mód. 2')
-        self.assertContains(response, 'Total del día: <strong>$25,00</strong>')
+        self.assertNotContains(response, 'Total del día:')
         self.assertContains(response, reverse('academia:matricula_abonos', args=[self.mat.pk]))
         self.assertNotContains(response, ajeno.numero_recibo)
         self.assertNotContains(response, ayer.numero_recibo)
