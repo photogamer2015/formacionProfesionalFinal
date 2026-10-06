@@ -585,7 +585,7 @@ def matricula_registrar(request, modalidad):
 
         vendedora_id = request.POST.get('vendedora_id', '').strip()
         asesor = None
-        if vendedora_id:
+        if vendedora_id.isdigit():
             asesor = User.objects.filter(id=vendedora_id).first()
         
         if not asesor:

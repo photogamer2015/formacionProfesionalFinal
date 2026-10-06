@@ -236,9 +236,11 @@ def comprobante_registrar(request):
 
     if request.method == 'POST':
         form = ComprobanteForm(request.POST)
-        vendedora_id = request.POST.get('vendedora_id')
-        
-        asesor = User.objects.filter(id=vendedora_id).first()
+        vendedora_id = request.POST.get('vendedora_id', '').strip()
+
+        # Sin asesor elegido llega '' (el formulario es novalidate): antes
+        # buscar id='' daba error 500 en vez de este aviso.
+        asesor = User.objects.filter(id=vendedora_id).first() if vendedora_id.isdigit() else None
         if not asesor:
             error_vendedora = 'Debes seleccionar un asesor válido.'
         if form.is_valid() and not error_vendedora:
@@ -287,9 +289,9 @@ def comprobante_editar(request, pk):
 
     if request.method == 'POST':
         form = ComprobanteForm(request.POST, instance=comp)
-        vendedora_id = request.POST.get('vendedora_id')
-        
-        asesor = User.objects.filter(id=vendedora_id).first()
+        vendedora_id = request.POST.get('vendedora_id', '').strip()
+
+        asesor = User.objects.filter(id=vendedora_id).first() if vendedora_id.isdigit() else None
         if not asesor:
             error_vendedora = 'Debes seleccionar un asesor válido.'
         if form.is_valid() and not error_vendedora:

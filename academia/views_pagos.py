@@ -132,6 +132,15 @@ def _add_excel_table(ws, header_row, first_col, last_row, last_col, table_name):
     ws.add_table(table)
 
 
+def _titulo_hoja_excel(texto):
+    """Nombre de hoja válido para Excel: sin \\ / : * ? [ ], sin apóstrofo al
+    inicio ni al final y de 31 caracteres como máximo (p. ej. el nombre de un
+    estudiante o de un curso con «:» o «/» hacía fallar la descarga)."""
+    limpio = ''.join('_' if c in '\\/:*?[]' else c for c in str(texto or ''))
+    limpio = limpio[:31].strip().strip("'").strip()
+    return limpio or 'Hoja'
+
+
 def _build_excel_response(
     filename, sheet_name, headers, rows, totals=None,
     column_formats=None, text_columns=None, explicit_widths=None,
@@ -152,7 +161,7 @@ def _build_excel_response(
 
     wb = Workbook()
     ws = wb.active
-    ws.title = sheet_name[:31]  # Excel limita a 31 chars
+    ws.title = _titulo_hoja_excel(sheet_name)
 
     # ── Estilos ──
     header_font = Font(bold=True, color='FFFFFF', size=11)
@@ -339,10 +348,12 @@ def _filtrar_matriculas(request):
             'fact_nombres',
         ])
         
+    # «tiene_descuento» es una propiedad, no un campo: se filtra por el monto
+    # (igual que en Lista de matriculados y en el Registro Estudiantil).
     if descuento_str == 'si':
-        qs = qs.filter(tiene_descuento=True)
+        qs = qs.filter(descuento__gt=0)
     elif descuento_str == 'no':
-        qs = qs.filter(tiene_descuento=False)
+        qs = qs.filter(descuento=0)
 
     # Filtro por estado financiero y por falta de pago de módulos.
     if estado == 'Retiro':
@@ -1331,23 +1342,11 @@ class _CategoriaProxy:
         self.nombre = nombre
 
 
-@matricula_requerida
-def historial_lista(request):
-    """
-    Historial de matrículas agrupado por año y mes.
-    Permite filtrar por año, mes, curso y modalidad.
-
-    IMPORTANTE: combina matrículas VIVAS + matrículas ARCHIVADAS (de los cierres),
-    para que el historial mensual NUNCA se pierda al ejecutar un cierre de curso.
-    Las archivadas se muestran con una etiqueta "archivada" pero conservan su
-    fecha, curso, modalidad, estado de pago, etc.
-    """
+def _archivadas_historial(filtros):
+    """Matrículas archivadas (de los cierres) con los mismos filtros que
+    _filtrar_matriculas aplicó a las vivas, para el historial y su Excel."""
     from .models import MatriculaArchivada
 
-    qs, filtros = _filtrar_matriculas(request)
-    qs = qs.order_by('-fecha_matricula', '-id')
-
-    # ── También las matrículas archivadas (mismos filtros) ──
     arch_qs = MatriculaArchivada.objects.select_related('cierre', 'estudiante', 'curso')
     if filtros['curso']:
         arch_qs = arch_qs.filter(curso_id=filtros['curso'])
@@ -1367,8 +1366,33 @@ def historial_lista(request):
             'fact_cedula',
             'fact_nombres',
         ])
+    if filtros['descuento'] == 'si':
+        arch_qs = arch_qs.filter(descuento__gt=0)
+    elif filtros['descuento'] == 'no':
+        arch_qs = arch_qs.filter(descuento=0)
     if filtros['estado'] in ('Pagado', 'Parcial', 'Pendiente', 'Retiro'):
         arch_qs = arch_qs.filter(estado_pago=filtros['estado'])
+    return arch_qs
+
+
+@matricula_requerida
+def historial_lista(request):
+    """
+    Historial de matrículas agrupado por año y mes.
+    Permite filtrar por año, mes, curso y modalidad.
+
+    IMPORTANTE: combina matrículas VIVAS + matrículas ARCHIVADAS (de los cierres),
+    para que el historial mensual NUNCA se pierda al ejecutar un cierre de curso.
+    Las archivadas se muestran con una etiqueta "archivada" pero conservan su
+    fecha, curso, modalidad, estado de pago, etc.
+    """
+    from .models import MatriculaArchivada
+
+    qs, filtros = _filtrar_matriculas(request)
+    qs = qs.order_by('-fecha_matricula', '-id')
+
+    # ── También las matrículas archivadas (mismos filtros) ──
+    arch_qs = _archivadas_historial(filtros)
 
     # Envolver las archivadas en un adaptador con la misma interfaz que Matricula
     items_archivados = [_HistorialItemArchivado(a) for a in arch_qs]
@@ -1446,33 +1470,12 @@ def historial_export(request):
     """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from .models import MatriculaArchivada
 
     qs, filtros = _filtrar_matriculas(request)
     qs = qs.order_by('-fecha_matricula', '-id')
 
     # ── Archivadas con los mismos filtros ──
-    arch_qs = MatriculaArchivada.objects.select_related('cierre', 'estudiante', 'curso')
-    if filtros['curso']:
-        arch_qs = arch_qs.filter(curso_id=filtros['curso'])
-    if filtros['modalidad'] in ('presencial', 'online'):
-        arch_qs = arch_qs.filter(modalidad=filtros['modalidad'])
-    if filtros['anio'].isdigit():
-        arch_qs = arch_qs.filter(fecha_matricula__year=int(filtros['anio']))
-    if filtros['mes'].isdigit() and 1 <= int(filtros['mes']) <= 12:
-        arch_qs = arch_qs.filter(fecha_matricula__month=int(filtros['mes']))
-    if filtros['q']:
-        arch_qs = filtrar_queryset_busqueda(arch_qs, filtros['q'], [
-            'cedula',
-            'nombres',
-            'correo',
-            'celular',
-            'curso_nombre',
-            'fact_cedula',
-            'fact_nombres',
-        ])
-    if filtros['estado'] in ('Pagado', 'Parcial', 'Pendiente', 'Retiro'):
-        arch_qs = arch_qs.filter(estado_pago=filtros['estado'])
+    arch_qs = _archivadas_historial(filtros)
 
     todos = list(qs) + [_HistorialItemArchivado(a) for a in arch_qs]
 
