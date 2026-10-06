@@ -3,6 +3,7 @@ from . import (
     views, views_adicional, views_admin, views_avisos, views_cierre,
     views_comprobantes, views_pagos, views_recordatorios, views_sedes,
     views_social, views_jornadas_estudiante, views_registro_estudiantil,
+    views_inscripciones,
 )
 
 app_name = 'academia'
@@ -48,6 +49,8 @@ urlpatterns = [
          views.matricula_sin_factura, name='matricula_sin_factura'),
     path('matricula/facturas/<int:pk>/registrar/',
          views.matricula_registrar_factura, name='matricula_registrar_factura'),
+    path('matricula/pagos-inscripciones/',
+         views_inscripciones.matricula_inscripciones, name='matricula_inscripciones'),
     path('matricula/<str:modalidad>/',
          views.matricula_menu, name='matricula_menu'),
     path('matricula/<str:modalidad>/registrar/',

@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+
+{% block title %}Pagos de inscripciones · {{ dia|date:"d/m/Y" }}{% endblock %}
+
+{% block extra_head %}
+{% include 'registro_estudiantil/_estilos.html' %}
+<style>
+    .insc-resumen {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+    .insc-card {
+        background: var(--fp-surface);
+        border: 1px solid var(--fp-border);
+        border-left: 5px solid #1565c0;
+        border-radius: 12px;
+        padding: 12px 16px;
+    }
+    .insc-card.is-total { border-left-color: #2e7d32; }
+    .insc-card .lbl {
+        color: var(--fp-muted);
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+    .insc-card .num { color: var(--fp-ink); font-size: 22px; font-weight: 800; line-height: 1.25; }
+    .insc-card.is-total .num { color: #2e7d32; font-size: 26px; }
+    .insc-card .sub { color: var(--fp-muted); font-size: 12px; font-weight: 600; }
+    .insc-tabla-wrap { border-radius: 10px 10px 0 0; }
+    .insc-tabla td.num, .insc-tabla th.num { text-align: right; }
+    .insc-tabla .insc-monto { color: #2e7d32; font-weight: 800; }
+    .insc-tabla td a { color: var(--fp-navy); text-decoration: none; }
+    .insc-tabla td a:hover { text-decoration: underline; }
+    .insc-tabla tfoot td {
+        background: var(--fp-surface-2);
+        color: var(--fp-ink);
+        font-weight: 800;
+        border-bottom: 0;
+    }
+    .insc-tabla tfoot td.num { color: #2e7d32; font-size: 15px; }
+    .insc-etiqueta {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: #eceff3;
+        color: #4b5563;
+        font-size: 11px;
+        font-weight: 700;
+        vertical-align: middle;
+    }
+    .insc-etiqueta.is-retiro { background: #ffebee; color: #c62828; }
+    .insc-vacio {
+        padding: 28px 16px;
+        border: 1px solid var(--fp-border);
+        border-bottom: 0;
+        border-radius: 10px 10px 0 0;
+        background: var(--fp-surface);
+        color: var(--fp-muted);
+        font-weight: 700;
+        text-align: center;
+    }
+    .insc-tabs { margin-bottom: 18px; flex-wrap: wrap; }
+    /* Por encima de la columna fija «Estudiante» de la tabla (capa 7), para
+       que el menú de días no quede tapado. */
+    .hojas-barra { z-index: 8; }
+    body.dark-mode .insc-card { background: #161922; border-color: #262b38; }
+    body.dark-mode .insc-etiqueta { background: #222838; color: #aab4cf; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb">
+    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+    <a href="{% url 'academia:matricula_lista' modalidad='todos' %}">Matrícula</a> &nbsp;›&nbsp; Pagos de inscripciones
+</div>
+
+<div class="registro-cabecera">
+    <div>
+        <h2 class="page-title">💵 Pagos de inscripciones</h2>
+        <p class="page-subtitle">
+            Inscripciones del {{ dia|date:"l d \d\e F \d\e Y" }}
+            {% if es_hoy %}<span class="registro-estado-hoja is-abierta">Hoy</span>{% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="modalidad-tabs insc-tabs">
+    <a href="{% url 'academia:matricula_lista' modalidad='todos' %}">📋 Todos</a>
+    <a href="{% url 'academia:matricula_lista' modalidad='presencial' %}">🏫 Presencial</a>
+    <a href="{% url 'academia:matricula_lista' modalidad='online' %}">🟢 Online</a>
+    <a href="{% url 'academia:matricula_inscripciones' %}" class="active" aria-current="page">💵 Pagos inscripciones</a>
+</div>
+
+<div class="insc-resumen">
+    <div class="insc-card is-total">
+        <div class="lbl">Total del día</div>
+        <div class="num">${{ total|floatformat:2 }}</div>
+        <div class="sub">{{ cantidad }} inscripci{{ cantidad|pluralize:"ón,ones" }}</div>
+    </div>
+    {% for metodo, monto in metodos %}
+    <div class="insc-card">
+        <div class="lbl">{{ metodo }}</div>
+        <div class="num">${{ monto|floatformat:2 }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="registro-aviso">Pagos de inscripción (Reserva / Abono) cobrados al registrar la matrícula, por fecha de matrícula. Si ese mismo día se pagó un módulo, no se suma aquí.</div>
+
+{% if filas %}
+<div class="table-wrap insc-tabla-wrap">
+    <table class="insc-tabla" data-pagination="off" aria-label="Inscripciones del {{ dia|date:'d/m/Y' }}">
+        <thead>
+            <tr>
+                <th>N.º</th>
+                <th>Hora</th>
+                <th>Estudiante</th>
+                <th>Cédula</th>
+                <th>Curso</th>
+                <th>Modalidad</th>
+                <th>Jornada</th>
+                <th>Forma de pago</th>
+                <th>Recibo</th>
+                <th>Registró</th>
+                <th class="num">Inscripción</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in filas %}
+            <tr>
+                <td>{{ f.numero }}</td>
+                <td>{{ f.hora|time:"H:i"|default:"—" }}</td>
+                <td>
+                    <strong>{% if f.url_pagos %}<a href="{{ f.url_pagos }}" title="Ver los pagos de la matrícula">{{ f.estudiante }}</a>{% else %}{{ f.estudiante }}{% endif %}</strong>
+                    {% if f.archivada %}<span class="insc-etiqueta" title="Pasó al archivo por un cierre de curso">Archivada</span>{% endif %}
+                    {% if f.retiro %}<span class="insc-etiqueta is-retiro">Retiro</span>{% endif %}
+                </td>
+                <td>{{ f.cedula }}</td>
+                <td>{{ f.curso }}</td>
+                <td><span class="badge badge-{% if f.modalidad == 'online' %}online{% else %}presencial{% endif %}">{{ f.modalidad_texto }}</span></td>
+                <td>{{ f.jornada|default:"—" }}{% if f.inicio %} · {{ f.inicio|date:"d/m/Y" }}{% endif %}</td>
+                <td>{% for metodo, etiqueta, monto in f.partes %}{% if not forloop.first %} + {% endif %}{{ etiqueta }}{% if f.partes|length > 1 %} (${{ monto|floatformat:2 }}){% endif %}{% endfor %}</td>
+                <td>{{ f.recibos|join:", "|default:"—" }}</td>
+                <td>{{ f.registra|default:"—" }}</td>
+                <td class="num insc-monto">${{ f.monto|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="10">Total del día · {{ cantidad }} inscripci{{ cantidad|pluralize:"ón,ones" }}</td>
+                <td class="num">${{ total|floatformat:2 }}</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="insc-vacio">
+    {% if es_hoy %}Todavía no hay inscripciones registradas hoy.{% else %}No hay inscripciones registradas este día.{% endif %}
+</div>
+{% endif %}
+
+<nav class="hojas-barra" aria-label="Inscripciones por día">
+    <details class="hojas-menu">
+        <summary title="Todos los días" aria-label="Todos los días">≡</summary>
+        <div class="hojas-menu-panel">
+            {% for grupo in meses_pestanas %}
+            <div class="hojas-menu-mes">{{ grupo.mes|date:"F Y" }}</div>
+            {% for p in grupo.pestanas %}
+            <a href="?dia={{ p.iso }}"{% if p.activa %} class="is-activa" aria-current="page"{% endif %}>
+                <span>{{ p.fecha|date:"l d" }}{% if p.hoy %} · hoy{% endif %}</span><span>${{ p.total|floatformat:2 }}</span>
+            </a>
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </details>
+    <button type="button" class="hojas-flecha" data-desplazar="-1" aria-label="Ver días más recientes">‹</button>
+    <div class="hojas-pestanas" id="hojas-pestanas">
+        {% for p in pestanas %}
+        <a class="hoja-pestana{% if p.activa %} is-activa{% endif %}" href="?dia={{ p.iso }}"
+           title="{{ p.fecha|date:'l d \d\e F \d\e Y' }} · {{ p.cantidad }} inscripci{{ p.cantidad|pluralize:'ón,ones' }} · ${{ p.total|floatformat:2 }}"{% if p.activa %} aria-current="page"{% endif %}>
+            {% if p.hoy %}<span class="hoja-hoy">Hoy</span>{% endif %}{{ p.etiqueta }}<span class="hoja-total">${{ p.total|floatformat:2 }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    <button type="button" class="hojas-flecha" data-desplazar="1" aria-label="Ver días más antiguos">›</button>
+</nav>
+
+<script>
+(function () {
+    const pestanas = document.getElementById('hojas-pestanas');
+    const activa = pestanas.querySelector('.is-activa');
+    if (activa) activa.scrollIntoView({ block: 'nearest', inline: 'center' });
+    document.querySelectorAll('[data-desplazar]').forEach(boton => {
+        boton.addEventListener('click', () => {
+            pestanas.scrollBy({ left: Number(boton.dataset.desplazar) * pestanas.clientWidth * 0.8 });
+        });
+    });
+    document.addEventListener('click', e => {
+        const menu = document.querySelector('.hojas-menu');
+        if (menu.open && !menu.contains(e.target)) menu.open = false;
+    });
+})();
+</script>
+{% endblock %}

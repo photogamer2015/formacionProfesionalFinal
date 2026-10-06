@@ -512,6 +512,11 @@
        class="{% if modalidad == 'online' %}active{% endif %}">
         🟢 Online
     </a>
+    {% if not solo_retirados %}
+    <a href="{% url 'academia:matricula_inscripciones' %}">
+        💵 Pagos inscripciones
+    </a>
+    {% endif %}
 </div>
 
 <div class="toolbar" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:white; padding:16px; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,0.04);">

@@ -105,6 +105,7 @@ CONSULTAS = {
     'ayuda': 'Consultó la ayuda del sistema',
     'matricula_facturas': 'Consultó facturas de matrículas',
     'matricula_sin_factura': 'Consultó las matrículas sin factura',
+    'matricula_inscripciones': 'Consultó los pagos de inscripciones',
     'matricula_registrar_factura': 'Abrió el registro de una factura',
     'matricula_menu': 'Consultó el módulo de matrículas',
     'registro_estudiantil': 'Consultó una hoja del Registro Estudiantil',
