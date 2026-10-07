@@ -32,6 +32,7 @@ from django.views.decorators.http import require_POST
 
 from .busqueda import filtrar_queryset_busqueda
 from .colores_registro import Paleta
+from .fecha_matricula import FECHA_MINIMA
 from .forms_registro_estudiantil import (
     RegistroEstudiantilForm, bloque_pago_inicial, cursos_editables,
     jornadas_editables, nombre_usuario, pago_inicial_editable,
@@ -393,6 +394,9 @@ def _datos_edicion(filas, vista):
         'metodos': METODOS_PAGO,
         'bancos': dict(BANCOS_PAGO),
         'bancos_por_metodo': BANCOS_POR_METODO,
+        # Límites de la fecha de matrícula (los mismos que valida el servidor).
+        'hoy': timezone.localdate().isoformat(),
+        'fecha_minima': FECHA_MINIMA.isoformat(),
     }
 
 

@@ -85,6 +85,21 @@ inicio van encadenados: al cambiar el curso se pide elegir la fecha de inicio.
     function primerNombre(texto) {
         return (texto || '').trim().split(/\s+/)[0] || '';
     }
+    // Hoy según el servidor; si la hoja quedó abierta pasada la medianoche,
+    // vale el día del navegador.
+    function hoyMatricula() {
+        const d = new Date();
+        const navegador = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+            + '-' + String(d.getDate()).padStart(2, '0');
+        return datos.hoy > navegador ? datos.hoy : navegador;
+    }
+    // Último día del mes subsiguiente (igual que fecha_maxima en el servidor).
+    function maximaMatricula() {
+        const p = hoyMatricula().split('-').map(Number);
+        const d = new Date(p[0], p[1] - 1 + 3, 0);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+            + '-' + String(d.getDate()).padStart(2, '0');
+    }
     function fechaCorta(iso) {
         const partes = (iso || '').split('-');
         return partes.length === 3 ? partes[2] + '/' + partes[1] + '/' + partes[0] : '';
@@ -493,6 +508,10 @@ inicio van encadenados: al cambiar el curso se pide elegir la fecha de inicio.
                 });
             }
             if (col === 'nombres') control.maxLength = 200;
+            if (def.tipo === 'fecha') {
+                control.max = maximaMatricula();
+                control.min = datos.fecha_minima;
+            }
             control.value = def.valor(b);
             const confirmar = () => {
                 if (cerrado) return;
@@ -514,6 +533,13 @@ inicio van encadenados: al cambiar el curso se pide elegir la fecha de inicio.
                     return;
                 }
                 if (valor === def.valor(b)) {
+                    pintar(tr, fila);
+                    return;
+                }
+                if (def.tipo === 'fecha' && (valor > maximaMatricula() || valor < datos.fecha_minima)) {
+                    avisar('error', valor > maximaMatricula()
+                        ? 'La fecha ' + fechaCorta(valor) + ' está muy adelante: se aceptan fechas hasta el ' + fechaCorta(maximaMatricula()) + '. Revisa el día, el mes y el año. Recuerda poner bien la fecha. ¡Gracias!'
+                        : 'La fecha ' + fechaCorta(valor) + ' es demasiado antigua. Revisa el año. Recuerda poner bien la fecha. ¡Gracias!');
                     pintar(tr, fila);
                     return;
                 }

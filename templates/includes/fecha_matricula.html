@@ -1,0 +1,315 @@
+{% comment %}
+Ayuda para escribir bien la fecha de matrícula. Se aplica a cada
+<input type="date" data-fecha-matricula> (lo marca preparar_campo_fecha en
+academia/fecha_matricula.py): atajos «Hoy» y «Ayer», la fecha en palabras, un
+aviso si es futura o antigua, un error si pasa del mes subsiguiente o es
+demasiado antigua, y una nota para revisarla.
+El servidor valida lo mismo; esto solo ayuda a verlo antes de guardar.
+window.FechaMatricula.problema(input) devuelve el error (o '') para que cada
+formulario lo sume a sus propias validaciones.
+{% endcomment %}
+<style>
+    .fm-ayuda { margin-top: 8px; display: grid; gap: 8px; }
+    .fm-atajos { display: flex; flex-wrap: wrap; gap: 6px; }
+    .fm-atajos[hidden] { display: none; }
+    .fm-atajo {
+        padding: 4px 12px; border: 1px solid var(--fp-border, #dde4ee);
+        border-radius: 999px; background: var(--fp-surface, #fff);
+        color: var(--fp-navy, #1B2A4E); font: inherit; font-size: 12px;
+        font-weight: 600; cursor: pointer;
+        transition: background .15s, border-color .15s, color .15s;
+    }
+    .fm-atajo:hover { border-color: var(--fp-navy, #1B2A4E); }
+    .fm-atajo:focus-visible { outline: 3px solid rgba(27,42,78,.18); outline-offset: 1px; }
+    .fm-atajo[aria-pressed="true"] {
+        background: var(--fp-navy, #1B2A4E); border-color: var(--fp-navy, #1B2A4E); color: #fff;
+    }
+    .fm-vista {
+        padding: 8px 12px; border-radius: 8px; border-left: 4px solid var(--fp-navy, #1B2A4E);
+        background: var(--fp-surface-2, #f1f5fb); color: var(--fp-ink, #18233f);
+        font-size: 13px; line-height: 1.45;
+    }
+    .fm-vista[hidden] { display: none; }
+    .fm-linea { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+    .fm-texto { font-weight: 600; }
+    .fm-etiqueta {
+        padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+        background: rgba(27,42,78,.10); color: var(--fp-navy, #1B2A4E);
+    }
+    .fm-mensaje { margin: 4px 0 0; font-size: 12px; }
+    .fm-vista.is-ok { border-left-color: var(--fp-green, #2e7d32); }
+    .fm-vista.is-ok .fm-etiqueta { background: #e8f5e9; color: var(--fp-green-2, #1b5e20); }
+    .fm-vista.is-aviso { border-left-color: #f2b705; background: #fff8e1; }
+    .fm-vista.is-aviso .fm-etiqueta { background: #ffecb3; color: #7a4f01; }
+    .fm-vista.is-aviso .fm-mensaje { color: #7a4f01; }
+    .fm-vista.is-error { border-left-color: var(--fp-danger, #c62828); background: #fdecea; }
+    .fm-vista.is-error .fm-etiqueta { background: var(--fp-danger, #c62828); color: #fff; }
+    .fm-vista.is-error .fm-mensaje { color: var(--fp-danger-2, #8e0000); font-weight: 600; }
+    input[type="date"].fm-input-error {
+        border-color: var(--fp-danger, #c62828);
+        box-shadow: 0 0 0 3px rgba(198,40,40,.12);
+    }
+    .fm-nota { margin: 0; font-size: 11.5px; color: var(--fp-muted, #6f7889); font-style: italic; }
+
+    body.dark-mode .fm-atajo { background: #0d1420; border-color: var(--fp-dark-line); color: #a9c7ff; }
+    body.dark-mode .fm-atajo:hover { border-color: #7ea7ff; }
+    body.dark-mode .fm-atajo[aria-pressed="true"] { background: #7ea7ff; border-color: #7ea7ff; color: #0d1420; }
+    body.dark-mode .fm-vista { background: #0d1420; color: var(--fp-dark-text); border-left-color: #7ea7ff; }
+    body.dark-mode .fm-etiqueta { background: rgba(126,167,255,.16); color: #a9c7ff; }
+    body.dark-mode .fm-vista.is-ok { border-left-color: #66bb6a; }
+    body.dark-mode .fm-vista.is-ok .fm-etiqueta { background: rgba(102,187,106,.18); color: #a5d6a7; }
+    body.dark-mode .fm-vista.is-aviso { background: rgba(242,183,5,.10); border-left-color: #f2b705; }
+    body.dark-mode .fm-vista.is-aviso .fm-etiqueta { background: rgba(242,183,5,.20); color: #ffe082; }
+    body.dark-mode .fm-vista.is-aviso .fm-mensaje { color: #ffe082; }
+    body.dark-mode .fm-vista.is-error { background: rgba(255,138,128,.10); border-left-color: #ff8a80; }
+    body.dark-mode .fm-vista.is-error .fm-etiqueta { background: #ff8a80; color: #0d1420; }
+    body.dark-mode .fm-vista.is-error .fm-mensaje { color: #ff8a80; }
+    body.dark-mode input[type="date"].fm-input-error {
+        border-color: #ff8a80;
+        box-shadow: 0 0 0 3px rgba(255,138,128,.16);
+    }
+    body.dark-mode .fm-nota { color: var(--fp-dark-muted); }
+</style>
+<script>
+    (function () {
+        if (window.FechaMatricula) {
+            window.FechaMatricula.iniciar();
+            return;
+        }
+        const DIA_MS = 86400000;
+        const NOTA = '📝 Recuerda poner bien la fecha. ¡Gracias!';
+
+        function dos(n) {
+            return String(n).padStart(2, '0');
+        }
+
+        function isoLocal(fecha) {
+            return fecha.getFullYear() + '-' + dos(fecha.getMonth() + 1) + '-' + dos(fecha.getDate());
+        }
+
+        function partes(iso) {
+            const m = /^(\d{4,6})-(\d{2})-(\d{2})$/.exec(iso || '');
+            return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+        }
+
+        function dmy(iso) {
+            const p = partes(iso);
+            return p ? dos(p[2]) + '/' + dos(p[1]) + '/' + p[0] : (iso || '');
+        }
+
+        // Hoy según el servidor; si la página quedó abierta pasada la
+        // medianoche, vale el día del navegador.
+        function hoyDe(input) {
+            const servidor = input.dataset.hoy || '';
+            const navegador = isoLocal(new Date());
+            return servidor > navegador ? servidor : navegador;
+        }
+
+        // Último día del mes subsiguiente (igual que fecha_maxima en el servidor).
+        function maximaDe(hoy) {
+            const p = partes(hoy);
+            return isoLocal(new Date(p[0], p[1] - 1 + 3, 0));
+        }
+
+        function diasEntre(desde, hasta) {
+            const a = partes(desde);
+            const b = partes(hasta);
+            if (!a || !b) return 0;
+            return Math.round(
+                (Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / DIA_MS
+            );
+        }
+
+        function sumarDias(iso, dias) {
+            const p = partes(iso);
+            return isoLocal(new Date(p[0], p[1] - 1, p[2] + dias));
+        }
+
+        function enPalabras(iso) {
+            const p = partes(iso);
+            if (!p) return '';
+            // setFullYear evita que los años de dos cifras pasen a 19xx.
+            const fecha = new Date(2000, p[1] - 1, p[2]);
+            fecha.setFullYear(p[0]);
+            if (isNaN(fecha.getTime())) return dmy(iso);
+            const texto = fecha.toLocaleDateString('es-EC', {
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+            });
+            return texto.charAt(0).toUpperCase() + texto.slice(1);
+        }
+
+        function hace(dias) {
+            if (dias === 0) return 'Hoy';
+            if (dias === 1) return 'Ayer';
+            if (dias === -1) return 'Mañana';
+            if (dias < 0) return 'En ' + (-dias) + ' días';
+            if (dias > 365) return 'Hace más de un año';
+            return 'Hace ' + dias + ' días';
+        }
+
+        function revisar(input) {
+            if (input.validity && input.validity.badInput) {
+                return {
+                    estado: 'error', etiqueta: 'Incompleta',
+                    mensaje: 'Completa el día, el mes y el año.',
+                };
+            }
+            const valor = input.value;
+            if (!valor) return { estado: 'vacia' };
+            const hoy = hoyDe(input);
+            // Al editar, una fecha que no se cambia no se bloquea (igual que en el servidor).
+            const sinCambio = Boolean(input.dataset.original) && valor === input.dataset.original;
+            const maxima = maximaDe(hoy);
+            if (valor > maxima) {
+                return {
+                    estado: sinCambio ? 'aviso' : 'error', etiqueta: 'Muy adelante',
+                    mensaje: 'Se aceptan fechas hasta el ' + dmy(maxima) + '. Revisa el día, el mes y el año.',
+                };
+            }
+            if (!sinCambio && input.dataset.minima && valor < input.dataset.minima) {
+                return {
+                    estado: 'error', etiqueta: 'Muy antigua',
+                    mensaje: 'Es demasiado antigua. Revisa el año.',
+                };
+            }
+            const dias = diasEntre(valor, hoy);
+            if (dias < 0) {
+                return {
+                    estado: 'aviso', etiqueta: hace(dias),
+                    mensaje: 'Es una fecha futura. Si es correcta, puedes continuar.',
+                };
+            }
+            if (dias > 31) {
+                return {
+                    estado: 'aviso', etiqueta: hace(dias),
+                    mensaje: 'Es de hace más de un mes. Si es correcta, puedes continuar.',
+                };
+            }
+            return { estado: 'ok', etiqueta: hace(dias) };
+        }
+
+        function problema(input) {
+            if (!input || input.disabled) return '';
+            const r = revisar(input);
+            return r.estado === 'error' ? r.etiqueta + ': ' + r.mensaje : '';
+        }
+
+        function avisar(input) {
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function actualizar(input) {
+            const ayuda = input._fechaAyuda;
+            if (!ayuda) return;
+            const r = revisar(input);
+            const bloqueado = input.disabled || input.readOnly;
+            ayuda.atajos.hidden = bloqueado;
+            const hoy = hoyDe(input);
+            const maxima = maximaDe(hoy);
+            if (input.hasAttribute('max') && input.max < maxima) input.max = maxima;
+            ayuda.botones.forEach(function (boton) {
+                const fecha = sumarDias(hoy, -Number(boton.dataset.dias));
+                boton.setAttribute('aria-pressed', String(input.value === fecha));
+            });
+
+            ayuda.vista.hidden = r.estado === 'vacia';
+            ayuda.vista.classList.remove('is-ok', 'is-aviso', 'is-error');
+            if (r.estado !== 'vacia') ayuda.vista.classList.add('is-' + r.estado);
+            ayuda.texto.textContent = r.estado === 'vacia' || !input.value ? '' : enPalabras(input.value);
+            ayuda.etiqueta.textContent = r.etiqueta || '';
+            ayuda.etiqueta.hidden = !r.etiqueta;
+            ayuda.mensaje.textContent = r.mensaje || '';
+            ayuda.mensaje.hidden = !r.mensaje;
+            input.classList.toggle('fm-input-error', r.estado === 'error' && !input.disabled);
+            input.setAttribute('aria-invalid', r.estado === 'error' ? 'true' : 'false');
+        }
+
+        function crear(etiqueta, clase, texto) {
+            const el = document.createElement(etiqueta);
+            if (clase) el.className = clase;
+            if (texto) el.textContent = texto;
+            return el;
+        }
+
+        function preparar(input) {
+            if (input._fechaAyuda) return;
+            const ayuda = crear('div', 'fm-ayuda');
+            const atajos = crear('div', 'fm-atajos');
+            const botones = [['Hoy', 0], ['Ayer', 1]].map(function (par) {
+                const boton = crear('button', 'fm-atajo', par[0]);
+                boton.type = 'button';
+                boton.dataset.dias = par[1];
+                boton.addEventListener('click', function () {
+                    if (input.disabled || input.readOnly) return;
+                    input.value = sumarDias(hoyDe(input), -par[1]);
+                    avisar(input);
+                    input.focus();
+                });
+                atajos.append(boton);
+                return boton;
+            });
+            const vista = crear('div', 'fm-vista');
+            vista.setAttribute('aria-live', 'polite');
+            const linea = crear('div', 'fm-linea');
+            const icono = crear('span', '', '📅');
+            icono.setAttribute('aria-hidden', 'true');
+            const texto = crear('span', 'fm-texto');
+            const etiqueta = crear('span', 'fm-etiqueta');
+            linea.append(icono, texto, etiqueta);
+            const mensaje = crear('p', 'fm-mensaje');
+            vista.append(linea, mensaje);
+            const nota = crear('p', 'fm-nota', NOTA);
+            ayuda.append(atajos, vista, nota);
+
+            // Debajo de los errores del servidor, si los hay.
+            let ancla = input;
+            const siguiente = input.nextElementSibling;
+            if (siguiente && siguiente.classList.contains('errorlist')) ancla = siguiente;
+            ancla.after(ayuda);
+
+            input._fechaAyuda = {
+                atajos: atajos, botones: botones, vista: vista, texto: texto,
+                etiqueta: etiqueta, mensaje: mensaje,
+            };
+            ['input', 'change', 'blur'].forEach(function (evento) {
+                input.addEventListener(evento, function () { actualizar(input); });
+            });
+            actualizar(input);
+
+            const form = input.form;
+            if (form && !form._fechaMatriculaGuardia) {
+                form._fechaMatriculaGuardia = true;
+                form.addEventListener('submit', function (e) {
+                    const campos = form.querySelectorAll('input[data-fecha-matricula]');
+                    for (const campo of campos) {
+                        if (problema(campo)) {
+                            e.preventDefault();
+                            actualizar(campo);
+                            campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            try { campo.focus(); } catch (_) { }
+                            return;
+                        }
+                    }
+                });
+            }
+        }
+
+        function iniciar() {
+            document.querySelectorAll('input[data-fecha-matricula]').forEach(preparar);
+        }
+
+        window.FechaMatricula = {
+            iniciar: iniciar,
+            problema: problema,
+            enPalabras: enPalabras,
+            refrescar: function () {
+                document.querySelectorAll('input[data-fecha-matricula]').forEach(actualizar);
+            },
+        };
+        iniciar();
+        // Otros scripts de la página pueden bloquear el campo después (por
+        // ejemplo «Editar el pago inicial»): entonces se ocultan los atajos.
+        document.addEventListener('DOMContentLoaded', window.FechaMatricula.refrescar);
+    })();
+</script>

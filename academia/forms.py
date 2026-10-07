@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django import forms
 from django.db.models import Q
+from .fecha_matricula import preparar_campo_fecha, validar_fecha_matricula
 from .models import (
     Abono, Adicional, BANCOS_PAGO, BANCOS_POR_METODO, CategoriaEgreso,
     Categoria, Comprobante, Curso, Egreso,
@@ -832,6 +833,18 @@ class MatriculaForm(forms.ModelForm):
         )
 
         self.fields['link_comprobante'].required = False
+        preparar_campo_fecha(
+            self.fields['fecha_matricula'],
+            self.instance.fecha_matricula if self.instance.pk else None,
+        )
+
+    def clean_fecha_matricula(self):
+        fecha = self.cleaned_data.get('fecha_matricula')
+        # Al editar sin cambiar la fecha no se revisa: una matrícula antigua
+        # con una fecha rara no debe impedir corregir el pago u otros datos.
+        if self.instance.pk and fecha == self.instance.fecha_matricula:
+            return fecha
+        return validar_fecha_matricula(fecha)
 
     def clean_valor_pagado(self):
         valor = self.cleaned_data.get('valor_pagado')

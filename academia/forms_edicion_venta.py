@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.models import User
 
+from .fecha_matricula import preparar_campo_fecha, validar_fecha_matricula
 from .forms import _normalizar_digitos_formateados
 from .models import Matricula
 from .permisos import es_admin
@@ -101,6 +102,14 @@ class EdicionVentaForm(forms.ModelForm):
         if 'fecha_matricula' in self.fields and self.instance.pk:
             from .forms_registro_estudiantil import bloque_pago_inicial
             self.ids_pago_inicial = [a.pk for a in bloque_pago_inicial(self.instance)]
+        if 'fecha_matricula' in self.fields:
+            preparar_campo_fecha(self.fields['fecha_matricula'], self.fecha_original)
+
+    def clean_fecha_matricula(self):
+        fecha = self.cleaned_data.get('fecha_matricula')
+        if self.fecha_cambia(fecha):
+            validar_fecha_matricula(fecha)
+        return fecha
 
     def clean_numero_factura(self):
         return limpiar_numero_factura(self.cleaned_data.get('numero_factura'))

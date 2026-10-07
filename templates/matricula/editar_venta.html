@@ -38,6 +38,7 @@
   <div class="venta-actions"><button class="btn btn-primary" type="submit">Guardar cambios</button><a class="btn btn-secondary" href="{% if volver_facturas %}{% url 'academia:matricula_facturas' %}{% else %}{% url 'academia:matricula_lista' modalidad=matricula.modalidad %}{% endif %}">Cancelar</a></div>
  </form>
 </div>
+{% if seccion == 'matricula' %}{% include 'includes/fecha_matricula.html' %}{% endif %}
 <script>
     document.querySelectorAll('[data-solo-numeros]').forEach(function (input) {
         input.addEventListener('input', function () {

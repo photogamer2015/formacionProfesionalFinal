@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import Group, User
 from django.contrib.messages import get_messages
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 
 from .models import (
@@ -68,7 +68,7 @@ class ListasFacturasTests(FacturasBase):
         self.assertContains(response, 'Matrículas sin factura (2)')
         self.assertContains(response, 'editar_seccion=factura&amp;volver=facturas')
 
-    def test_lista_sin_factura_con_boton_solo_para_la_duena(self):
+    def test_lista_sin_factura_con_boton_para_matriculas_propias_y_ajenas(self):
         self.client.force_login(self.duena)
         response = self.client.get(self.url_sin)
         self.assertEqual(response.status_code, 200)
@@ -80,8 +80,14 @@ class ListasFacturasTests(FacturasBase):
         for columna in ('Valor neto', 'Pagado', 'Saldo pendiente', 'Tipo de pago', 'Método'):
             self.assertContains(response, f'<th>{columna}</th>')
         self.assertContains(response, self.url_registrar(self.sin))
-        self.assertNotContains(response, self.url_registrar(self.ajena))
-        self.assertContains(response, 'Bloqueado')
+        self.assertContains(response, self.url_registrar(self.ajena))
+        self.assertNotContains(response, 'Bloqueado')
+
+    def test_lista_con_factura_ofrece_editar_factura_ajena(self):
+        self.client.force_login(self.otra)
+        response = self.client.get(self.url_lista)
+        url = reverse('academia:matricula_editar', args=['presencial', self.con.pk])
+        self.assertContains(response, f'{url}?editar_seccion=factura&amp;volver=facturas')
 
     def test_lista_sin_factura_filtra_por_curso(self):
         self.client.force_login(self.admin)
@@ -107,7 +113,7 @@ class RegistrarFacturaTests(FacturasBase):
         self.assertContains(response, 'Cambiar los datos')
 
     def test_registra_con_datos_del_estudiante_sin_tocar_lo_demas(self):
-        self.client.force_login(self.duena)
+        self.client.force_login(self.otra)
         self.sin.refresh_from_db()
         antes = Matricula.objects.values().get(pk=self.sin.pk)
         pagos = list(self.sin.abonos.values())
@@ -180,16 +186,17 @@ class RegistrarFacturaTests(FacturasBase):
         self.assertEqual(self.sin.factura_realizada, 'no')
         self.assertEqual(self.sin.numero_factura, '')
 
-    def test_otra_asesora_no_puede_registrar(self):
+    def test_otra_asesora_puede_abrir_y_registrar_factura(self):
         self.client.force_login(self.otra)
-        self.assertRedirects(
-            self.client.get(self.url_registrar(self.sin)), self.url_sin,
-            fetch_redirect_response=False,
+        self.assertEqual(
+            self.client.get(self.url_registrar(self.sin)).status_code, 200,
         )
-        self._post(self.sin, numero_factura='999', cambiar_datos='0')
+        response = self._post(self.sin, numero_factura='999', cambiar_datos='0')
+        self.assertRedirects(response, self.url_sin, fetch_redirect_response=False)
         self.sin.refresh_from_db()
-        self.assertEqual(self.sin.factura_realizada, 'no')
-        self.assertEqual(self.sin.numero_factura, '')
+        self.assertEqual(self.sin.factura_realizada, 'si')
+        self.assertEqual(self.sin.numero_factura, '999')
+        self.assertEqual(self.sin.registrado_por_id, self.duena.pk)
 
     def test_admin_registra_cualquier_matricula(self):
         self.client.force_login(self.admin)
@@ -274,6 +281,156 @@ class EditarFacturaNumeroTests(FacturasBase):
         cierre = CierreCurso.objects.create(curso=self.curso, curso_nombre=self.curso.nombre)
         archivada = _snapshot_matricula(self.con, cierre)
         self.assertEqual(MatriculaArchivada.objects.get(pk=archivada.pk).numero_factura, '000777')
+
+
+class PermisosFacturasTests(FacturasBase):
+    def setUp(self):
+        super().setUp()
+        self.url_editar = reverse('academia:matricula_editar', args=['presencial', self.sin.pk])
+        self.datos_factura = {
+            'editar_seccion': 'factura', 'volver': 'facturas',
+            'factura_realizada': 'si', 'numero_factura': '000901',
+            'fact_nombres': 'Titular nuevo', 'fact_cedula': '0990000000001',
+            'fact_correo': 'titular@example.com',
+        }
+
+    def test_roles_del_modulo_registran_y_editan_factura_ajena(self):
+        administrador = User.objects.create_user('admin_grupo_fact')
+        grupo_admin, _ = Group.objects.get_or_create(name='Administradores')
+        administrador.groups.add(grupo_admin)
+        for usuario in (self.otra, administrador, self.admin):
+            with self.subTest(usuario=usuario.username):
+                matricula = Matricula.objects.create(
+                    estudiante=self.estudiante, curso=self.otro_curso,
+                    modalidad='online', fecha_matricula=date(2026, 9, 10),
+                    valor_curso=100, registrado_por=self.duena, vendedora=self.duena,
+                )
+                self.client.force_login(usuario)
+                response = self.client.post(self.url_registrar(matricula), {
+                    'numero_factura': '000900', 'cambiar_datos': '0',
+                })
+                self.assertRedirects(response, self.url_sin, fetch_redirect_response=False)
+                matricula.refresh_from_db()
+                self.assertEqual(matricula.numero_factura, '000900')
+                url = reverse('academia:matricula_editar', args=['online', matricula.pk])
+                self.assertEqual(self.client.get(url, {'editar_seccion': 'factura'}).status_code, 200)
+                response = self.client.post(url, self.datos_factura)
+                self.assertRedirects(response, self.url_lista, fetch_redirect_response=False)
+                matricula.refresh_from_db()
+                self.assertEqual(matricula.numero_factura, '000901')
+                self.assertEqual(matricula.fact_nombres, 'Titular nuevo')
+                self.assertEqual(matricula.registrado_por_id, self.duena.pk)
+                self.assertEqual(matricula.vendedora_id, self.duena.pk)
+
+    def test_editar_factura_ajena_ignora_campos_de_matricula_estudiante_y_pago(self):
+        self.client.force_login(self.otra)
+        antes = Matricula.objects.values().get(pk=self.sin.pk)
+        estudiante = Estudiante.objects.values().get(pk=self.estudiante.pk)
+        pagos = list(self.sin.abonos.values())
+        response = self.client.post(self.url_editar, {
+            **self.datos_factura,
+            'editar_pago': '1', 'reiniciar_pago': '1', 'cambiar_jornada': '1',
+            'valor_pagado': '999', 'mat-valor_pagado': '999', 'valor_curso': '999',
+            'descuento': '99', 'estado': 'retiro_voluntario',
+            'fecha_matricula': '2026-01-01', 'vendedora': self.otra.pk,
+            'registrado_por': self.otra.pk, 'tipo_registro': 'seguimiento',
+            'curso': self.otro_curso.pk, 'est-nombres': 'Nombre manipulado',
+        })
+        self.assertRedirects(response, self.url_lista, fetch_redirect_response=False)
+        despues = Matricula.objects.values().get(pk=self.sin.pk)
+        self.assertEqual(
+            {k for k in antes if antes[k] != despues[k]},
+            {'factura_realizada', 'numero_factura', 'fact_nombres', 'fact_cedula', 'fact_correo'},
+        )
+        self.assertEqual(Estudiante.objects.values().get(pk=self.estudiante.pk), estudiante)
+        self.assertEqual(list(self.sin.abonos.values()), pagos)
+        comprobante = Comprobante.objects.get(matricula=self.sin)
+        self.assertEqual(comprobante.fact_nombres, 'Titular nuevo')
+        self.assertEqual(comprobante.vendedora_id, self.duena.pk)
+
+    def test_excepcion_factura_no_habilita_otras_secciones_ni_post_sin_seccion(self):
+        self.client.force_login(self.otra)
+        antes = Matricula.objects.values().get(pk=self.sin.pk)
+        pagos = list(self.sin.abonos.values())
+        for datos in (
+            {}, {'editar_pago': '1'}, {'reiniciar_pago': '1'},
+            {'editar_seccion': 'registro', 'tipo_registro': 'seguimiento'},
+            {'editar_seccion': 'vendedora', 'vendedora': self.otra.pk},
+            {'editar_seccion': 'matricula', 'estado': 'retiro_voluntario', 'fecha_matricula': '2026-01-01'},
+            {'editar_seccion': 'invalida'},
+        ):
+            with self.subTest(datos=datos):
+                response = self.client.get(self.url_editar, datos)
+                self.assertEqual(response.status_code, 302)
+                # El parámetro de GET no puede conceder acceso a un POST de
+                # otra sección o sin el campo oculto de factura.
+                response = self.client.post(self.url_editar + '?editar_seccion=factura', datos)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(Matricula.objects.values().get(pk=self.sin.pk), antes)
+                self.assertEqual(list(self.sin.abonos.values()), pagos)
+
+    def test_factura_ajena_invalida_no_guarda(self):
+        self.client.force_login(self.otra)
+        antes = Matricula.objects.values().get(pk=self.sin.pk)
+        response = self.client.post(self.url_editar, {
+            **self.datos_factura, 'numero_factura': 'ABC123',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('numero_factura', response.context['form'].errors)
+        self.assertEqual(Matricula.objects.values().get(pk=self.sin.pk), antes)
+
+    def test_factura_de_matricula_sin_propietario_tambien_se_puede_gestionar(self):
+        Matricula.objects.filter(pk=self.sin.pk).update(registrado_por=None, vendedora=None)
+        self.client.force_login(self.otra)
+        response = self.client.post(self.url_registrar(self.sin), {'numero_factura': '000900'})
+        self.assertRedirects(response, self.url_sin, fetch_redirect_response=False)
+        response = self.client.post(self.url_editar, self.datos_factura)
+        self.assertRedirects(response, self.url_lista, fetch_redirect_response=False)
+        self.sin.refresh_from_db()
+        self.assertEqual(self.sin.numero_factura, '000901')
+        self.assertIsNone(self.sin.registrado_por_id)
+        self.assertIsNone(self.sin.vendedora_id)
+
+    def test_facturas_siguen_requiriendo_sesion_y_acceso_al_modulo(self):
+        sin_rol = User.objects.create_user('sin_rol_fact')
+        inactivo = User.objects.create_user('inactivo_fact', is_active=False)
+        inactivo.groups.add(Group.objects.get(name='Asesores'))
+        antes = Matricula.objects.values().get(pk=self.sin.pk)
+        for usuario in (None, sin_rol, inactivo):
+            with self.subTest(usuario=usuario):
+                self.client.logout()
+                if usuario:
+                    self.client.force_login(usuario)
+                for url in (self.url_lista, self.url_sin, self.url_registrar(self.sin), self.url_editar):
+                    response = self.client.get(url, {'editar_seccion': 'factura'})
+                    self.assertEqual(response.status_code, 302)
+                    if usuario == sin_rol:
+                        self.assertEqual(response.url, reverse('academia:bienvenida'))
+                    else:
+                        self.assertTrue(response.url.startswith('/login/'))
+                for url in (self.url_registrar(self.sin), self.url_editar):
+                    self.assertEqual(self.client.post(url, self.datos_factura).status_code, 302)
+                self.assertEqual(Matricula.objects.values().get(pk=self.sin.pk), antes)
+
+    def test_registro_y_edicion_mantienen_proteccion_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.otra)
+        antes = Matricula.objects.values().get(pk=self.sin.pk)
+        for url in (self.url_registrar(self.sin), self.url_editar):
+            self.assertEqual(client.post(url, self.datos_factura).status_code, 403)
+        self.assertEqual(Matricula.objects.values().get(pk=self.sin.pk), antes)
+        client.get(self.url_registrar(self.sin))
+        token = client.cookies['csrftoken'].value
+        response = client.post(self.url_registrar(self.sin), {
+            'numero_factura': '000900', 'csrfmiddlewaretoken': token,
+        })
+        self.assertRedirects(response, self.url_sin, fetch_redirect_response=False)
+        response = client.post(self.url_editar, {
+            **self.datos_factura, 'csrfmiddlewaretoken': token,
+        })
+        self.assertRedirects(response, self.url_lista, fetch_redirect_response=False)
+        self.sin.refresh_from_db()
+        self.assertEqual(self.sin.numero_factura, '000901')
 
 
 class MenuFacturasTests(FacturasBase):

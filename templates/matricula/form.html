@@ -493,6 +493,7 @@
         </div>
 
         <div id="confirmar-matricula-resumen" class="confirm-summary"></div>
+        <p class="confirm-modal__nota-fecha">📝 Recuerda poner bien la fecha. ¡Gracias!</p>
 
         <div class="confirm-modal__actions">
             <button type="button" class="btn btn-secondary" id="confirmar-matricula-no">No, revisar</button>
@@ -925,11 +926,14 @@
         line-height: 1.4;
     }
     body.dark-mode .valor-pagado-tope-error { color: #ff8a80; }
+    .confirm-modal__nota-fecha { margin: 12px 0 0; font-size: 12px; font-style: italic; color: #6f7889; }
+    body.dark-mode .confirm-modal__nota-fecha { color: var(--fp-dark-muted); }
 
 </style>
 {% endblock %}
 
 {% block extra_js %}
+{% include 'includes/fecha_matricula.html' %}
 <script>
     (function () {
         // ── Elementos del DOM ──────────────
@@ -1409,6 +1413,12 @@
             return el ? (el.value || '').trim() : '';
         }
 
+        function textoFechaMatricula() {
+            const valor = valorCampo('fecha_matricula');
+            const enPalabras = window.FechaMatricula ? FechaMatricula.enPalabras(valor) : '';
+            return enPalabras || valor;
+        }
+
         function textoSeleccion(name) {
             const el = obtenerElementoCampo(name);
             if (!el) return '';
@@ -1519,7 +1529,7 @@
                     ['Estado', textoSeleccion('estado')],
                     ['Curso', textoCursoSeleccionado()],
                     ['Tipo', textoSeleccion('tipo_matricula')],
-                    ['Fecha', valorCampo('fecha_matricula')],
+                    ['Fecha', textoFechaMatricula()],
                     ['Jornada', textoJornadaSeleccionada()],
                 ]),
                 seccionResumen('Pago inicial', datosPagoResumen()),
@@ -1639,6 +1649,12 @@
                             : 'Hay más de 10 dígitos, por favor verifique.';
                         lenError.style.display = 'block';
                     }
+                }
+
+                // Fecha de matrícula: ni futura ni demasiado antigua.
+                const fechaInput = obtenerElementoCampo('fecha_matricula');
+                if (!primerError && window.FechaMatricula && FechaMatricula.problema(fechaInput)) {
+                    primerError = { el: fechaInput, label: 'Fecha de matrícula' };
                 }
 
                 if (!primerError && jornadaNoSeleccionada()) {
@@ -2329,6 +2345,11 @@
                     agregarFaltante(label);
                 }
             });
+
+            // 0b. Fecha de matrícula: ni futura ni demasiado antigua.
+            if (window.FechaMatricula && FechaMatricula.problema(obtenerElementoCampo('fecha_matricula'))) {
+                agregarFaltante('Fecha de matrícula correcta (revisa el año)');
+            }
 
             const formatoDocumento = clasificarCedulaRuc(
                 cedulaInput ? cedulaInput.value : ''

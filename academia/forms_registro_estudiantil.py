@@ -25,6 +25,7 @@ from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.auth.models import User
 from django.db.models import Max, Q, Sum
 
+from .fecha_matricula import validar_fecha_matricula
 from .forms import ERROR_TOPE_RESERVA_EDICION, _revisar_banco
 from .forms_edicion_venta import limpiar_numero_factura
 from .models import (
@@ -240,6 +241,12 @@ class RegistroEstudiantilForm(forms.Form):
         return self.matricula.actualizado.isoformat()
 
     # ── Validación ───────────────────────────────────────────────────
+
+    def clean_fecha_matricula(self):
+        fecha = self.cleaned_data.get('fecha_matricula')
+        if fecha != self.matricula.fecha_matricula:
+            validar_fecha_matricula(fecha)
+        return fecha
 
     def clean_nombres(self):
         nombres = ' '.join((self.cleaned_data.get('nombres') or '').split())
