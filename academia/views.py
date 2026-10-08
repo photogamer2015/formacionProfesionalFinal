@@ -649,11 +649,7 @@ def matricula_registrar(request, modalidad):
 def matricula_editar(request, modalidad, pk):
     modalidad = _modalidad_o_404(modalidad)
     matricula = get_object_or_404(Matricula.objects.select_for_update(), pk=pk, modalidad=modalidad)
-    seccion_venta = (request.POST if request.method == 'POST' else request.GET).get('editar_seccion')
-    # Las facturas pueden ser registradas y corregidas por cualquier usuario
-    # con acceso al módulo de matrículas. El control de propiedad sigue vigente
-    # para todas las demás secciones de edición.
-    if seccion_venta != 'factura' and not puede_editar_matricula_registrada(request.user, matricula):
+    if not puede_editar_matricula_registrada(request.user, matricula):
         messages.error(
             request,
             'No puedes editar esta matrícula porque fue registrada por otra asesora. '
@@ -699,6 +695,7 @@ def matricula_editar(request, modalidad, pk):
             or request.GET.get('reiniciar_pago', '') == '1'
         )
 
+    seccion_venta = (request.POST if request.method == 'POST' else request.GET).get('editar_seccion')
     if seccion_venta:
         from .forms_edicion_venta import EdicionVentaForm, SECCIONES_VENTA
         from django.http import HttpResponseBadRequest
@@ -1288,9 +1285,6 @@ def _lista_facturas(request, *, sin_factura):
             request.user,
             matricula,
         )
-        # Estas listas están protegidas por @matricula_requerida: todos los
-        # usuarios admitidos al módulo pueden operar sobre la factura.
-        matricula.puede_editar_factura = True
 
     total_neto = sum((m.valor_neto for m in matriculas), Decimal('0.00'))
     total_pagado = sum((m.valor_pagado or Decimal('0.00') for m in matriculas), Decimal('0.00'))
@@ -1352,9 +1346,8 @@ def _lista_facturas(request, *, sin_factura):
 def matricula_registrar_factura(request, pk):
     """Aplica la factura a una matrícula que no la tiene y guarda su número.
 
-    Cualquier usuario admitido al módulo de matrículas puede registrar la
-    factura; las demás modificaciones de la matrícula conservan su control
-    de propiedad.
+    Sigue la regla de edición: cada asesora registra la factura de las
+    matrículas que ella registró; el administrador, de todas.
     """
     from django.http import QueryDict
     from .forms_edicion_venta import RegistrarFacturaForm
@@ -1366,6 +1359,13 @@ def matricula_registrar_factura(request, pk):
     lista_url = reverse('academia:matricula_sin_factura') + (f'?{volver}' if volver else '')
 
     matricula = get_object_or_404(Matricula.objects.select_for_update(), pk=pk)
+    if not puede_editar_matricula_registrada(request.user, matricula):
+        messages.error(
+            request,
+            'No puedes registrar la factura de esta matrícula porque fue registrada '
+            'por otra asesora. Pide a un administrador que la registre.'
+        )
+        return redirect(lista_url)
     if matricula.factura_realizada == 'si':
         messages.info(
             request,

@@ -635,7 +635,7 @@
                         N.º factura:
                         {% if m.numero_factura %}<strong>{{ m.numero_factura }}</strong>{% else %}<span style="color:#b26a00;">sin registrar</span>{% endif %}
                     </div>
-                    {% if m.puede_editar_factura %}
+                    {% if m.puede_editar_registro %}
                     <a href="{% url 'academia:matricula_editar' modalidad=m.modalidad pk=m.pk %}?editar_seccion=factura&amp;volver=facturas"
                         class="factura-edit-link">✏️ Editar factura</a>
                     {% endif %}
@@ -691,9 +691,12 @@
                 </td>
                 {% if sin_factura %}
                 <td>
-                    {% if m.puede_editar_factura %}
+                    {% if m.puede_editar_registro %}
                     <a href="{% url 'academia:matricula_registrar_factura' pk=m.pk %}{% if filtros_query %}?{{ filtros_query }}{% endif %}"
                         class="btn btn-success btn-sm">🧾 Registrar factura</a>
+                    {% else %}
+                    <span class="btn btn-secondary btn-sm"
+                        title="Solo puede registrarla quien registró la matrícula o un administrador.">Bloqueado</span>
                     {% endif %}
                 </td>
                 {% else %}
