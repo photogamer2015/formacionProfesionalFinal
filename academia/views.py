@@ -1452,6 +1452,7 @@ def cursos_lista(request, modalidad):
         JornadaCurso.objects
         .filter(modalidad=modalidad, activo=True)
         .select_related('sede')
+        .annotate(num_matriculas=Count('matriculas'))
         .order_by('fecha_inicio', 'hora_inicio')
     )
 
