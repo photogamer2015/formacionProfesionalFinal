@@ -239,3 +239,86 @@ class RegistrarFacturaForm(forms.ModelForm):
                 'fact_correo', 'numero_factura', 'actualizado',
             ])
         return matricula
+
+
+class FacturaAlMatricularForm(forms.ModelForm):
+    """«¿Deseas registrar la factura ahora mismo?» del registro de matrícula.
+
+    Con «No» (por defecto) no pide nada: la matrícula queda sin factura y se
+    factura después en Matrícula › Facturas › Registrar factura. Con «Sí» pide
+    lo mismo que esa pantalla: el titular sale de los datos del estudiante del
+    formulario y solo con «Cambiar los datos» (cambiar_datos=1) se aceptan
+    otros; el número de factura es obligatorio. La matrícula se guarda ya
+    facturada, así que no aparece en «Matrículas sin factura».
+    """
+
+    CAMPOS_TITULAR = RegistrarFacturaForm.CAMPOS_TITULAR
+    CAMPOS_FACTURA = CAMPOS_TITULAR + ('numero_factura',)
+    prefix = 'fac'
+
+    registrar = forms.ChoiceField(
+        label='¿Deseas registrar la factura ahora mismo?',
+        choices=(('no', 'No'), ('si', 'Sí')),
+        initial='no',
+        widget=forms.RadioSelect,
+    )
+
+    class Meta(RegistrarFacturaForm.Meta):
+        pass
+
+    def __init__(self, data=None, *args, datos_estudiante=None, **kwargs):
+        self.datos_estudiante = dict(datos_estudiante or {})
+        self.registra = self.cambiar_datos = False
+        if data is not None:
+            prefijo = kwargs.get('prefix') or self.prefix
+            data = data.copy()
+            clave = f'{prefijo}-registrar'
+            # Un envío sin la pregunta (formulario en caché) cuenta como «No».
+            if data.get(clave) not in ('si', 'no'):
+                data[clave] = 'no'
+            self.registra = data[clave] == 'si'
+            self.cambiar_datos = self.registra and data.get(f'{prefijo}-cambiar_datos') == '1'
+            if not self.registra:
+                # Con «No» no se valida ni se guarda nada de la factura.
+                for name in self.CAMPOS_FACTURA:
+                    data[f'{prefijo}-{name}'] = ''
+            elif not self.cambiar_datos:
+                # Igual que «Registrar factura»: sin «Cambiar los datos» van
+                # los del estudiante aunque se envíe otra cosa.
+                for name in self.CAMPOS_TITULAR:
+                    data[f'{prefijo}-{name}'] = self.datos_estudiante.get(name, '')
+        super().__init__(data, *args, **kwargs)
+        for name, field in self.fields.items():
+            if name == 'registrar':
+                continue
+            field.widget.attrs['class'] = 'form-input'
+            # Los datos del estudiante ya los valida su propio formulario; el
+            # titular solo se exige cuando se escribe a mano.
+            field.required = self.registra and (
+                name == 'numero_factura'
+                or (self.cambiar_datos and name != 'fact_correo')
+            )
+
+    @property
+    def titular_editable(self):
+        return self.cambiar_datos
+
+    def clean_fact_cedula(self):
+        cedula = self.cleaned_data.get('fact_cedula')
+        if not self.cambiar_datos:
+            return cedula
+        return limpiar_cedula_factura(cedula)
+
+    def clean_numero_factura(self):
+        numero = limpiar_numero_factura(self.cleaned_data.get('numero_factura'))
+        if self.registra and not numero:
+            raise forms.ValidationError('Escribe el número de factura.')
+        return numero
+
+    def aplicar(self, matricula):
+        """Deja la factura en la matrícula antes de guardarla (solo con «Sí»)."""
+        if not self.registra:
+            return
+        for name in self.CAMPOS_FACTURA:
+            setattr(matricula, name, self.cleaned_data[name])
+        matricula.factura_realizada = 'si'

@@ -550,9 +550,16 @@ def _registrar_pago_inicial(matricula, usuario, mat_form=None,
 
 
 @transaction.atomic
-def _guardar_matricula_formularios(est_form, mat_form, asesor, usuario):
-    """Guardado común del formulario y MercyBot: estudiante, matrícula y abono."""
-    if not est_form.is_valid() or not mat_form.is_valid() or asesor is None:
+def _guardar_matricula_formularios(est_form, mat_form, asesor, usuario, factura_form=None):
+    """Guardado común del formulario y MercyBot: estudiante, matrícula y abono.
+
+    `factura_form` (solo el formulario de registro) deja la matrícula ya
+    facturada cuando se respondió «Sí» a «¿Deseas registrar la factura ahora mismo?».
+    """
+    if (
+        not est_form.is_valid() or not mat_form.is_valid() or asesor is None
+        or (factura_form is not None and not factura_form.is_valid())
+    ):
         raise ValueError('La matrícula debe validarse antes de guardarla.')
     estudiante = est_form.save(commit=False)
     if not estudiante.pk:
@@ -563,15 +570,57 @@ def _guardar_matricula_formularios(est_form, mat_form, asesor, usuario):
     matricula.modalidad = matricula.jornada.modalidad if matricula.jornada else mat_form.modalidad
     matricula.vendedora = asesor
     matricula.registrado_por = usuario
+    if factura_form is not None:
+        factura_form.aplicar(matricula)
     matricula.save()
     _registrar_pago_inicial(matricula, usuario, mat_form)
     _programar_confirmacion_matricula(matricula)
     return matricula
 
 
+def _datos_factura_del_estudiante(est_form):
+    """Titular de la factura por defecto: lo escrito en «Datos del estudiante»
+    (ya limpio si pasó la validación)."""
+    est_form.is_valid()
+    limpios = getattr(est_form, 'cleaned_data', {})
+
+    def valor(campo):
+        if campo in limpios:
+            return (limpios[campo] or '').strip()
+        return (est_form.data.get(est_form.add_prefix(campo)) or '').strip()
+
+    return {
+        'fact_nombres': valor('nombres'),
+        'fact_cedula': valor('cedula'),
+        'fact_correo': valor('correo'),
+    }
+
+
+def _avisar_factura_repetida(request, matricula):
+    """Aviso (no bloquea): una misma factura puede cubrir dos matrículas,
+    pero lo normal es que el número repetido sea un error de tipeo."""
+    repetidas = list(
+        Matricula.objects
+        .filter(numero_factura=matricula.numero_factura)
+        .exclude(pk=matricula.pk)
+        .select_related('estudiante')[:3]
+    )
+    if repetidas:
+        messages.warning(
+            request,
+            f'Revisa el número {matricula.numero_factura}: también está registrado en '
+            + ', '.join(
+                f'la matrícula #{m.pk} ({m.estudiante.nombre_completo})'
+                for m in repetidas
+            ) + '.'
+        )
+
+
 @matricula_requerida
 @transaction.atomic
 def matricula_registrar(request, modalidad):
+    from .forms_edicion_venta import FacturaAlMatricularForm
+
     modalidad = _modalidad_o_404(modalidad)
     bloqueo = _bloquear_si_online(request, modalidad)
     if bloqueo:
@@ -599,7 +648,7 @@ def matricula_registrar(request, modalidad):
         ):
             estudiante_existente = Estudiante.objects.filter(cedula=cedula).first()
 
-        # La factura ya no se registra al matricular (se hace en Facturas), así
+        # La factura es opcional y pide lo mismo que «Registrar factura», así
         # que celular y ciudad no se vuelven obligatorios por ella.
         est_form_kwargs = {
             'prefix': 'est',
@@ -608,21 +657,35 @@ def matricula_registrar(request, modalidad):
         if estudiante_existente:
             est_form_kwargs['instance'] = estudiante_existente
         est_form = EstudianteForm(request.POST, **est_form_kwargs)
+        fact_form = FacturaAlMatricularForm(
+            request.POST, datos_estudiante=_datos_factura_del_estudiante(est_form),
+        )
 
-        if not error_vendedora and est_form.is_valid() and mat_form.is_valid():
+        if (
+            not error_vendedora and est_form.is_valid() and mat_form.is_valid()
+            and fact_form.is_valid()
+        ):
             matricula = _guardar_matricula_formularios(
-                est_form, mat_form, asesor, request.user,
+                est_form, mat_form, asesor, request.user, factura_form=fact_form,
             )
-            messages.success(
-                request,
+            mensaje = (
                 f'Matrícula registrada para {matricula.estudiante.nombre_completo} '
                 f'({matricula.get_modalidad_display()}).'
             )
+            if matricula.factura_realizada == 'si':
+                mensaje += (
+                    f' Factura N.º {matricula.numero_factura} registrada: ya aparece '
+                    'en la Lista de Facturas.'
+                )
+            messages.success(request, mensaje)
+            if matricula.factura_realizada == 'si':
+                _avisar_factura_repetida(request, matricula)
             return redirect('academia:matricula_lista', modalidad=matricula.modalidad)
 
 
     else:
         est_form = EstudianteForm(prefix='est', documento_flexible=True)
+        fact_form = FacturaAlMatricularForm()
         # La fecha llega con el día de hoy: casi todas las matrículas se
         # registran el mismo día y así no hay que escribir el año a mano.
         mat_form = MatriculaForm(
@@ -633,6 +696,7 @@ def matricula_registrar(request, modalidad):
     return render(request, 'matricula/form.html', {
         'est_form': est_form,
         'mat_form': mat_form,
+        'fact_form': fact_form,
         'cursos_disponibles': _cursos_para_matricula(),
         'modalidad': modalidad,
         'modalidad_label': _label_modalidad(modalidad),
@@ -1385,23 +1449,7 @@ def matricula_registrar_factura(request, pk):
             f'Factura N.º {matricula.numero_factura} registrada para '
             f'{matricula.estudiante.nombre_completo}. Ya aparece en la Lista de Facturas.'
         )
-        # Aviso (no bloquea): una misma factura puede cubrir dos matrículas,
-        # pero lo normal es que el número repetido sea un error de tipeo.
-        repetidas = list(
-            Matricula.objects
-            .filter(numero_factura=matricula.numero_factura)
-            .exclude(pk=matricula.pk)
-            .select_related('estudiante')[:3]
-        )
-        if repetidas:
-            messages.warning(
-                request,
-                f'Revisa el número {matricula.numero_factura}: también está registrado en '
-                + ', '.join(
-                    f'la matrícula #{m.pk} ({m.estudiante.nombre_completo})'
-                    for m in repetidas
-                ) + '.'
-            )
+        _avisar_factura_repetida(request, matricula)
         return redirect(lista_url)
 
     return render(request, 'matricula/registrar_factura.html', {

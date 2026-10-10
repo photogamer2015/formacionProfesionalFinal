@@ -464,13 +464,51 @@
         {% endif %}
     </div>
 
-    <!-- La factura ya no se registra al matricular: solo se indica dónde hacerlo. -->
-    <div id="aviso-factura" class="flash flash-info" role="note" style="margin:32px 0 0; line-height:1.55;">
-        <strong>🧾 La factura ya no se registra aquí.</strong>
-        Después de guardar la matrícula, ve a
-        <strong>Matrícula › Facturas › Registrar factura</strong>, busca al estudiante y pulsa
-        «Registrar factura»: sus datos salen solos y ahí escribes el número de factura.
+    {% if fact_form %}
+    <!-- Factura al matricular: por defecto «No» (se registra después en
+         Facturas). Con «Sí» pide lo mismo que «Registrar factura». -->
+    <div id="factura-matricula" class="fm-factura">
+        <div class="fm-factura__titulo">🧾 FACTURA</div>
+        <span class="form-label" id="fm-pregunta">{{ fact_form.registrar.label }}</span>
+        <div class="fm-opciones" role="radiogroup" aria-labelledby="fm-pregunta">
+            {% for opcion in fact_form.registrar %}
+            <label for="{{ opcion.id_for_label }}">{{ opcion.tag }} {{ opcion.choice_label }}</label>
+            {% endfor %}
+        </div>
+        <small class="fm-nota" id="fm-nota-no"{% if fact_form.registra %} hidden{% endif %}>
+            Con «No», la factura se registra después en <strong>Matrícula › Facturas › Registrar factura</strong>.
+        </small>
+
+        <div class="fm-campos" id="fm-campos"{% if not fact_form.registra %} hidden{% endif %}>
+            <input type="hidden" name="{{ fact_form.prefix }}-cambiar_datos" id="id_fac-cambiar_datos" value="{% if fact_form.titular_editable %}1{% else %}0{% endif %}">
+            <div class="fm-titular-head">
+                <h4>Datos para factura</h4>
+                <button type="button" class="btn btn-secondary btn-sm" id="fm-cambiar-datos">✏️ Cambiar los datos</button>
+            </div>
+            <div class="form-grid">
+                <div>
+                    <label class="form-label" for="{{ fact_form.fact_nombres.id_for_label }}">Nombres *</label>
+                    {{ fact_form.fact_nombres }}{{ fact_form.fact_nombres.errors }}
+                </div>
+                <div>
+                    <label class="form-label" for="{{ fact_form.fact_cedula.id_for_label }}">Número de cédula / RUC *</label>
+                    {{ fact_form.fact_cedula }}{{ fact_form.fact_cedula.errors }}
+                </div>
+                <div>
+                    <label class="form-label" for="{{ fact_form.fact_correo.id_for_label }}">Correo electrónico (opcional)</label>
+                    {{ fact_form.fact_correo }}{{ fact_form.fact_correo.errors }}
+                </div>
+            </div>
+            <small class="fm-nota" id="fm-nota-titular"></small>
+
+            <div class="fm-numero">
+                <label class="form-label" for="{{ fact_form.numero_factura.id_for_label }}">Número de factura *</label>
+                {{ fact_form.numero_factura }}{{ fact_form.numero_factura.errors }}
+                <small class="fm-nota">Solo números. Escríbelo tal como aparece en la factura emitida.</small>
+            </div>
+        </div>
     </div>
+    {% endif %}
 
     <div class="form-actions-row">
         <div id="submit-aviso-validacion" class="submit-aviso-validacion" aria-live="polite"></div>
@@ -929,11 +967,176 @@
     .confirm-modal__nota-fecha { margin: 12px 0 0; font-size: 12px; font-style: italic; color: #6f7889; }
     body.dark-mode .confirm-modal__nota-fecha { color: var(--fp-dark-muted); }
 
+    /* ── Factura al matricular (los mismos datos que «Registrar factura») ── */
+    .fm-factura {
+        margin-top: 16px;
+        padding: 14px 16px;
+        background: #E3F2FD;
+        border-left: 4px solid #1976D2;
+        border-radius: 4px;
+    }
+    .fm-factura__titulo { font-size: 11px; color: #666; font-weight: 700; margin-bottom: 10px; }
+    .fm-opciones {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px;
+        background: var(--fp-surface-2);
+        border: 1px solid var(--fp-border);
+        border-radius: 10px;
+    }
+    .fm-opciones label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 96px;
+        padding: 8px 18px;
+        border-radius: 8px;
+        color: var(--fp-navy-3);
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .fm-opciones input { margin: 0; accent-color: var(--fp-navy); cursor: pointer; }
+    .fm-opciones label:has(input:checked) {
+        background: var(--fp-surface);
+        color: var(--fp-navy);
+        box-shadow: 0 1px 4px rgba(0,0,0,.12);
+    }
+    .fm-nota { display: block; margin-top: 8px; color: #666; font-size: 12px; line-height: 1.45; }
+    .fm-nota[hidden], .fm-campos[hidden] { display: none !important; }
+    .fm-campos { margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(25,118,210,.35); }
+    .fm-titular-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .fm-titular-head h4 { margin: 0; color: #1A237E; font-size: 13px; font-weight: 600; }
+    .fm-factura .form-input[readonly] { background: var(--fp-surface-2); color: var(--fp-muted); cursor: not-allowed; }
+    .fm-numero { max-width: 380px; margin-top: 16px; }
+    body.dark-mode .fm-factura { background: var(--fp-dark-soft); color: var(--fp-dark-text); border-color: var(--fp-dark-line); }
+    body.dark-mode .fm-factura__titulo,
+    body.dark-mode .fm-nota { color: var(--fp-dark-muted); }
+    body.dark-mode .fm-opciones { background: #0d1420; border-color: var(--fp-dark-line); }
+    body.dark-mode .fm-opciones label { color: var(--fp-dark-muted); }
+    body.dark-mode .fm-opciones label:has(input:checked) { background: rgba(126,167,255,.20); color: #fff; }
+    body.dark-mode .fm-campos { border-top-color: var(--fp-dark-line); }
+    body.dark-mode .fm-titular-head h4 { color: #a9c7ff; }
+
 </style>
 {% endblock %}
 
 {% block extra_js %}
 {% include 'includes/fecha_matricula.html' %}
+{% if fact_form %}
+<script>
+    // «¿Deseas registrar la factura ahora mismo?» Con «Sí» pide lo mismo que
+    // «Registrar factura»: por defecto el titular copia los datos del
+    // estudiante y «Cambiar los datos» permite facturar a otra persona. El
+    // aviso «Falta completar» y la confirmación usan window.FacturaMatricula.
+    (function () {
+        const caja = document.getElementById('factura-matricula');
+        if (!caja) return;
+        const radios = Array.from(caja.querySelectorAll('input[name="fac-registrar"]'));
+        const campos = document.getElementById('fm-campos');
+        const notaNo = document.getElementById('fm-nota-no');
+        const marca = document.getElementById('id_fac-cambiar_datos');
+        const boton = document.getElementById('fm-cambiar-datos');
+        const nota = document.getElementById('fm-nota-titular');
+        const numero = document.getElementById('id_fac-numero_factura');
+        // Cada dato del titular sale de su campo en «Datos del estudiante».
+        const titular = [
+            ['id_fac-fact_nombres', 'est-nombres'],
+            ['id_fac-fact_cedula', 'est-cedula'],
+            ['id_fac-fact_correo', 'est-correo'],
+        ].map(function (par) {
+            return {
+                campo: document.getElementById(par[0]),
+                origen: document.querySelector('[name="' + par[1] + '"]'),
+            };
+        });
+
+        function valor(input) { return input ? (input.value || '').trim() : ''; }
+        function registra() { return radios.some(function (r) { return r.checked && r.value === 'si'; }); }
+        function editable() { return marca.value === '1'; }
+
+        function sincronizar() {
+            if (editable()) return;
+            titular.forEach(function (t) {
+                if (t.campo && t.origen) t.campo.value = valor(t.origen);
+            });
+        }
+
+        function aplicarTitular(abierto) {
+            marca.value = abierto ? '1' : '0';
+            titular.forEach(function (t) { if (t.campo) t.campo.readOnly = !abierto; });
+            boton.textContent = abierto ? '↩️ Usar los datos del estudiante' : '✏️ Cambiar los datos';
+            nota.textContent = abierto
+                ? 'Escribe los datos de la persona a cuyo nombre sale la factura. Nombres y cédula/RUC son obligatorios; el correo es opcional.'
+                : 'Son los datos del estudiante. Si la factura va a nombre de otra persona, pulsa «Cambiar los datos».';
+            sincronizar();
+        }
+
+        function aplicarRespuesta() {
+            const si = registra();
+            campos.hidden = !si;
+            notaNo.hidden = si;
+            sincronizar();
+        }
+
+        radios.forEach(function (r) { r.addEventListener('change', aplicarRespuesta); });
+        boton.addEventListener('click', function () {
+            const abrir = !editable();
+            aplicarTitular(abrir);
+            if (abrir && titular[0].campo) titular[0].campo.focus();
+            // Para que se actualice el aviso «Falta completar».
+            marca.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        titular.forEach(function (t) {
+            if (t.origen) t.origen.addEventListener('input', sincronizar);
+        });
+        caja.querySelectorAll('[data-solo-numeros]').forEach(function (input) {
+            input.addEventListener('input', function () {
+                const limpio = this.value.replace(/\D/g, '');
+                if (this.value !== limpio) this.value = limpio;
+            });
+        });
+
+        window.FacturaMatricula = {
+            // De paso copia otra vez los datos del estudiante: el autocompletado
+            // por cédula los cambia sin avisar.
+            faltantes: function () {
+                if (!registra()) return [];
+                sincronizar();
+                const faltan = [];
+                if (editable()) {
+                    if (!valor(titular[0].campo)) faltan.push('Nombres de la factura');
+                    if (!valor(titular[1].campo)) faltan.push('Cédula / RUC de la factura');
+                }
+                if (!valor(numero)) faltan.push('Número de factura');
+                return faltan;
+            },
+            resumen: function () {
+                if (!registra()) return [['Factura', 'No: se registra después en Facturas']];
+                sincronizar();
+                return [
+                    ['Factura', 'Sí · N.º ' + valor(numero)],
+                    ['A nombre de', valor(titular[0].campo)],
+                    ['Cédula/RUC factura', valor(titular[1].campo)],
+                    ['Correo factura', valor(titular[2].campo)],
+                ];
+            },
+        };
+
+        aplicarTitular(editable());
+        aplicarRespuesta();
+    })();
+</script>
+{% endif %}
 <script>
     (function () {
         // ── Elementos del DOM ──────────────
@@ -1536,6 +1739,7 @@
                 seccionResumen('Comprobante', [
                     ['Tipo registro', textoSeleccion('tipo_registro')],
                     ['Asesor', textoAsesorSeleccionado()],
+                    ...(window.FacturaMatricula ? window.FacturaMatricula.resumen() : []),
                 ]),
             ].join('') + (
                 duplicadoTexto
@@ -2431,6 +2635,11 @@
                 if (Math.abs((m1 + m2) - total) > 0.01) {
                     agregarFaltante('Suma exacta de Monto 1 y Monto 2');
                 }
+            }
+
+            // 8. Factura: solo si se respondió «Sí» a registrarla ahora.
+            if (window.FacturaMatricula) {
+                window.FacturaMatricula.faltantes().forEach(agregarFaltante);
             }
 
             return faltantes;

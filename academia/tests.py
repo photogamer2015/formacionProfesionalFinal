@@ -2717,7 +2717,8 @@ class PagoInicialMatriculaTests(TestCase):
         url = reverse('academia:matricula_registrar', kwargs={'modalidad': 'presencial'})
 
         response = self.client.get(url)
-        self.assertContains(response, 'La factura ya no se registra aquí')
+        # Por defecto «No»: indica dónde registrarla después.
+        self.assertContains(response, '¿Deseas registrar la factura ahora mismo?')
         self.assertContains(response, 'Matrícula › Facturas › Registrar factura')
         self.assertNotContains(response, 'name="mat-factura_realizada"')
         self.assertNotContains(response, 'name="mat-fact_nombres"')
