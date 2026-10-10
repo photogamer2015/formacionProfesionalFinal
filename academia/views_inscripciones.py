@@ -7,9 +7,12 @@
   «Abono»: un módulo pagado ese mismo día no es inscripción.
 - Incluye las matrículas que pasaron al archivo por un cierre de curso, para
   que los días anteriores no se pierdan.
+- Ranking del día: cuántas de esas inscripciones vendió cada vendedora (la
+  «Vendedora» de la matrícula; si falta, quien la registró, como en
+  Comprobantes). El monto por vendedora solo lo ve el administrador.
 - Es de consulta para todos los roles.
 """
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
@@ -18,11 +21,14 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 
+from .colores_registro import Paleta
 from .forms_registro_estudiantil import nombre_usuario
 from .models import Abono, AbonoArchivado, Matricula, nombre_banco, nombre_metodo_pago
-from .permisos import matricula_requerida
+from .permisos import es_admin, matricula_requerida
 from .views_comprobantes import _etiqueta_metodo_pago
-from .views_registro_estudiantil import _archivadas, _etiqueta_hoja, _fecha, _modalidad
+from .views_registro_estudiantil import (
+    _archivadas, _etiqueta_hoja, _fecha, _modalidad, _primer_nombre,
+)
 
 TIPO_INSCRIPCION = 'reserva_abono'
 CERO = Decimal('0.00')
@@ -93,9 +99,12 @@ def _totales_por_dia():
 def _inscripciones_del_dia(dia):
     """Filas de las inscripciones de un día, en el orden en que se registraron."""
     orden = []
+    paleta = Paleta()
     vivas = (
         Matricula.objects.filter(tipo_matricula=TIPO_INSCRIPCION, fecha_matricula=dia)
-        .select_related('estudiante', 'curso', 'jornada', 'jornada__sede', 'registrado_por')
+        .select_related(
+            'estudiante', 'curso', 'jornada', 'jornada__sede', 'registrado_por', 'vendedora',
+        )
         .prefetch_related(Prefetch(
             'abonos', queryset=Abono.objects.order_by('creado', 'id'), to_attr='abonos_orden',
         ))
@@ -105,6 +114,7 @@ def _inscripciones_del_dia(dia):
         if not bloque:
             continue
         jornada = m.jornada
+        vende = m.vendedora or m.registrado_por
         partes = [
             (nombre_metodo_pago(metodo) or 'Sin método', _etiqueta_metodo_pago(metodo, banco), monto)
             for abono in bloque for metodo, banco, monto in _partes_abono(abono)
@@ -123,6 +133,8 @@ def _inscripciones_del_dia(dia):
             'partes': partes,
             'recibos': [a.numero_recibo for a in bloque if a.numero_recibo],
             'registra': nombre_usuario(m.registrado_por),
+            'vendedora': nombre_usuario(vende),
+            'color_vendedora': paleta.de_usuario(vende),
             'retiro': m.estado == 'retiro_voluntario',
             'url_pagos': reverse('academia:matricula_abonos', args=[m.pk]),
         }))
@@ -145,6 +157,7 @@ def _inscripciones_del_dia(dia):
             banco = abono.banco_label or nombre_banco(abono.banco)
             partes.append((metodo, f'{metodo} · {banco}' if banco else metodo, abono.monto))
         creado = a.creado_original or a.archivado_en
+        vende = a.vendedora_nombre or a.registrado_por_nombre
         orden.append(((creado, a.pk), {
             'archivada': True,
             'hora': timezone.localtime(creado) if creado else None,
@@ -159,6 +172,8 @@ def _inscripciones_del_dia(dia):
             'partes': partes,
             'recibos': [ab.numero_recibo for ab in bloque if ab.numero_recibo],
             'registra': a.registrado_por_nombre,
+            'vendedora': vende,
+            'color_vendedora': paleta.de_nombre(vende),
             'retiro': a.estado == 'retiro_voluntario',
             'url_pagos': '',
         }))
@@ -168,6 +183,38 @@ def _inscripciones_del_dia(dia):
     for numero, fila in enumerate(filas, 1):
         fila['numero'] = numero
     return filas
+
+
+def _ranking_vendedoras(filas):
+    """Cuántas inscripciones del día vendió cada vendedora, de más a menos.
+
+    Con las mismas ventas comparten puesto (1, 1, 3). Se muestra el primer
+    nombre, salvo que dos vendedoras del día lo compartan.
+    """
+    por_vendedora = {}
+    for fila in filas:
+        dato = por_vendedora.setdefault(fila['vendedora'], {
+            'nombre': fila['vendedora'],
+            'color': fila['color_vendedora'],
+            'ventas': 0,
+            'total': CERO,
+        })
+        dato['ventas'] += 1
+        dato['total'] += fila['monto']
+    ranking = sorted(
+        por_vendedora.values(),
+        key=lambda d: (-d['ventas'], not d['nombre'], d['nombre'].casefold()),
+    )
+    primeros = Counter(_primer_nombre(d['nombre']) for d in ranking)
+    for indice, dato in enumerate(ranking):
+        anterior = ranking[indice - 1] if indice else None
+        empata = anterior is not None and anterior['ventas'] == dato['ventas']
+        dato['puesto'] = anterior['puesto'] if empata else indice + 1
+        primero = _primer_nombre(dato['nombre'])
+        dato['corto'] = (primero if primeros[primero] == 1 else dato['nombre']) or 'Sin vendedora'
+        dato['nombre'] = dato['nombre'] or 'Sin vendedora'
+        dato['barra'] = round(dato['ventas'] * 100 / ranking[0]['ventas'])
+    return ranking
 
 
 def _pestanas(totales, hoy, seleccionado):
@@ -221,6 +268,9 @@ def matricula_inscripciones(request):
         'total': total,
         'cantidad': len(filas),
         'metodos': sorted(metodos.items(), key=lambda item: (-item[1], item[0])),
+        'ranking': _ranking_vendedoras(filas),
+        # Como en el ranking de Comprobantes: las asesoras ven solo cantidades.
+        'montos_ranking': es_admin(request.user),
         'pestanas': pestanas,
         'meses_pestanas': meses,
     })

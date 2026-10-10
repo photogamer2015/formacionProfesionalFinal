@@ -64,35 +64,156 @@
         text-align: center;
     }
     .insc-tabs { margin-bottom: 18px; flex-wrap: wrap; }
+    /* Título y pestañas a la izquierda; el ranking del día a la derecha. */
+    .insc-encabezado {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+        gap: 14px 24px;
+        margin-bottom: 18px;
+    }
+    /* Si el ranking es más alto, las pestañas siguen pegadas al resumen. */
+    .insc-encabezado-principal { display: flex; flex-direction: column; }
+    .insc-encabezado .insc-tabs { margin-top: auto; margin-bottom: 0; }
+    .insc-ranking {
+        align-self: end;
+        background: var(--fp-surface);
+        border: 1px solid var(--fp-border);
+        border-left: 5px solid var(--fp-orange);
+        border-radius: 12px;
+        padding: 12px 16px;
+    }
+    .insc-ranking-titulo {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 0 0 8px;
+        color: var(--fp-muted);
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+    .insc-ranking-lista { display: grid; row-gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .insc-ranking-lista li {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr) auto;
+        align-items: center;
+        column-gap: 8px;
+        row-gap: 3px;
+        color: var(--fp-ink);
+        font-size: 14px;
+        line-height: 1.3;
+    }
+    .insc-ranking-puesto { font-size: 16px; font-weight: 800; line-height: 1; text-align: center; color: var(--fp-muted); }
+    .insc-ranking-nombre {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        max-width: 150px;
+        font-weight: 700;
+    }
+    .insc-ranking-nombre .texto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .insc-ranking-nombre .muestra {
+        flex: 0 0 auto;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        border: 1px solid rgba(0,0,0,.25);
+    }
+    .insc-ranking-ventas { color: var(--fp-muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .insc-ranking-ventas strong { color: var(--fp-ink); font-size: 15px; font-weight: 800; }
+    .insc-ranking-barra {
+        grid-column: 2 / -1;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--fp-surface-2);
+        overflow: hidden;
+    }
+    .insc-ranking-barra span { display: block; height: 100%; border-radius: inherit; background: #2e7d32; }
+    /* Una línea por vendedora, con las barras alineadas (sin subgrid queda
+       la barra debajo del nombre). */
+    @supports (grid-template-columns: subgrid) {
+        .insc-ranking-lista { grid-template-columns: 24px max-content minmax(48px, 1fr) max-content; column-gap: 10px; }
+        .insc-ranking-lista li { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: normal; }
+        .insc-ranking-barra { grid-column: 3; grid-row: 1; height: 6px; }
+        .insc-ranking-ventas { grid-column: 4; }
+    }
+    .insc-ranking-vacio { margin: 0; color: var(--fp-muted); font-size: 13px; font-weight: 700; }
+    .insc-oculto {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+    /* Con margen para que las pestañas no pasen a dos líneas junto al ranking. */
+    @media (max-width: 1100px) {
+        .insc-encabezado { grid-template-columns: minmax(0, 1fr); }
+    }
     /* Por encima de la columna fija «Estudiante» de la tabla (capa 7), para
        que el menú de días no quede tapado. */
     .hojas-barra { z-index: 8; }
-    body.dark-mode .insc-card { background: #161922; border-color: #262b38; }
+    body.dark-mode .insc-card,
+    body.dark-mode .insc-ranking { background: #161922; border-color: #262b38; }
+    body.dark-mode .insc-ranking { border-left-color: var(--fp-orange); }
+    body.dark-mode .insc-ranking-barra { background: #222838; }
     body.dark-mode .insc-etiqueta { background: #222838; color: #aab4cf; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="crumb">
-    <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
-    <a href="{% url 'academia:matricula_lista' modalidad='todos' %}">Matrícula</a> &nbsp;›&nbsp; Pagos de inscripciones
-</div>
+<div class="insc-encabezado">
+    <div class="insc-encabezado-principal">
+        <div class="crumb">
+            <a href="{% url 'academia:bienvenida' %}">Inicio</a> &nbsp;›&nbsp;
+            <a href="{% url 'academia:matricula_lista' modalidad='todos' %}">Matrícula</a> &nbsp;›&nbsp; Pagos de inscripciones
+        </div>
 
-<div class="registro-cabecera">
-    <div>
-        <h2 class="page-title">💵 Pagos de inscripciones</h2>
-        <p class="page-subtitle">
-            Inscripciones del {{ dia|date:"l d \d\e F \d\e Y" }}
-            {% if es_hoy %}<span class="registro-estado-hoja is-abierta">Hoy</span>{% endif %}
-        </p>
+        <div class="registro-cabecera">
+            <div>
+                <h2 class="page-title">💵 Pagos de inscripciones</h2>
+                <p class="page-subtitle">
+                    Inscripciones del {{ dia|date:"l d \d\e F \d\e Y" }}
+                    {% if es_hoy %}<span class="registro-estado-hoja is-abierta">Hoy</span>{% endif %}
+                </p>
+            </div>
+        </div>
+
+        <div class="modalidad-tabs insc-tabs">
+            <a href="{% url 'academia:matricula_lista' modalidad='todos' %}">📋 Todos</a>
+            <a href="{% url 'academia:matricula_lista' modalidad='presencial' %}">🏫 Presencial</a>
+            <a href="{% url 'academia:matricula_lista' modalidad='online' %}">🟢 Online</a>
+            <a href="{% url 'academia:matricula_inscripciones' %}" class="active" aria-current="page">💵 Pagos inscripciones</a>
+        </div>
     </div>
-</div>
 
-<div class="modalidad-tabs insc-tabs">
-    <a href="{% url 'academia:matricula_lista' modalidad='todos' %}">📋 Todos</a>
-    <a href="{% url 'academia:matricula_lista' modalidad='presencial' %}">🏫 Presencial</a>
-    <a href="{% url 'academia:matricula_lista' modalidad='online' %}">🟢 Online</a>
-    <a href="{% url 'academia:matricula_inscripciones' %}" class="active" aria-current="page">💵 Pagos inscripciones</a>
+    <section class="insc-ranking" aria-labelledby="insc-ranking-titulo">
+        <h3 class="insc-ranking-titulo" id="insc-ranking-titulo">
+            <span>🏆 Ranking de vendedoras</span>
+            <span>{% if es_hoy %}Hoy{% else %}{{ dia|date:"d/m/Y" }}{% endif %}</span>
+        </h3>
+        {% if ranking %}
+        <ol class="insc-ranking-lista">
+            {% for v in ranking %}
+            <li title="{{ v.nombre }} · {{ v.ventas }} venta{{ v.ventas|pluralize }}{% if montos_ranking %} · ${{ v.total|floatformat:2 }}{% endif %}">
+                <span class="insc-ranking-puesto" aria-hidden="true">{% if v.puesto == 1 %}🥇{% elif v.puesto == 2 %}🥈{% elif v.puesto == 3 %}🥉{% else %}{{ v.puesto }}.{% endif %}</span>
+                <span class="insc-ranking-nombre">
+                    <span class="insc-oculto">Puesto {{ v.puesto }}:</span>
+                    <span class="muestra" style="background:{{ v.color }};" aria-hidden="true"></span>
+                    <span class="texto">{{ v.corto }}</span>
+                </span>
+                <span class="insc-ranking-ventas"><strong>{{ v.ventas }}</strong> venta{{ v.ventas|pluralize }}{% if montos_ranking %} · ${{ v.total|floatformat:2 }}{% endif %}</span>
+                <span class="insc-ranking-barra" aria-hidden="true"><span style="width: {{ v.barra }}%;"></span></span>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="insc-ranking-vacio">{% if es_hoy %}Todavía no hay ventas hoy.{% else %}No hubo ventas este día.{% endif %}</p>
+        {% endif %}
+    </section>
 </div>
 
 <div class="insc-resumen">
@@ -125,6 +246,7 @@
                 <th>Jornada</th>
                 <th>Forma de pago</th>
                 <th>Recibo</th>
+                <th>Vendedora</th>
                 <th>Registró</th>
                 <th class="num">Inscripción</th>
             </tr>
@@ -145,6 +267,7 @@
                 <td>{{ f.jornada|default:"—" }}{% if f.inicio %} · {{ f.inicio|date:"d/m/Y" }}{% endif %}</td>
                 <td>{% for metodo, etiqueta, monto in f.partes %}{% if not forloop.first %} + {% endif %}{{ etiqueta }}{% if f.partes|length > 1 %} (${{ monto|floatformat:2 }}){% endif %}{% endfor %}</td>
                 <td>{{ f.recibos|join:", "|default:"—" }}</td>
+                <td>{{ f.vendedora|default:"—" }}</td>
                 <td>{{ f.registra|default:"—" }}</td>
                 <td class="num insc-monto">${{ f.monto|floatformat:2 }}</td>
             </tr>
@@ -152,7 +275,7 @@
         </tbody>
         <tfoot>
             <tr>
-                <td colspan="10">Total del día · {{ cantidad }} inscripci{{ cantidad|pluralize:"ón,ones" }}</td>
+                <td colspan="11">Total del día · {{ cantidad }} inscripci{{ cantidad|pluralize:"ón,ones" }}</td>
                 <td class="num">${{ total|floatformat:2 }}</td>
             </tr>
         </tfoot>

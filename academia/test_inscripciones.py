@@ -13,11 +13,12 @@ from .models import (
     Matricula, MatriculaArchivada, Sede,
 )
 from .permisos import GRUPO_ASESOR
-from .views_inscripciones import _totales_por_dia
+from .views_inscripciones import _ranking_vendedoras, _totales_por_dia
 
 DIA_A = date(2026, 10, 5)
 DIA_B = date(2026, 10, 4)
 DIA_C = date(2026, 9, 20)
+DIA_D = date(2026, 10, 3)
 
 
 class PagosInscripcionesTests(TestCase):
@@ -61,12 +62,13 @@ class PagosInscripcionesTests(TestCase):
             metodo_label='Efectivo', numero_recibo='REC-ARCH-1',
         )
 
-    def _matricula(self, nombre, dia, *, tipo='reserva_abono', valor='90.00', pagos=(), mixto=None, registra=None):
+    def _matricula(self, nombre, dia, *, tipo='reserva_abono', valor='90.00', pagos=(), mixto=None, registra=None, vende=None):
         m = Matricula.objects.create(
             estudiante=Estudiante.objects.create(cedula=f'0{next(self.cedulas)}', nombres=nombre),
             curso=self.curso, jornada=self.jornada, modalidad='presencial',
             tipo_matricula=tipo, forma_pago='abono', fecha_matricula=dia,
             valor_curso=Decimal(valor), registrado_por=registra or self.admin,
+            vendedora=vende,
         )
         for indice, (monto, metodo, tipo_pago, modulo) in enumerate(pagos):
             extra = {}
@@ -148,3 +150,94 @@ class PagosInscripcionesTests(TestCase):
         response = self.client.get(reverse('academia:matricula_inscripciones'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response['Location'])
+
+    # ── Ranking de vendedoras del día ──
+
+    def _archivada(self, nombre, dia, *, vende='', registra='', monto='10.00'):
+        cierre = CierreCurso.objects.create(curso_nombre='Curso inscripciones')
+        archivada = MatriculaArchivada.objects.create(
+            cierre=cierre, cedula=f'0{next(self.cedulas)}', nombres=nombre,
+            curso_nombre='Curso inscripciones', modalidad='presencial',
+            fecha_matricula=dia, estado_pago='Pagado', tipo_matricula='reserva_abono',
+            registrado_por_nombre=registra, vendedora_nombre=vende,
+            creado_original=timezone.make_aware(datetime.combine(dia, datetime.min.time())),
+        )
+        AbonoArchivado.objects.create(
+            matricula_archivada=archivada, cierre=cierre, fecha=dia,
+            monto=Decimal(monto), tipo_pago='abono', metodo='efectivo', metodo_label='Efectivo',
+        )
+
+    def _seccion_ranking(self, response):
+        html = response.content.decode()
+        inicio = html.index('<section class="insc-ranking"')
+        return html[inicio:html.index('</section>', inicio)]
+
+    def test_ranking_de_vendedoras_del_dia(self):
+        melanie = User.objects.create_user('melanie_insc', first_name='Melanie', last_name='Vera')
+        glenda = User.objects.create_user('glenda_insc', first_name='Glenda', last_name='Paz')
+        diez = [('10.00', 'efectivo', 'abono', None)]
+        self._matricula('Hugo Uno', DIA_D, pagos=diez, vende=glenda)
+        self._matricula('Ines Dos', DIA_D, pagos=diez, vende=melanie)
+        # La registró Glenda, pero la venta es de Melanie.
+        self._matricula('Juan Tres', DIA_D, pagos=diez, vende=melanie, registra=glenda)
+        self._matricula('Karla Cuatro', DIA_D, pagos=[('5.00', 'efectivo', 'abono', None)], vende=glenda)
+        # Sin vendedora cuenta para quien la registró (como en Comprobantes).
+        self._matricula('Luis Cinco', DIA_D, pagos=diez, registra=self.asesora)
+        # Un Programa Completo no es inscripción.
+        self._matricula('Mario Seis', DIA_D, tipo='programa_completo', pagos=[('90.00', 'efectivo', 'pago_completo', None)], vende=melanie)
+        # Archivadas por un cierre: se suman a la misma vendedora.
+        self._archivada('Nora Siete', DIA_D, vende='Melanie Vera', registra='Ana Admin')
+        self._archivada('Olga Ocho', DIA_D, registra='Shirley Mora')
+
+        response = self._get(self.admin, dia=DIA_D.isoformat())
+        ranking = response.context['ranking']
+        self.assertEqual([(v['corto'], v['ventas'], v['total'], v['puesto']) for v in ranking], [
+            ('Melanie', 3, Decimal('30.00'), 1),
+            ('Glenda', 2, Decimal('15.00'), 2),
+            ('Kim', 1, Decimal('10.00'), 3),
+            ('Shirley', 1, Decimal('10.00'), 3),
+        ])
+        self.assertEqual(sum(v['ventas'] for v in ranking), response.context['cantidad'])
+        self.assertEqual([v['barra'] for v in ranking], [100, 67, 33, 33])
+        self.assertEqual(ranking[0]['color'], '#93c47d')  # el verde de Melanie en el Registro
+
+        por_estudiante = {f['estudiante']: f for f in response.context['filas']}
+        self.assertEqual(por_estudiante['Juan Tres']['vendedora'], 'Melanie Vera')
+        self.assertEqual(por_estudiante['Juan Tres']['registra'], 'Glenda Paz')
+        self.assertContains(response, '<th>Vendedora</th>')
+        seccion = self._seccion_ranking(response)
+        self.assertIn('Ranking de vendedoras', seccion)
+        self.assertIn('$30,00', seccion)
+        # Quien solo registró (Ana Admin) no cuenta como vendedora.
+        self.assertNotIn('Ana Admin', seccion)
+        self.assertNotIn('Ana', [v['corto'] for v in ranking])
+
+    def test_ranking_sin_montos_para_la_asesora(self):
+        response = self._get(self.asesora, dia=DIA_A.isoformat())
+        self.assertFalse(response.context['montos_ranking'])
+        self.assertEqual([(v['corto'], v['ventas']) for v in response.context['ranking']], [('Ana', 2), ('Kim', 1)])
+        seccion = self._seccion_ranking(response)
+        self.assertIn('Ana', seccion)
+        self.assertNotIn('$', seccion)
+        self.assertTrue(self._get(self.admin, dia=DIA_A.isoformat()).context['montos_ranking'])
+
+    def test_ranking_empates_y_nombres_repetidos(self):
+        def fila(vendedora):
+            return {'vendedora': vendedora, 'color_vendedora': '#d9d9d9', 'monto': Decimal('10.00')}
+
+        ranking = _ranking_vendedoras([
+            fila('María Pérez'), fila('Glenda Paz'), fila('María López'), fila(''),
+            fila('Glenda Paz'), fila('María Pérez'), fila('Zoe Ríos'),
+        ])
+        # Empatadas comparten puesto; si dos comparten el primer nombre, va completo.
+        self.assertEqual([(v['corto'], v['ventas'], v['puesto']) for v in ranking], [
+            ('Glenda', 2, 1), ('María Pérez', 2, 1),
+            ('María López', 1, 3), ('Zoe', 1, 3), ('Sin vendedora', 1, 3),
+        ])
+        self.assertEqual(_ranking_vendedoras([]), [])
+
+    def test_ranking_de_un_dia_sin_ventas(self):
+        response = self._get(self.admin, dia='2026-09-01')
+        self.assertEqual(response.context['ranking'], [])
+        self.assertContains(response, 'No hubo ventas este día.')
+        self.assertContains(self._get(self.admin), 'Todavía no hay ventas hoy.')
